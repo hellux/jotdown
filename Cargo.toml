@@ -1,0 +1,15 @@
+[package]
+name = "jotdown"
+description = "A parser for the Djot markup language"
+authors = ["Noah Hellman <noah@hllmn.net>"]
+version = "0.1.0"
+license = "MIT"
+edition = "2021"
+keywords = ["djot", "markup"]
+categories = ["parser-implementations"]
+homepage = "https://hllmn.net/projects/jotdown"
+repository = "https://github.com/hellux/jotdown"
+documentation = "https://docs.rs/jotdown"
+exclude = [
+    "Makefile",
+]
