@@ -7,6 +7,7 @@ use Container::*;
 use Leaf::*;
 
 pub type Tree = tree::Tree<Block, Atom>;
+pub type TreeIter<'t> = tree::Iter<'t, Block, Atom>;
 
 pub fn parse(src: &str) -> Tree {
     Parser::new(src).parse()

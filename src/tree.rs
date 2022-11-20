@@ -22,6 +22,15 @@ pub enum Event<'a, C, E> {
     Exit,
 }
 
+impl<'a, C, E> Event<'a, C, E> {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Enter(_, sp) | Self::Element(_, sp) => *sp,
+            Self::Exit => panic!(),
+        }
+    }
+}
+
 pub struct Iter<'a, C, E> {
     nodes: &'a [Node<C, E>],
     branch: Vec<NodeIndex>,

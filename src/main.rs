@@ -6,5 +6,7 @@ fn main() {
         .read_to_string(&mut src)
         .expect("failed to read unicode file");
 
-    print!("{}", jotdown::parse(&src));
+    let p = jotdown::Parser::new(&src);
+    let v = p.iter().collect::<Vec<_>>();
+    print!("{:?}", v);
 }
