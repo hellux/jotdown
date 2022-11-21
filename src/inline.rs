@@ -1,40 +1,32 @@
-use crate::Span;
+use crate::lex;
 
-use crate::tree;
-use crate::CowStr;
+use lex::Delimiter;
+use lex::Symbol;
 
 use Atom::*;
 use Container::*;
 
-pub type Tree<'s> = tree::Tree<Container, Atom<'s>>;
-
-/*
-pub fn parse<'s, I: Iterator<Item = Span>>(src: &'s str, inlines: I) -> Vec<Event<'s>> {
-    Parser::new(src).parse(inlines)
-}
-*/
-
-pub enum Inline<'s> {
-    Atom(Atom<'s>),
-    Container(Container),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Atom<'s> {
+pub enum Atom {
     Str,
     Softbreak,
     Hardbreak,
     Escape,
-    Nbsp,        // ??
-    OpenMarker,  // ??
-    Ellipses,    // ??
+    Nbsp,
+    OpenMarker, // ??
+    Ellipses,
     ImageMarker, // ??
-    EmDash,      // ??
-    FootnoteReference { label: CowStr<'s> },
-    ExplicitLink { label: CowStr<'s> },
-    ReferenceLink { label: CowStr<'s> },
-    Emoji { name: CowStr<'s> },
-    RawFormat { format: CowStr<'s> },
+    EmDash,
+    EnDash,
+    FootnoteReference,
+    Link,
+    ReferenceLink,
+    Emoji,
+    RawFormat,
+    // math
+    DisplayMath,
+    InlineMath,
+    Verbatim,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -47,18 +39,14 @@ pub enum Container {
     Superscript,
     Insert,
     Delete,
-    Emph,
+    Emphasis,
     Strong,
     Mark,
-    Verbatim,
     // smart quoting
     SingleQuoted,
     DoubleQuoted,
-    // math
-    DisplayMath,
-    InlineMath,
     // URLs
-    Email,
+    AutoUrl,
     Url,
     ImageText,
     LinkText,
@@ -67,124 +55,138 @@ pub enum Container {
 }
 
 #[derive(Debug)]
-pub enum Event<'s> {
-    Start(Container, OpenerState),
+pub enum Event {
+    Start(Container),
     End(Container),
-    Atom(Atom<'s>),
+    Atom(Atom),
 }
 
+/*
 #[derive(Debug)]
 pub enum OpenerState {
     Unclosed,
     Closed,
     Discarded,
 }
+*/
 
 #[derive(Debug)]
-pub enum ContainerType {
-    Opener,
-    Closer,
+pub enum Dir {
+    Open,
+    Close,
     Both,
 }
 
-pub struct Parser<'s, I: Iterator<Item = char>> {
-    chars: std::iter::Peekable<I>,
-    openers: Vec<(Container, usize)>,
-    events: Vec<Event<'s>>,
+pub struct Parser<I: Iterator<Item = char>> {
+    tokens: std::iter::Peekable<lex::Lexer<I>>,
+    openers: Vec<Container>,
     //tree: tree::Builder<Container, Atom>,
 }
 
-impl<'s, I: Iterator<Item = char>> Parser<'s, I> {
+impl<I: Iterator<Item = char>> Parser<I> {
     pub fn new(chars: I) -> Self {
         Self {
-            chars: chars.peekable(),
+            tokens: lex::Lexer::new(chars).peekable(),
             openers: Vec::new(),
-            events: Vec::new(),
         }
     }
 
-    /*
-    fn step(&mut self) -> lex::Token {
-        let token = lex::Lexer::new(&self.src[self.pos..]).next_token();
-        self.pos += token.len;
-        std::mem::replace(&mut self.next_token, token)
-    }
-
-    fn eat(&mut self) -> lex::TokenKind {
-        loop {
-            let end = self.pos;
-            let token = self.step();
-            if !matches!(token.kind, lex::TokenKind::Whitespace) {
-                self.span = Span::new(end - token.len, end);
-                return token.kind;
-            }
-        }
-    }
-
-    fn peek(&mut self) -> &lex::TokenKind {
-        if matches!(self.next_token.kind, lex::TokenKind::Whitespace) {
-            let _whitespace = self.step();
-        }
-        &self.next_token.kind
-    }
-    */
-
-    pub fn parse(mut self) -> Vec<(Event<'s>, u32)> {
-        let mut len = 0;
-
-        while let Some(c) = self.chars.peek() {
-            //let start = self.pos();
-
-            let cont = match c {
-                '*' => Some((Strong, ContainerType::Both)),
-                '_' => Some((Emph, ContainerType::Both)),
-                '^' => Some((Superscript, ContainerType::Both)),
-                '~' => Some((Subscript, ContainerType::Both)),
-                '\'' => Some((SingleQuoted, ContainerType::Both)),
-                '"' => Some((DoubleQuoted, ContainerType::Both)),
-                '`' => todo!(),
-                '{' => todo!(),
-                '$' => todo!(),
-                '<' => todo!(),
-                '[' => todo!(),
-                _ => None,
-            };
-
-            let ev = cont
-                .and_then(|(cont, ty)| {
-                    self.openers
-                        .iter()
-                        .rposition(|(c, _)| *c == cont)
-                        .map(|i| {
-                            if let Event::Start(c, state) = &mut self.events[i] {
-                                assert_eq!(*c, cont);
-                                if matches!(ty, ContainerType::Closer | ContainerType::Both) {
-                                    *state = OpenerState::Closed;
-                                    Some(Event::End(cont))
-                                } else if matches!(ty, ContainerType::Opener | ContainerType::Both)
+    pub fn parse(mut self, evs: &mut Vec<Event>) {
+        while let Some(t) = self.tokens.next() {
+            {
+                let verbatim_opt = match t.kind {
+                    lex::Kind::Seq(lex::Sequence::Dollar) => {
+                        let math_opt = (t.len <= 2)
+                            .then(|| {
+                                if let Some(lex::Token {
+                                    kind: lex::Kind::Seq(lex::Sequence::Backtick),
+                                    len,
+                                }) = self.tokens.peek()
                                 {
-                                    *state = OpenerState::Discarded;
-                                    Some(Event::Start(cont, OpenerState::Unclosed))
+                                    Some((DisplayMath, *len))
                                 } else {
                                     None
                                 }
-                            } else {
-                                unreachable!()
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            matches!(ty, ContainerType::Opener | ContainerType::Both).then(|| {
-                                self.openers.push((cont, self.events.len()));
-                                Event::Start(cont, OpenerState::Unclosed)
                             })
-                        })
-                })
-                .unwrap_or(Event::Atom(Str));
+                            .flatten();
+                        if math_opt.is_some() {
+                            self.tokens.next(); // backticks
+                        }
+                        math_opt
+                    }
+                    lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, t.len)),
+                    _ => None,
+                };
 
-            self.events.push(ev);
+                if let Some((atom, opener_len)) = verbatim_opt {
+                    for tok in self.tokens {
+                        if let lex::Kind::Seq(lex::Sequence::Backtick) = tok.kind {
+                            if tok.len >= opener_len {
+                                break;
+                            }
+                        }
+                    }
+                    evs.push(Event::Atom(atom));
+                    return;
+                }
+            }
+
+            {
+                let container_opt = match t.kind {
+                    lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
+                    lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
+                    lex::Kind::Sym(Symbol::Caret) => Some((Superscript, Dir::Both)),
+                    lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
+                    lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
+                    lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
+                    lex::Kind::Open(Delimiter::Bracket) => Some((LinkText, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript, Dir::Open)),
+                    lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Open)),
+                    lex::Kind::Close(Delimiter::Bracket) => Some((LinkText, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript, Dir::Close)),
+                    lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
+                    _ => None,
+                };
+
+                if let Some((cont, ty)) = container_opt {
+                    if matches!(ty, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
+                        loop {
+                            let c = self.openers.pop().unwrap();
+                            evs.push(Event::End(c));
+                            if c == cont {
+                                break;
+                            }
+                        }
+                        return;
+                    } else if matches!(ty, Dir::Open | Dir::Both) {
+                        self.openers.push(cont);
+                        evs.push(Event::Start(cont));
+                    }
+                    return;
+                }
+            }
+
+            {
+                if let lex::Kind::Open(Delimiter::Brace) = t.kind {
+                    todo!(); // check for attr
+                }
+            }
+
+            if let Some(Event::Atom(Str)) = evs.last() {
+            } else {
+                evs.push(Event::Atom(Str));
+            }
         }
-        //self.events
-        todo!()
     }
 }
 

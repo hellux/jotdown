@@ -3,16 +3,16 @@ use crate::EOF;
 use Delimiter::*;
 use Sequence::*;
 use Symbol::*;
-use TokenKind::*;
+use Kind::*;
 
 #[derive(Debug)]
 pub(crate) struct Token {
-    pub kind: TokenKind,
+    pub kind: Kind,
     pub len: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TokenKind {
+pub enum Kind {
     Text,
     Whitespace,
     Nbsp,
@@ -42,8 +42,6 @@ pub enum Delimiter {
 pub enum Symbol {
     Asterisk,
     Caret,
-    Dollar1,
-    Dollar2,
     Equal,
     Exclaim,
     Gt,
@@ -61,6 +59,7 @@ pub enum Symbol {
 pub enum Sequence {
     Backtick,
     Colon,
+    Dollar,
     Hash,
     Hyphen,
     Period,
@@ -71,6 +70,7 @@ impl Sequence {
         match self {
             Self::Backtick => '`',
             Self::Colon => ':',
+            Self::Dollar => '$',
             Self::Hash => '#',
             Self::Period => '.',
             Self::Hyphen => '-',
@@ -176,14 +176,6 @@ impl<I: Iterator<Item = char>> Lexer<I> {
                 }
             }
 
-            '$' => {
-                if self.peek() == '$' {
-                    self.eat();
-                    Sym(Dollar2)
-                } else {
-                    Sym(Dollar1)
-                }
-            }
             '!' => Sym(Exclaim),
             '%' => Sym(Percentage),
             '<' => Sym(Lt),
@@ -194,6 +186,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
 
             '`' => self.eat_seq(Backtick),
             ':' => self.eat_seq(Colon),
+            '$' => self.eat_seq(Dollar),
             '#' => self.eat_seq(Hash),
             '.' => self.eat_seq(Period),
 
@@ -214,12 +207,12 @@ impl<I: Iterator<Item = char>> Lexer<I> {
         Some(Token { kind, len })
     }
 
-    fn eat_seq(&mut self, s: Sequence) -> TokenKind {
+    fn eat_seq(&mut self, s: Sequence) -> Kind {
         self.eat_while(|c| c == s.ch());
         Seq(s)
     }
 
-    fn maybe_eat_close_brace(&mut self, s: Symbol, d: Delimiter) -> TokenKind {
+    fn maybe_eat_close_brace(&mut self, s: Symbol, d: Delimiter) -> Kind {
         if self.peek() == '}' {
             self.eat();
             Close(d)
@@ -257,7 +250,7 @@ mod test {
     use super::Delimiter::*;
     use super::Sequence::*;
     use super::Symbol::*;
-    use super::TokenKind::*;
+    use super::Kind::*;
 
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -339,9 +332,10 @@ mod test {
         test_lex!("`", Seq(Backtick));
         test_lex!("```", Seq(Backtick));
         test_lex!(
-            "`:#-.",
+            "`:$#-.",
             Seq(Backtick),
             Seq(Colon),
+            Seq(Dollar),
             Seq(Hash),
             Seq(Hyphen),
             Seq(Period),

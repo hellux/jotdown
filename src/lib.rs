@@ -59,6 +59,7 @@ impl<'s> Parser<'s> {
         Iter {
             src: self.src,
             tree: self.tree.iter().peekable(),
+            events: Vec::new(),
         }
     }
 }
@@ -66,6 +67,7 @@ impl<'s> Parser<'s> {
 pub struct Iter<'s> {
     src: &'s str,
     tree: std::iter::Peekable<block::TreeIter<'s>>,
+    events: Vec<inline::Event>,
 }
 
 impl<'s> Iterator for Iter<'s> {
@@ -81,7 +83,7 @@ impl<'s> Iterator for Iter<'s> {
                 let chars = (&mut self.tree)
                     .take_while(|ev| matches!(ev, tree::Event::Element(..)))
                     .flat_map(|ev| ev.span().of(self.src).chars());
-                let evs = inline::Parser::new(chars).parse();
+                inline::Parser::new(chars).parse(&mut self.events);
                 /*
                 let chars = std::iter::from_fn(|| {
                     let mut eat = false;
@@ -99,7 +101,7 @@ impl<'s> Iterator for Iter<'s> {
                 })
                 .flatten();
                 */
-                format!("leaf {:?} {:?}", leaf, evs)
+                format!("leaf {:?} {:?}", leaf, self.events)
             }
             tree::Event::Element(atom, _sp) => {
                 format!("atom {:?}", atom)
