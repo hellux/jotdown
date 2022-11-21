@@ -92,9 +92,11 @@ impl Parser {
     }
 
     pub fn parse<'a>(&'a mut self, src: &'a str) -> impl Iterator<Item = Event> + 'a {
-        std::iter::from_fn(|| {
+        let mut lexer = lex::Lexer::new(src).peekable();
+        std::iter::from_fn(move || {
+            dbg!(&src);
             if self.events.is_empty() {
-                Parse::new(src, &mut self.openers, &mut self.events).parse();
+                Parse::new(&mut lexer, &mut self.openers, &mut self.events).parse();
             }
 
             self.events.pop()
@@ -102,34 +104,26 @@ impl Parser {
     }
 }
 
-struct Parse<'s> {
-    lexer: lex::Lexer<'s>,
-    openers: &'s mut Vec<Container>,
-    events: &'s mut Vec<Event>,
-
-    /// Next token to be eaten.
-    next_token: lex::Token,
-    /// Position after `next_token`.
-    pos: usize,
-    /// Span of last eaten token.
-    span: Span,
+struct Parse<'l, 's, 'e> {
+    tokens: &'l mut std::iter::Peekable<lex::Lexer<'s>>,
+    openers: &'e mut Vec<Container>,
+    events: &'e mut Vec<Event>,
 }
 
-impl<'s> Parse<'s> {
-    fn new(src: &'s str, openers: &'s mut Vec<Container>, events: &'s mut Vec<Event>) -> Self {
-        let mut lexer = lex::Lexer::new(src);
-        let next_token = lexer.next_token();
-        let pos = next_token.len;
+impl<'l, 's, 'e> Parse<'l, 's, 'e> {
+    fn new(
+        tokens: &'l mut std::iter::Peekable<lex::Lexer<'s>>,
+        openers: &'e mut Vec<Container>,
+        events: &'e mut Vec<Event>,
+    ) -> Self {
         Self {
-            lexer,
+            tokens,
             openers,
             events,
-            next_token,
-            pos,
-            span: Span::new(0, 0),
         }
     }
 
+    /*
     fn step(&mut self) -> lex::Token {
         let token = self.lexer.next_token();
         dbg!(&token, self.pos);
@@ -147,50 +141,56 @@ impl<'s> Parse<'s> {
     fn peek(&mut self) -> &lex::Kind {
         &self.next_token.kind
     }
+    */
+
+    fn peek(&mut self) -> Option<&lex::Kind> {
+        self.tokens.peek().map(|t| &t.kind)
+    }
 
     fn parse(&mut self) {
-        let mut kind = self.eat();
+        let mut t = if let Some(t) = self.tokens.next() {
+            t
+        } else {
+            return;
+        };
 
         //dbg!(&kind);
 
-        if kind == lex::Kind::Eof {
-            return;
-        }
-
         {
-            let verbatim_opt = match kind {
+            let verbatim_opt = match t.kind {
                 lex::Kind::Seq(lex::Sequence::Dollar) => {
-                    let math_opt = (self.span.len() <= 2)
+                    let math_opt = (t.len <= 2)
                         .then(|| {
-                            if let lex::Kind::Seq(lex::Sequence::Backtick) = self.peek() {
-                                Some((DisplayMath, self.span.len()))
+                            if let Some(lex::Kind::Seq(lex::Sequence::Backtick)) = self.peek() {
+                                Some((DisplayMath, t.len))
                             } else {
                                 None
                             }
                         })
                         .flatten();
                     if math_opt.is_some() {
-                        self.eat(); // backticks
+                        self.tokens.next(); // backticks
                     }
                     math_opt
                 }
-                lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, self.span.len())),
+                lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, t.len)),
                 _ => None,
             };
 
             if let Some((atom, opener_len)) = verbatim_opt {
-                while !matches!(kind, lex::Kind::Seq(lex::Sequence::Backtick))
-                    || self.span.len() != opener_len
-                {
-                    kind = self.eat();
+                for tok in &mut self.tokens {
+                    if matches!(tok.kind, lex::Kind::Seq(lex::Sequence::Backtick))
+                        && tok.len == opener_len
+                    {
+                        self.events.push(Event::Atom(atom));
+                        return;
+                    }
                 }
-                self.events.push(Event::Atom(atom));
-                return;
             }
         }
 
         {
-            let container_opt = match kind {
+            let container_opt = match t.kind {
                 lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
                 lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
                 lex::Kind::Sym(Symbol::Caret) => Some((Superscript, Dir::Both)),
@@ -235,7 +235,7 @@ impl<'s> Parse<'s> {
         }
 
         {
-            if let lex::Kind::Open(Delimiter::Brace) = kind {
+            if let lex::Kind::Open(Delimiter::Brace) = t.kind {
                 todo!(); // check for attr
             }
         }

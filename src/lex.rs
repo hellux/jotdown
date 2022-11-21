@@ -5,7 +5,7 @@ use Kind::*;
 use Sequence::*;
 use Symbol::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Token {
     pub kind: Kind,
     pub len: usize,
@@ -84,6 +84,7 @@ pub(crate) struct Lexer<'s> {
     chars: std::str::Chars<'s>,
     escape: bool,
     next: Option<Token>,
+    len: usize,
 }
 
 impl<'s> Lexer<'s> {
@@ -93,25 +94,7 @@ impl<'s> Lexer<'s> {
             chars: src.chars(),
             escape: false,
             next: None,
-        }
-    }
-
-    pub fn next_token(&mut self) -> Token {
-        if let Some(token) = self.next.take() {
-            token
-        } else {
-            let mut current = self.token();
-
-            // concatenate text tokens
-            if let Token { kind: Text, len } = &mut current {
-                self.next = Some(self.token());
-                while let Some(Token { kind: Text, len: l }) = self.next {
-                    *len += l;
-                    self.next = Some(self.token());
-                }
-            }
-
-            current
+            len: 0,
         }
     }
 
@@ -119,12 +102,10 @@ impl<'s> Lexer<'s> {
         self.chars.clone().next().unwrap_or(EOF)
     }
 
-    fn eat(&mut self) -> char {
-        self.chars.next().unwrap_or(EOF)
-    }
-
-    fn len(&self) -> usize {
-        self.src.len() - self.chars.as_str().len()
+    fn eat(&mut self) -> Option<char> {
+        let c = self.chars.next();
+        self.len += c.map_or(0, char::len_utf8);
+        c
     }
 
     fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
@@ -133,14 +114,14 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    fn token(&mut self) -> Token {
-        let first = self.eat();
+    fn token(&mut self) -> Option<Token> {
+        self.len = 0;
+
+        let first = self.eat()?;
 
         let escape = self.escape;
 
         let kind = match first {
-            EOF => Eof,
-
             _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
@@ -222,9 +203,10 @@ impl<'s> Lexer<'s> {
             self.escape = false;
         }
 
-        let len = self.len();
-
-        Token { kind, len }
+        Some(Token {
+            kind,
+            len: self.len,
+        })
     }
 
     fn eat_seq(&mut self, s: Sequence) -> Kind {
@@ -242,6 +224,29 @@ impl<'s> Lexer<'s> {
     }
 }
 
+impl<'s> Iterator for Lexer<'s> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(token) = self.next.take() {
+            Some(token)
+        } else {
+            let mut current = self.token();
+
+            // concatenate text tokens
+            if let Some(Token { kind: Text, len }) = &mut current {
+                self.next = self.token();
+                while let Some(Token { kind: Text, len: l }) = self.next {
+                    *len += l;
+                    self.next = self.token();
+                }
+            }
+
+            current
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::Delimiter::*;
@@ -249,6 +254,7 @@ mod test {
     use super::Sequence::*;
     use super::Symbol::*;
 
+    /*
     fn tokenize(src: &str) -> impl Iterator<Item = super::Token> + '_ {
         let mut lexer = super::Lexer::new(src);
         std::iter::from_fn(move || {
@@ -260,14 +266,21 @@ mod test {
             }
         })
     }
+    */
 
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = tokenize($src).map(|t| t.kind).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };
+    }
+
+    impl super::Kind {
+        fn l(self, len: usize) -> super::Token {
+            super::Token { kind: self, len }
+        }
     }
 
     #[test]
@@ -277,85 +290,91 @@ mod test {
 
     #[test]
     fn basic() {
-        test_lex!("abc", Text);
+        test_lex!("abc", Text.l(3));
         test_lex!(
             "para w/ some _emphasis_ and *strong*.",
-            Text,
-            Whitespace,
-            Text,
-            Whitespace,
-            Text,
-            Whitespace,
-            Sym(Underscore),
-            Text,
-            Sym(Underscore),
-            Whitespace,
-            Text,
-            Whitespace,
-            Sym(Asterisk),
-            Text,
-            Sym(Asterisk),
-            Seq(Period)
+            Text.l(4),
+            Whitespace.l(1),
+            Text.l(2),
+            Whitespace.l(1),
+            Text.l(4),
+            Whitespace.l(1),
+            Sym(Underscore).l(1),
+            Text.l(8),
+            Sym(Underscore).l(1),
+            Whitespace.l(1),
+            Text.l(3),
+            Whitespace.l(1),
+            Sym(Asterisk).l(1),
+            Text.l(6),
+            Sym(Asterisk).l(1),
+            Seq(Period).l(1),
         );
     }
 
     #[test]
     fn escape() {
-        test_lex!(r#"\a"#, Text);
-        test_lex!(r#"\\a"#, Escape, Text);
-        test_lex!(r#"\."#, Escape, Text);
-        test_lex!(r#"\ "#, Escape, Nbsp);
-        test_lex!(r#"\{-"#, Escape, Text, Seq(Hyphen));
+        test_lex!(r#"\a"#, Text.l(2));
+        test_lex!(r#"\\a"#, Escape.l(1), Text.l(2));
+        test_lex!(r#"\."#, Escape.l(1), Text.l(1));
+        test_lex!(r#"\ "#, Escape.l(1), Nbsp.l(1));
+        test_lex!(r#"\{-"#, Escape.l(1), Text.l(1), Seq(Hyphen).l(1));
     }
 
     #[test]
     fn delim() {
-        test_lex!("{-", Open(BraceHyphen));
-        test_lex!("-}", Close(BraceHyphen));
-        test_lex!("{++}", Open(BracePlus), Close(BracePlus));
+        test_lex!("{-", Open(BraceHyphen).l(2));
+        test_lex!("-}", Close(BraceHyphen).l(2));
+        test_lex!("{++}", Open(BracePlus).l(2), Close(BracePlus).l(2));
     }
 
     #[test]
     fn sym() {
         test_lex!(
             r#"'*^=!><%|+"~_"#,
-            Sym(Quote1),
-            Sym(Asterisk),
-            Sym(Caret),
-            Sym(Equal),
-            Sym(Exclaim),
-            Sym(Gt),
-            Sym(Lt),
-            Sym(Percentage),
-            Sym(Pipe),
-            Sym(Plus),
-            Sym(Quote2),
-            Sym(Tilde),
-            Sym(Underscore),
+            Sym(Quote1).l(1),
+            Sym(Asterisk).l(1),
+            Sym(Caret).l(1),
+            Sym(Equal).l(1),
+            Sym(Exclaim).l(1),
+            Sym(Gt).l(1),
+            Sym(Lt).l(1),
+            Sym(Percentage).l(1),
+            Sym(Pipe).l(1),
+            Sym(Plus).l(1),
+            Sym(Quote2).l(1),
+            Sym(Tilde).l(1),
+            Sym(Underscore).l(1),
         );
-        test_lex!("''''", Sym(Quote1), Sym(Quote1), Sym(Quote1), Sym(Quote1),);
+        test_lex!(
+            "''''",
+            Sym(Quote1).l(1),
+            Sym(Quote1).l(1),
+            Sym(Quote1).l(1),
+            Sym(Quote1).l(1),
+        );
     }
 
     #[test]
     fn seq() {
-        test_lex!("`", Seq(Backtick));
-        test_lex!("```", Seq(Backtick));
+        test_lex!("`", Seq(Backtick).l(1));
+        test_lex!("```", Seq(Backtick).l(3));
         test_lex!(
             "`:$#-.",
-            Seq(Backtick),
-            Seq(Colon),
-            Seq(Dollar),
-            Seq(Hash),
-            Seq(Hyphen),
-            Seq(Period),
+            Seq(Backtick).l(1),
+            Seq(Colon).l(1),
+            Seq(Dollar).l(1),
+            Seq(Hash).l(1),
+            Seq(Hyphen).l(1),
+            Seq(Period).l(1),
         );
     }
 
     #[test]
     fn int() {
-        test_lex!("1", Integer);
-        test_lex!("123", Integer);
-        test_lex!("1234567890", Integer);
-        test_lex!("000", Integer);
+        test_lex!("1", Integer.l(1));
+        test_lex!("123", Integer.l(3));
+        test_lex!("1234567890", Integer.l(10));
+        test_lex!("000", Integer.l(3));
     }
 }
