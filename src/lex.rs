@@ -22,6 +22,7 @@ pub enum Kind {
     Close(Delimiter),
     Sym(Symbol),
     Seq(Sequence),
+    Eof,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -95,12 +96,31 @@ impl<'s> Lexer<'s> {
         }
     }
 
+    pub fn next_token(&mut self) -> Token {
+        if let Some(token) = self.next.take() {
+            token
+        } else {
+            let mut current = self.token();
+
+            // concatenate text tokens
+            if let Token { kind: Text, len } = &mut current {
+                self.next = Some(self.token());
+                while let Some(Token { kind: Text, len: l }) = self.next {
+                    *len += l;
+                    self.next = Some(self.token());
+                }
+            }
+
+            current
+        }
+    }
+
     fn peek(&mut self) -> char {
         self.chars.clone().next().unwrap_or(EOF)
     }
 
-    fn eat(&mut self) -> Option<char> {
-        self.chars.next()
+    fn eat(&mut self) -> char {
+        self.chars.next().unwrap_or(EOF)
     }
 
     fn len(&self) -> usize {
@@ -113,12 +133,14 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    fn token(&mut self) -> Option<Token> {
-        let first = self.eat()?;
+    fn token(&mut self) -> Token {
+        let first = self.eat();
 
         let escape = self.escape;
 
         let kind = match first {
+            EOF => Eof,
+
             _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
@@ -202,7 +224,7 @@ impl<'s> Lexer<'s> {
 
         let len = self.len();
 
-        Some(Token { kind, len })
+        Token { kind, len }
     }
 
     fn eat_seq(&mut self, s: Sequence) -> Kind {
@@ -220,29 +242,6 @@ impl<'s> Lexer<'s> {
     }
 }
 
-impl<'s> Iterator for Lexer<'s> {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(token) = self.next.take() {
-            Some(token)
-        } else {
-            let mut current = self.token();
-
-            // concatenate text tokens
-            if let Some(Token { kind: Text, len }) = &mut current {
-                self.next = self.token();
-                while let Some(Token { kind: Text, len: l }) = self.next {
-                    *len += l;
-                    self.next = self.token();
-                }
-            }
-
-            current
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::Delimiter::*;
@@ -250,10 +249,22 @@ mod test {
     use super::Sequence::*;
     use super::Symbol::*;
 
+    fn tokenize(src: &str) -> impl Iterator<Item = super::Token> + '_ {
+        let mut lexer = super::Lexer::new(src);
+        std::iter::from_fn(move || {
+            let tok = lexer.next_token();
+            if matches!(tok.kind, Eof) {
+                None
+            } else {
+                Some(tok)
+            }
+        })
+    }
+
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src).map(|t| t.kind).collect::<Vec<_>>();
+            let actual = tokenize($src).map(|t| t.kind).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };
