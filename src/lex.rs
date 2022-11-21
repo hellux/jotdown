@@ -1,9 +1,9 @@
 use crate::EOF;
 
 use Delimiter::*;
+use Kind::*;
 use Sequence::*;
 use Symbol::*;
-use Kind::*;
 
 #[derive(Debug)]
 pub(crate) struct Token {
@@ -78,35 +78,33 @@ impl Sequence {
     }
 }
 
-pub(crate) struct Lexer<I: Iterator<Item = char>> {
-    chars: std::iter::Peekable<I>,
+pub(crate) struct Lexer<'s> {
+    src: &'s str,
+    chars: std::str::Chars<'s>,
     escape: bool,
     next: Option<Token>,
-    len: usize,
 }
 
-impl<I: Iterator<Item = char>> Lexer<I> {
-    pub fn new(chars: I) -> Lexer<I> {
+impl<'s> Lexer<'s> {
+    pub fn new(src: &'s str) -> Lexer<'s> {
         Lexer {
-            chars: chars.peekable(),
+            src,
+            chars: src.chars(),
             escape: false,
             next: None,
-            len: 0,
         }
     }
 
     fn peek(&mut self) -> char {
-        self.chars.peek().copied().unwrap_or(EOF)
+        self.chars.clone().next().unwrap_or(EOF)
     }
 
     fn eat(&mut self) -> Option<char> {
-        let c = self.chars.next();
-        self.len += c.map_or(0, char::len_utf8);
-        c
+        self.chars.next()
     }
 
     fn len(&self) -> usize {
-        self.len
+        self.src.len() - self.chars.as_str().len()
     }
 
     fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
@@ -222,7 +220,7 @@ impl<I: Iterator<Item = char>> Lexer<I> {
     }
 }
 
-impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
+impl<'s> Iterator for Lexer<'s> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -248,14 +246,14 @@ impl<I: Iterator<Item = char>> Iterator for Lexer<I> {
 #[cfg(test)]
 mod test {
     use super::Delimiter::*;
+    use super::Kind::*;
     use super::Sequence::*;
     use super::Symbol::*;
-    use super::Kind::*;
 
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src.chars()).map(|t| t.kind).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src).map(|t| t.kind).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };

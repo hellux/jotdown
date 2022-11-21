@@ -83,7 +83,7 @@ impl<'s> Iterator for Iter<'s> {
                 let chars = (&mut self.tree)
                     .take_while(|ev| matches!(ev, tree::Event::Element(..)))
                     .flat_map(|ev| ev.span().of(self.src).chars());
-                inline::Parser::new(chars).parse(&mut self.events);
+                //inline::Parser::new(chars).parse(&mut self.events);
                 /*
                 let chars = std::iter::from_fn(|| {
                     let mut eat = false;

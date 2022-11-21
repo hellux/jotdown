@@ -77,22 +77,42 @@ pub enum Dir {
     Both,
 }
 
-pub struct Parser<I: Iterator<Item = char>> {
-    tokens: std::iter::Peekable<lex::Lexer<I>>,
+pub struct Parser {
     openers: Vec<Container>,
+    events: Vec<Event>,
     //tree: tree::Builder<Container, Atom>,
 }
 
-impl<I: Iterator<Item = char>> Parser<I> {
-    pub fn new(chars: I) -> Self {
+impl Parser {
+    pub fn new() -> Self {
         Self {
-            tokens: lex::Lexer::new(chars).peekable(),
             openers: Vec::new(),
+            events: Vec::new(),
         }
     }
 
-    pub fn parse(mut self, evs: &mut Vec<Event>) {
-        while let Some(t) = self.tokens.next() {
+    /*
+    pub fn parse(mut self, src: &str) -> impl Iterator<Event> {
+        todo!()
+    }
+    */
+}
+
+struct Parse<'s> {
+    src: &'s str,
+    lexer: lex::Lexer<'s>,
+    events: &'s mut Vec<Event>,
+}
+
+impl<'s> Parse<'s> {
+    fn new(src: &'s str, events: &'s mut Vec<Event>) -> Self {
+        todo!()
+    }
+
+    /*
+    fn parse(mut self, src: &str, evs: &mut Vec<Event>) {
+        let mut chars = src.chars();
+        while let Some(t) = chars.next() {
             {
                 let verbatim_opt = match t.kind {
                     lex::Kind::Seq(lex::Sequence::Dollar) => {
@@ -101,7 +121,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                                 if let Some(lex::Token {
                                     kind: lex::Kind::Seq(lex::Sequence::Backtick),
                                     len,
-                                }) = self.tokens.peek()
+                                }) = self.chars.clone().next()
                                 {
                                     Some((DisplayMath, *len))
                                 } else {
@@ -110,7 +130,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                             })
                             .flatten();
                         if math_opt.is_some() {
-                            self.tokens.next(); // backticks
+                            chars.next(); // backticks
                         }
                         math_opt
                     }
@@ -119,7 +139,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                 };
 
                 if let Some((atom, opener_len)) = verbatim_opt {
-                    for tok in self.tokens {
+                    for tok in chars {
                         if let lex::Kind::Seq(lex::Sequence::Backtick) = tok.kind {
                             if tok.len >= opener_len {
                                 break;
@@ -188,6 +208,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
             }
         }
     }
+*/
 }
 
 /*
@@ -213,3 +234,5 @@ impl<'s> Iterator for Parser<'s> {
     }
 }
 */
+
+mod test {}
