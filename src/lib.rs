@@ -97,11 +97,27 @@ mod test {
     use crate::inline::Atom::*;
     use crate::inline::Event::*;
 
+    macro_rules! test_parse {
+        ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+            #[allow(unused)]
+            let actual = super::Parser::new($src).iter().collect::<Vec<_>>();
+            let expected = &[$($($token),*,)?];
+            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+        };
+    }
+
     #[test]
-    fn basic() {
-        assert_eq!(
-            super::Parser::new("abc").iter().collect::<Vec<_>>(),
-            &[Start(Leaf(Paragraph)), Inline(Atom(Str)), End]
+    fn para() {
+        test_parse!("abc", Start(Leaf(Paragraph)), Inline(Atom(Str)), End);
+        test_parse!("abc def", Start(Leaf(Paragraph)), Inline(Atom(Str)), End);
+        test_parse!(
+            "this is a paragraph\n\nfollowed by another one",
+            Start(Leaf(Paragraph)),
+            Inline(Atom(Str)),
+            End,
+            Start(Leaf(Paragraph)),
+            Inline(Atom(Str)),
+            End,
         );
     }
 }

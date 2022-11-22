@@ -230,13 +230,25 @@ mod test {
     use super::Container::*;
     use super::Event::*;
 
+    macro_rules! test_parse {
+        ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+            #[allow(unused)]
+            let mut p = super::Parser::new();
+            p.parse($src);
+            let actual = p.collect::<Vec<_>>();
+            let expected = &[$($($token),*,)?];
+            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+        };
+    }
+
+    #[test]
+    fn str() {
+        test_parse!("abc", Atom(Str));
+        test_parse!("abc def", Atom(Str));
+    }
+
     #[test]
     fn container_brace() {
-        let mut p = super::Parser::new();
-        p.parse("{_hej_}");
-        assert_eq!(
-            p.collect::<Vec<_>>().as_slice(),
-            &[Enter(Emphasis), Atom(Str), Exit(Emphasis)],
-        );
+        test_parse!("{_abc_}", Enter(Emphasis), Atom(Str), Exit(Emphasis));
     }
 }
