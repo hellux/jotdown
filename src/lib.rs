@@ -4,39 +4,9 @@ mod lex;
 mod span;
 mod tree;
 
-use inline::Atom;
-use inline::Container as InlineTag;
-
 pub struct Block;
 
 const EOF: char = '\0';
-
-type CowStr<'s> = std::borrow::Cow<'s, str>;
-
-/*
-pub enum Tag<'s> {
-    Paragraph,
-    Heading { level: u8 },
-    BlockQuote,
-    CodeBlock { info_string: CowStr<'s> },
-    List { start_index: Option<u64> },
-    ListItem,
-    FootnoteDefinition { label: CowStr<'s> },
-    Table,
-    Image {},
-    Link {},
-    Block(Block),
-    Inline(InlineTag),
-}
-
-pub struct Attributes; // TODO
-
-pub enum Event<'s> {
-    Start(Tag<'s>, Attributes),
-    End(Tag<'s>),
-    Atom(Atom<'s>),
-}
-*/
 
 use span::Span;
 
@@ -46,6 +16,7 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
+    #[must_use]
     pub fn new(src: &'s str) -> Self {
         Self {
             src,
@@ -53,60 +24,84 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn parse(&mut self) {}
-
+    #[must_use]
     pub fn iter(&self) -> Iter {
         Iter {
             src: self.src,
-            tree: self.tree.iter().peekable(),
-            events: Vec::new(),
+            tree: self.tree.iter(),
+            parser: None,
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Event {
+    Start(block::Block),
+    End,
+    Inline(inline::Event),
+    Blankline,
+}
+
 pub struct Iter<'s> {
     src: &'s str,
-    tree: std::iter::Peekable<block::TreeIter<'s>>,
-    events: Vec<inline::Event>,
+    tree: block::TreeIter<'s>,
+    parser: Option<inline::Parser<'s>>,
 }
 
 impl<'s> Iterator for Iter<'s> {
-    type Item = String;
+    type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.tree.next().map(|ev| match ev {
-            tree::Event::Enter(block::Block::Container(cont), _sp) => {
-                format!("cont {:?}", cont)
-            }
-            tree::Event::Enter(block::Block::Leaf(leaf), _sp) => {
-                // concatenate all inlines
-                let chars = (&mut self.tree)
-                    .take_while(|ev| matches!(ev, tree::Event::Element(..)))
-                    .flat_map(|ev| ev.span().of(self.src).chars());
-                //inline::Parser::new(chars).parse(&mut self.events);
-                /*
-                let chars = std::iter::from_fn(|| {
-                    let mut eat = false;
-                    let ret = if let Some(tree::Event::Element(_a, sp)) = self.tree.peek() {
-                        eat = true;
-                        let chars = sp.of(self.src).chars();
-                        Some(chars)
-                    } else {
-                        None
-                    };
-                    if eat {
-                        self.tree.next();
+        while let Some(parser) = &mut self.parser {
+            // inside leaf block, with inline content
+            if let Some(inline) = parser.next() {
+                return Some(Event::Inline(inline));
+            } else if let Some(ev) = self.tree.next() {
+                match ev {
+                    tree::Event::Element(atom, sp) => {
+                        assert_eq!(*atom, block::Atom::Inline);
+                        parser.parse(sp.of(self.src));
                     }
-                    ret
-                })
-                .flatten();
-                */
-                format!("leaf {:?} {:?}", leaf, self.events)
+                    tree::Event::Exit => {
+                        self.parser = None;
+                        return Some(Event::End);
+                    }
+                    tree::Event::Enter(..) => unreachable!(),
+                }
             }
+        }
+
+        self.tree.next().map(|ev| match ev {
             tree::Event::Element(atom, _sp) => {
-                format!("atom {:?}", atom)
+                assert_eq!(*atom, block::Atom::Blankline);
+                Event::Blankline
             }
-            tree::Event::Exit => "exit".to_string(),
+            tree::Event::Enter(block @ block::Block::Container(..), ..) => {
+                Event::Start(block.clone())
+            }
+            tree::Event::Enter(block @ block::Block::Leaf(..), ..) => {
+                self.parser = Some(inline::Parser::new());
+                Event::Start(block.clone())
+            }
+            tree::Event::Exit => Event::End,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Event::*;
+    use crate::block::Block::*;
+    use crate::block::Container::*;
+    use crate::block::Leaf::*;
+    use crate::inline::Atom::*;
+    use crate::inline::Event::*;
+
+    #[test]
+    fn basic() {
+        assert_eq!(
+            super::Parser::new("abc").iter().collect::<Vec<_>>(),
+            &[Start(Leaf(Paragraph)), Inline(Atom(Str)), End]
+        );
     }
 }

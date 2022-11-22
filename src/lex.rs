@@ -5,13 +5,13 @@ use Kind::*;
 use Sequence::*;
 use Symbol::*;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Token {
     pub kind: Kind,
     pub len: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Text,
     Whitespace,
@@ -25,7 +25,7 @@ pub enum Kind {
     Eof,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delimiter {
     Brace,
     BraceAsterisk,
@@ -39,7 +39,7 @@ pub enum Delimiter {
     Paren,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Symbol {
     Asterisk,
     Caret,
@@ -79,6 +79,7 @@ impl Sequence {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Lexer<'s> {
     src: &'s str,
     chars: std::str::Chars<'s>,
@@ -253,20 +254,6 @@ mod test {
     use super::Kind::*;
     use super::Sequence::*;
     use super::Symbol::*;
-
-    /*
-    fn tokenize(src: &str) -> impl Iterator<Item = super::Token> + '_ {
-        let mut lexer = super::Lexer::new(src);
-        std::iter::from_fn(move || {
-            let tok = lexer.next_token();
-            if matches!(tok.kind, Eof) {
-                None
-            } else {
-                Some(tok)
-            }
-        })
-    }
-    */
 
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {

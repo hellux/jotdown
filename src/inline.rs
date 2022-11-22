@@ -57,50 +57,49 @@ pub enum Container {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
-    Start(Container),
-    End(Container),
+    Enter(Container),
+    Exit(Container),
     Atom(Atom),
 }
 
-/*
-#[derive(Debug)]
-pub enum OpenerState {
-    Unclosed,
-    Closed,
-    Discarded,
-}
-*/
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Dir {
     Open,
     Close,
     Both,
 }
 
-pub struct Parser {
+pub struct Parser<'s> {
     openers: Vec<Container>,
     events: Vec<Event>,
+    lexer: Option<std::iter::Peekable<lex::Lexer<'s>>>,
 }
 
-impl Parser {
+impl<'s> Parser<'s> {
     pub fn new() -> Self {
         Self {
             openers: Vec::new(),
             events: Vec::new(),
+            lexer: None,
         }
     }
 
-    pub fn parse<'a>(&'a mut self, src: &'a str) -> impl Iterator<Item = Event> + 'a {
-        let mut lexer = lex::Lexer::new(src).peekable();
-        std::iter::from_fn(move || {
-            dbg!(&src);
-            if self.events.is_empty() {
-                Parse::new(&mut lexer, &mut self.openers, &mut self.events).parse();
-            }
+    pub fn parse(&mut self, src: &'s str) {
+        self.lexer = Some(lex::Lexer::new(src).peekable());
+    }
+}
 
-            self.events.pop()
-        })
+impl<'s> Iterator for Parser<'s> {
+    type Item = Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.events.is_empty() {
+            if let Some(lexer) = &mut self.lexer {
+                Parse::new(lexer, &mut self.openers, &mut self.events).parse();
+            }
+        }
+
+        self.events.pop()
     }
 }
 
@@ -123,26 +122,6 @@ impl<'l, 's, 'e> Parse<'l, 's, 'e> {
         }
     }
 
-    /*
-    fn step(&mut self) -> lex::Token {
-        let token = self.lexer.next_token();
-        dbg!(&token, self.pos);
-        self.pos += token.len;
-        std::mem::replace(&mut self.next_token, token)
-    }
-
-    fn eat(&mut self) -> lex::Kind {
-        let end = self.pos;
-        let token = self.step();
-        self.span = Span::new(end - token.len, end);
-        token.kind
-    }
-
-    fn peek(&mut self) -> &lex::Kind {
-        &self.next_token.kind
-    }
-    */
-
     fn peek(&mut self) -> Option<&lex::Kind> {
         self.tokens.peek().map(|t| &t.kind)
     }
@@ -153,8 +132,6 @@ impl<'l, 's, 'e> Parse<'l, 's, 'e> {
         } else {
             return;
         };
-
-        //dbg!(&kind);
 
         {
             let verbatim_opt = match t.kind {
@@ -216,21 +193,21 @@ impl<'l, 's, 'e> Parse<'l, 's, 'e> {
                 _ => None,
             };
 
-            if let Some((cont, ty)) = container_opt {
-                if matches!(ty, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
+            if let Some((cont, dir)) = container_opt {
+                if matches!(dir, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
                     loop {
                         let c = self.openers.pop().unwrap();
-                        self.events.push(Event::End(c));
+                        self.events.push(Event::Exit(c));
                         if c == cont {
                             break;
                         }
                     }
                     return;
-                } else if matches!(ty, Dir::Open | Dir::Both) {
+                } else if matches!(dir, Dir::Open | Dir::Both) {
                     self.openers.push(cont);
-                    self.events.push(Event::Start(cont));
+                    self.events.push(Event::Enter(cont));
+                    return;
                 }
-                return;
             }
         }
 
@@ -250,14 +227,16 @@ impl<'l, 's, 'e> Parse<'l, 's, 'e> {
 #[cfg(test)]
 mod test {
     use super::Atom::*;
+    use super::Container::*;
     use super::Event::*;
 
     #[test]
     fn container_brace() {
         let mut p = super::Parser::new();
+        p.parse("{_hej_}");
         assert_eq!(
-            &[Atom(Str)],
-            p.parse("{_hej_}").collect::<Vec<_>>().as_slice(),
+            p.collect::<Vec<_>>().as_slice(),
+            &[Enter(Emphasis), Atom(Str), Exit(Emphasis)],
         );
     }
 }
