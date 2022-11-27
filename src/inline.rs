@@ -35,22 +35,21 @@ pub struct Node {
 pub enum NodeKind {
     Str,
     // link
+    Url,
+    ImageSource,
+    LinkReference,
     FootnoteReference,
-    ReferenceLink,
-    Link,
-    Emoji,
     // verbatim
     Verbatim,
     RawFormat,
-    DisplayMath,
     InlineMath,
+    DisplayMath,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Container {
-    // attributes
-    Attributes,
     Span,
+    Attributes,
     // typesetting
     Subscript,
     Superscript,
@@ -58,17 +57,10 @@ pub enum Container {
     Delete,
     Emphasis,
     Strong,
-    Mark,
+    //Mark,
     // smart quoting
     SingleQuoted,
     DoubleQuoted,
-    // URLs
-    AutoUrl,
-    Url,
-    ImageText,
-    LinkText,
-    Reference,
-    Destination,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -165,7 +157,14 @@ impl<'s> Parser<'s> {
                             len,
                         }) = self.peek()
                         {
-                            Some((DisplayMath, first.len))
+                            Some((
+                                if first.len == 2 {
+                                    DisplayMath
+                                } else {
+                                    InlineMath
+                                },
+                                *len,
+                            ))
                         } else {
                             None
                         }
@@ -201,14 +200,14 @@ impl<'s> Parser<'s> {
             lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
             lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
             lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((LinkText, Dir::Open)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((LinkText, Dir::Close)),
+            lex::Kind::Open(Delimiter::Bracket) => Some((Span, Dir::Open)),
+            lex::Kind::Close(Delimiter::Bracket) => Some((Span, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
+            //lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
+            //lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
             lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
@@ -306,6 +305,12 @@ mod test {
         test_parse!("`abc", Node(Verbatim.span(1, 4)));
         test_parse!("``abc``", Node(Verbatim.span(2, 5)));
         test_parse!("abc `def`", Node(Str.span(0, 4)), Node(Verbatim.span(5, 8)));
+    }
+
+    #[test]
+    fn math() {
+        test_parse!("$`abc`", Node(InlineMath.span(2, 5)));
+        test_parse!("$$```abc", Node(DisplayMath.span(5, 8)));
     }
 
     #[test]

@@ -30,7 +30,7 @@ pub enum Delimiter {
     Brace,
     BraceAsterisk,
     BraceCaret,
-    BraceEqual,
+    //BraceEqual,
     BraceHyphen,
     BracePlus,
     BraceTilde,
@@ -149,7 +149,7 @@ impl<'s> Lexer<'s> {
                 let explicit = match self.peek() {
                     '*' => Some(Open(BraceAsterisk)),
                     '^' => Some(Open(BraceCaret)),
-                    '=' => Some(Open(BraceEqual)),
+                    //'=' => Some(Open(BraceEqual)),
                     '-' => Some(Open(BraceHyphen)),
                     '+' => Some(Open(BracePlus)),
                     '~' => Some(Open(BraceTilde)),
@@ -165,7 +165,7 @@ impl<'s> Lexer<'s> {
             }
             '*' => self.maybe_eat_close_brace(Asterisk, BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Caret, BraceCaret),
-            '=' => self.maybe_eat_close_brace(Equal, BraceEqual),
+            //'=' => self.maybe_eat_close_brace(Equal, BraceEqual),
             '+' => self.maybe_eat_close_brace(Plus, BracePlus),
             '~' => self.maybe_eat_close_brace(Tilde, BraceTilde),
             '_' => self.maybe_eat_close_brace(Underscore, BraceUnderscore),
@@ -178,6 +178,7 @@ impl<'s> Lexer<'s> {
                 }
             }
 
+            '=' => Sym(Equal),
             '!' => Sym(Exclaim),
             '%' => Sym(Percentage),
             '<' => Sym(Lt),

@@ -35,6 +35,29 @@ impl<'s> Parser<'s> {
     }
 }
 
+pub enum ListType {
+    Unordered,
+    Ordered,
+}
+
+pub enum TagKind<'s> {
+    Paragraph,
+    Heading { level: u8 },
+    Table,
+    TableRow,
+    TableCell,
+    RawBlock { format: &'s str },
+    CodeBlock { language: &'s str },
+    Blockquote,
+    Div,
+    UnorderedList,
+    OrderedList { start: usize },
+    ListItem,
+    DescriptionList,
+    DescriptionItem,
+    Footnote { tag: &'s str },
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
     Start(block::Block),

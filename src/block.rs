@@ -22,25 +22,19 @@ pub enum Block {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Leaf {
     Paragraph,
-    Heading {
-        level: usize,
-    },
+    Heading { level: u8 },
     Attributes,
     Table,
-    ThematicBreak,
     LinkDefinition,
-    CodeBlock {
-        fence_char: char,
-        fence_length: usize,
-    },
+    CodeBlock { fence_length: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container {
     Blockquote,
-    Div { fence_length: usize },
-    ListItem { indent: usize },
-    Footnote { indent: usize },
+    Div { fence_length: u8 },
+    ListItem { indent: u8 },
+    Footnote { indent: u8 },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,6 +43,8 @@ pub enum Atom {
     Inline,
     /// A line with no non-whitespace characters.
     Blankline,
+    /// Thematic break.
+    ThematicBreak,
 }
 
 struct Parser<'s> {
@@ -89,68 +85,68 @@ impl<'s> Parser<'s> {
             })
             .count();
         let lines = &mut lines[blanklines..];
-        Block::parse(lines.iter().map(|sp| (sp.of(self.src), sp.start()))).map_or(
-            0,
-            |(kind, span, len)| {
-                match &kind {
-                    Block::Leaf(_) => {
-                        self.tree.enter(kind, span);
-                        lines[0] = lines[0].with_start(span.end());
-                        for line in lines.iter().take(len) {
-                            self.tree.elem(Atom::Inline, *line);
-                        }
-                    }
-                    Block::Container(c) => {
-                        let (skip_chars, skip_lines_suffix) = match &c {
-                            Blockquote => (1, 0),
-                            ListItem { indent } | Footnote { indent } => (*indent, 0),
-                            Div { .. } => (0, 1),
-                        };
-                        let line_count = lines.len() - skip_lines_suffix;
-
-                        // update spans, remove indentation / container prefix
-                        lines[0] = lines[0].with_start(span.end());
-                        lines.iter_mut().skip(1).take(line_count).for_each(|sp| {
-                            let skip = (sp
-                                .of(self.src)
-                                .chars()
-                                .take_while(|c| c.is_whitespace())
-                                .count()
-                                + skip_chars)
-                                .min(sp.len());
-                            *sp = sp.trim_start(skip);
-                        });
-
-                        self.tree.enter(kind, span);
-                        let mut l = 0;
-                        while l < line_count {
-                            l += self.parse_block(&mut lines[l..line_count]);
-                        }
+        Block::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(0, |(kind, span, len)| {
+            let start = lines.get(0).map(|sp| sp.start()).unwrap();
+            let span = span.translate(start);
+            match &kind {
+                Block::Leaf(_) => {
+                    self.tree.enter(kind, span);
+                    lines[0] = lines[0].with_start(span.end());
+                    for line in lines.iter().take(len) {
+                        self.tree.elem(Atom::Inline, *line);
                     }
                 }
-                self.tree.exit();
-                blanklines + len
-            },
-        )
+                Block::Container(c) => {
+                    let (skip_chars, skip_lines_suffix) = match &c {
+                        Blockquote => (1, 0),
+                        ListItem { indent } | Footnote { indent } => (*indent, 0),
+                        Div { .. } => (0, 1),
+                    };
+                    let line_count = lines.len() - skip_lines_suffix;
+
+                    // update spans, remove indentation / container prefix
+                    lines[0] = lines[0].with_start(span.end());
+                    lines.iter_mut().skip(1).take(line_count).for_each(|sp| {
+                        let skip = (sp
+                            .of(self.src)
+                            .chars()
+                            .take_while(|c| c.is_whitespace())
+                            .count()
+                            + usize::from(skip_chars))
+                        .min(sp.len());
+                        *sp = sp.trim_start(skip);
+                    });
+
+                    self.tree.enter(kind, span);
+                    let mut l = 0;
+                    while l < line_count {
+                        l += self.parse_block(&mut lines[l..line_count]);
+                    }
+                }
+            }
+            self.tree.exit();
+            blanklines + len
+        })
     }
 }
 
 impl Block {
     /// Parse a single block. Return number of lines the block uses.
-    fn parse<'b, I: Iterator<Item = (&'b str, usize)>>(
-        mut lines: I,
-    ) -> Option<(Block, Span, usize)> {
-        if let Some((l, start)) = lines.next() {
+    fn parse<'b, I: Iterator<Item = &'b str>>(mut lines: I) -> Option<(Block, Span, usize)> {
+        lines.next().map(|l| {
             let (kind, sp) = Block::start(l);
-            let line_count = 1 + lines.take_while(|(l, _)| kind.continues(l)).count();
-            Some((kind, sp.translate(start), line_count))
-        } else {
-            None
-        }
+            let line_count = 1
+                + lines.take_while(|l| kind.continues(l)).count()
+                + usize::from(matches!(
+                    kind,
+                    Self::Leaf(CodeBlock { .. }) | Self::Container(Div { .. })
+                ));
+            (kind, sp, line_count)
+        })
     }
 
     /// Determine what type of block a line can start.
-    fn start(line: &str) -> (Block, Span) {
+    fn start(line: &str) -> (Self, Span) {
         let start = line.chars().take_while(|c| c.is_whitespace()).count();
         let line = &line[start..];
         let mut chars = line.chars();
@@ -159,37 +155,41 @@ impl Block {
                 .find(|c| *c != '#')
                 .map_or(true, char::is_whitespace)
                 .then(|| {
-                    let span = Span::by_len(start, line.len() - chars.as_str().len() - 1);
-                    (Self::Leaf(Heading { level: span.len() }), span)
-                }),
+                    u8::try_from(line.len() - chars.as_str().len() - 1)
+                        .ok()
+                        .map(|level| {
+                            (
+                                Self::Leaf(Heading { level }),
+                                Span::by_len(start, level.into()),
+                            )
+                        })
+                })
+                .flatten(),
             '>' => chars.next().map_or(true, |c| c == ' ').then(|| {
                 (
                     Self::Container(Blockquote),
                     Span::by_len(start, line.len() - chars.as_str().len() - 1),
                 )
             }),
-            f @ ':' => {
+            f @ ('`' | ':') => {
                 let fence_length = chars.take_while(|c| *c == f).count() + 1;
-                (fence_length >= 3).then(|| {
-                    (
-                        Self::Container(Div { fence_length }),
-                        Span::by_len(start, line.len()),
-                    )
-                })
-            }
-            fence_char @ ('`' | '~') => {
-                let fence_length = chars.take_while(|c| *c == fence_char).count() + 1;
-                (fence_length >= 3).then(|| {
-                    (
-                        Self::Leaf(CodeBlock {
-                            fence_char,
-                            fence_length,
-                        }),
-                        Span::by_len(start, line.len()),
-                    )
-                })
+                (fence_length >= 3)
+                    .then(|| {
+                        u8::try_from(fence_length).ok().map(|fence_length| {
+                            (
+                                match f {
+                                    '`' => Self::Leaf(CodeBlock { fence_length }),
+                                    ':' => Self::Container(Div { fence_length }),
+                                    _ => unreachable!(),
+                                },
+                                Span::by_len(start, line.len()),
+                            )
+                        })
+                    })
+                    .flatten()
             }
             _ => {
+                /*
                 let thematic_break = || {
                     let mut without_whitespace = line.chars().filter(|c| !c.is_whitespace());
                     let length = without_whitespace.clone().count();
@@ -198,7 +198,9 @@ impl Block {
                             || without_whitespace.all(|c| c == '*')))
                     .then(|| (Self::Leaf(ThematicBreak), Span::by_len(start, line.len())))
                 };
-                thematic_break()
+                */
+                //thematic_break()
+                None
             }
         }
         .unwrap_or((Self::Leaf(Paragraph), Span::new(0, 0)))
@@ -210,18 +212,16 @@ impl Block {
             Self::Leaf(Paragraph | Heading { .. } | Table | LinkDefinition) => {
                 !line.trim().is_empty()
             }
-            Self::Leaf(Attributes | ThematicBreak) => false,
-            Self::Leaf(CodeBlock {
-                fence_char,
-                fence_length,
-            }) => !line.chars().take(*fence_length).all(|c| c == *fence_char),
+            Self::Leaf(Attributes) => false,
             Self::Container(Blockquote) => line.trim().starts_with('>'),
             Self::Container(Footnote { indent } | ListItem { indent }) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                !line.trim().is_empty() && spaces >= *indent
+                !line.trim().is_empty() && spaces >= (*indent).into()
             }
-            Self::Container(Div { fence_length }) => {
-                line.chars().take(*fence_length).all(|c| c == ':')
+            Self::Container(Div { fence_length }) | Self::Leaf(CodeBlock { fence_length }) => {
+                let mut c = line.chars();
+                !((&mut c).take((*fence_length).into()).all(|c| c == ':')
+                    && c.next().map_or(false, char::is_whitespace))
             }
         }
     }
@@ -358,9 +358,29 @@ mod test {
     }
 
     #[test]
+    fn parse_code_block() {
+        let src = concat!(
+            "```lang\n",
+            "l0\n",
+            "l1\n",
+            "```", //
+        );
+
+        assert_eq!(
+            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
+            &[
+                Event::Enter(&Leaf(CodeBlock { fence_length: 3 }), Span::new(0, 8)),
+                Event::Element(&Inline, Span::new(8, 11)),
+                Event::Element(&Inline, Span::new(11, 14)),
+                Event::Exit
+            ]
+        );
+    }
+
+    #[test]
     fn block_multiline() {
         let src = "# heading\n spanning two lines\n";
-        let lines = super::lines(src).map(|sp| (sp.of(src), sp.start()));
+        let lines = super::lines(src).map(|sp| sp.of(src));
         let (kind, sp, len) = Block::parse(lines).unwrap();
         assert_eq!(kind, Block::Leaf(Heading { level: 1 }));
         assert_eq!(sp.of(src), "#");
@@ -376,7 +396,7 @@ mod test {
         ">\n",
         "> c\n", //
     );
-        let lines = super::lines(src).map(|sp| (sp.of(src), sp.start()));
+        let lines = super::lines(src).map(|sp| sp.of(src));
         let (kind, sp, len) = Block::parse(lines).unwrap();
         assert_eq!(kind, Block::Container(Blockquote));
         assert_eq!(sp.of(src), ">");
