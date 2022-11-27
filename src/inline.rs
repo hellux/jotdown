@@ -262,7 +262,10 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.events.is_empty() || !self.openers.is_empty() {
+        while self.events.is_empty()
+            || !self.openers.is_empty()
+            || self.events.back().map_or(false, |ev| ev.kind.is_str())
+        {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
             } else {
@@ -270,8 +273,30 @@ impl<'s> Iterator for Parser<'s> {
             }
         }
 
-        // TODO merge str/unclosed enters
-        self.events.pop_front()
+        self.events.pop_front().map(|e| {
+            if e.kind.is_str() {
+                // merge str events
+                let mut span = e.span;
+                while self.events.front().map_or(false, |ev| ev.kind.is_str()) {
+                    span = span.union(self.events.pop_front().unwrap().span);
+                }
+                Event {
+                    kind: EventKind::Node(Str),
+                    span,
+                }
+            } else {
+                e
+            }
+        })
+    }
+}
+
+impl EventKind {
+    fn is_str(&self) -> bool {
+        matches!(
+            self,
+            EventKind::Node(Str) | EventKind::Enter(_, OpenerState::Unclosed)
+        )
     }
 }
 
@@ -371,25 +396,14 @@ mod test {
         test_parse!(
             "{*{_abc*}",
             Enter(Strong, Closed).span(0, 2),
-            Enter(Emphasis, Unclosed).span(2, 4),
-            Node(Str).span(4, 7),
+            Node(Str).span(2, 7),
             Exit(Strong).span(7, 9),
         );
     }
 
     #[test]
     fn container_close_block() {
-        test_parse!(
-            "{_abc",
-            Enter(Emphasis, Unclosed).span(0, 2),
-            Node(Str).span(2, 5),
-        );
-        test_parse!(
-            "{_{*{_abc",
-            Enter(Emphasis, Unclosed).span(0, 2),
-            Enter(Strong, Unclosed).span(2, 4),
-            Enter(Emphasis, Unclosed).span(4, 6),
-            Node(Str).span(6, 9),
-        );
+        test_parse!("{_abc", Node(Str).span(0, 5),);
+        test_parse!("{_{*{_abc", Node(Str).span(0, 9),);
     }
 }
