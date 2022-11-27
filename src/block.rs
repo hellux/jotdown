@@ -285,134 +285,136 @@ mod test {
     use super::Container::*;
     use super::Leaf::*;
 
+    macro_rules! test_parse {
+        ($src:expr $(,$($event:expr),* $(,)?)?) => {
+            let t = super::Parser::new($src).parse();
+            let actual = t.iter().collect::<Vec<_>>();
+            let expected = &[$($($event),*,)?];
+            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+        };
+    }
+
     #[test]
     fn parse_elem_oneline() {
-        let src = "para\n";
-
-        assert_eq!(
-            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
-            &[
-                Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
-                Event::Element(&Inline, Span::new(0, 5)),
-                Event::Exit,
-            ],
+        test_parse!(
+            "para\n",
+            Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
+            Event::Element(&Inline, Span::new(0, 5)),
+            Event::Exit,
         );
     }
 
     #[test]
     fn parse_elem_multiline() {
-        let src = "para\npara\n";
-
-        assert_eq!(
-            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
-            &[
-                Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
-                Event::Element(&Inline, Span::new(0, 5)),
-                Event::Element(&Inline, Span::new(5, 10)),
-                Event::Exit,
-            ],
+        test_parse!(
+            "para\npara\n",
+            Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
+            Event::Element(&Inline, Span::new(0, 5)),
+            Event::Element(&Inline, Span::new(5, 10)),
+            Event::Exit,
         );
     }
 
     #[test]
     fn parse_elem_multi() {
-        let src = concat!(
-            "# 2\n",
-            "\n",
-            " # 8\n",
-            "  12\n",
-            "15\n", //
-        );
-
-        assert_eq!(
-            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
-            &[
-                Event::Enter(&Leaf(Heading { level: 1 }), Span::new(0, 1)),
-                Event::Element(&Inline, Span::new(1, 4)),
-                Event::Exit,
-                Event::Element(&Blankline, Span::new(4, 5)),
-                Event::Enter(&Leaf(Heading { level: 1 }), Span::new(6, 7)),
-                Event::Element(&Inline, Span::new(7, 10)),
-                Event::Element(&Inline, Span::new(10, 15)),
-                Event::Element(&Inline, Span::new(15, 18)),
-                Event::Exit,
-            ],
+        test_parse!(
+            concat!(
+                "# 2\n",
+                "\n",
+                " # 8\n",
+                "  12\n",
+                "15\n", //
+            ),
+            Event::Enter(&Leaf(Heading { level: 1 }), Span::new(0, 1)),
+            Event::Element(&Inline, Span::new(1, 4)),
+            Event::Exit,
+            Event::Element(&Blankline, Span::new(4, 5)),
+            Event::Enter(&Leaf(Heading { level: 1 }), Span::new(6, 7)),
+            Event::Element(&Inline, Span::new(7, 10)),
+            Event::Element(&Inline, Span::new(10, 15)),
+            Event::Element(&Inline, Span::new(15, 18)),
+            Event::Exit,
         );
     }
 
     #[test]
     fn parse_container() {
-        let src = concat!(
-            "> a\n",
-            ">\n",
-            "> ## hl\n",
-            ">\n",
-            "> para\n", //
-        );
-
-        assert_eq!(
-            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
-            &[
-                Event::Enter(&Container(Blockquote), Span::new(0, 1)),
-                Event::Enter(&Leaf(Paragraph), Span::new(1, 1)),
-                Event::Element(&Inline, Span::new(1, 4)),
-                Event::Exit,
-                Event::Element(&Blankline, Span::new(5, 6)),
-                Event::Enter(&Leaf(Heading { level: 2 }), Span::new(8, 10)),
-                Event::Element(&Inline, Span::new(10, 14)),
-                Event::Exit,
-                Event::Element(&Blankline, Span::new(15, 16)),
-                Event::Enter(&Leaf(Paragraph), Span::new(17, 17)),
-                Event::Element(&Inline, Span::new(17, 23)),
-                Event::Exit,
-                Event::Exit,
-            ]
+        test_parse!(
+            concat!(
+                "> a\n",
+                ">\n",
+                "> ## hl\n",
+                ">\n",
+                "> para\n", //
+            ),
+            Event::Enter(&Container(Blockquote), Span::new(0, 1)),
+            Event::Enter(&Leaf(Paragraph), Span::new(1, 1)),
+            Event::Element(&Inline, Span::new(1, 4)),
+            Event::Exit,
+            Event::Element(&Blankline, Span::new(5, 6)),
+            Event::Enter(&Leaf(Heading { level: 2 }), Span::new(8, 10)),
+            Event::Element(&Inline, Span::new(10, 14)),
+            Event::Exit,
+            Event::Element(&Blankline, Span::new(15, 16)),
+            Event::Enter(&Leaf(Paragraph), Span::new(17, 17)),
+            Event::Element(&Inline, Span::new(17, 23)),
+            Event::Exit,
+            Event::Exit,
         );
     }
 
     #[test]
     fn parse_code_block() {
-        let src = concat!(
-            "```lang\n",
-            "l0\n",
-            "l1\n",
-            "```", //
+        test_parse!(
+            concat!(
+                "```lang\n",
+                "l0\n",
+                "l1\n",
+                "```", //
+            ),
+            Event::Enter(&Leaf(CodeBlock { fence_length: 3 }), Span::new(0, 8)),
+            Event::Element(&Inline, Span::new(8, 11)),
+            Event::Element(&Inline, Span::new(11, 14)),
+            Event::Exit
         );
+    }
 
-        assert_eq!(
-            super::Parser::new(src).parse().iter().collect::<Vec<_>>(),
-            &[
-                Event::Enter(&Leaf(CodeBlock { fence_length: 3 }), Span::new(0, 8)),
-                Event::Element(&Inline, Span::new(8, 11)),
-                Event::Element(&Inline, Span::new(11, 14)),
-                Event::Exit
-            ]
-        );
+    macro_rules! test_block {
+        ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
+            let lines = super::lines($src).map(|sp| sp.of($src));
+            let (kind, sp, len) = Block::parse(lines).unwrap();
+            assert_eq!(
+                (kind, sp.of($src), len),
+                ($kind, $str, $len),
+                "\n\n{}\n\n",
+                $src
+            );
+        };
     }
 
     #[test]
     fn block_multiline() {
-        let src = "# heading\n spanning two lines\n";
-        let lines = super::lines(src).map(|sp| sp.of(src));
-        let (kind, sp, len) = Block::parse(lines).unwrap();
-        assert_eq!(kind, Block::Leaf(Heading { level: 1 }));
-        assert_eq!(sp.of(src), "#");
-        assert_eq!(len, 2);
+        test_block!(
+            "# heading\n spanning two lines\n",
+            Block::Leaf(Heading { level: 1 }),
+            "#",
+            2
+        );
     }
 
     #[test]
     fn block_container() {
-        let src = concat!(
-        "> a\n",
-        ">\n",
-        "  >  b\n",
-        ">\n",
-        "> c\n", //
-    );
-        let lines = super::lines(src).map(|sp| sp.of(src));
-        let (kind, sp, len) = Block::parse(lines).unwrap();
-        assert_eq!(kind, Block::Container(Blockquote));
-        assert_eq!(sp.of(src), ">");
-        assert_eq!(len, 5);
+        test_block!(
+            concat!(
+                "> a\n",    //
+                ">\n",      //
+                "  >  b\n", //
+                ">\n",      //
+                "> c\n",    //
+            ),
+            Block::Container(Blockquote),
+            ">",
+            5,
+        );
     }
 }
