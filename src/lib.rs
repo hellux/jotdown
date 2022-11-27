@@ -30,6 +30,7 @@ impl<'s> Parser<'s> {
             src: self.src,
             tree: self.tree.iter(),
             parser: None,
+            inline_start: 0,
         }
     }
 }
@@ -46,6 +47,7 @@ pub struct Iter<'s> {
     src: &'s str,
     tree: block::TreeIter<'s>,
     parser: Option<inline::Parser<'s>>,
+    inline_start: usize,
 }
 
 impl<'s> Iterator for Iter<'s> {
@@ -54,13 +56,17 @@ impl<'s> Iterator for Iter<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(parser) = &mut self.parser {
             // inside leaf block, with inline content
-            if let Some(inline) = parser.next() {
+            if let Some(mut inline) = parser.next() {
+                if let inline::Event::Node(inline::Node { span, .. }) = &mut inline {
+                    *span = span.translate(self.inline_start);
+                }
                 return Some(Event::Inline(inline));
             } else if let Some(ev) = self.tree.next() {
                 match ev {
                     tree::Event::Element(atom, sp) => {
                         assert_eq!(*atom, block::Atom::Inline);
                         parser.parse(sp.of(self.src));
+                        self.inline_start = sp.start();
                     }
                     tree::Event::Exit => {
                         self.parser = None;
@@ -76,11 +82,10 @@ impl<'s> Iterator for Iter<'s> {
                 assert_eq!(*atom, block::Atom::Blankline);
                 Event::Blankline
             }
-            tree::Event::Enter(block @ block::Block::Container(..), ..) => {
-                Event::Start(block.clone())
-            }
-            tree::Event::Enter(block @ block::Block::Leaf(..), ..) => {
-                self.parser = Some(inline::Parser::new());
+            tree::Event::Enter(block, ..) => {
+                if matches!(block, block::Block::Leaf(..)) {
+                    self.parser = Some(inline::Parser::new());
+                }
                 Event::Start(block.clone())
             }
             tree::Event::Exit => Event::End,
@@ -96,6 +101,7 @@ mod test {
     use crate::block::Leaf::*;
     use crate::inline::Atom::*;
     use crate::inline::Event::*;
+    use crate::inline::NodeKind::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -108,15 +114,26 @@ mod test {
 
     #[test]
     fn para() {
-        test_parse!("abc", Start(Leaf(Paragraph)), Inline(Atom(Str)), End);
-        test_parse!("abc def", Start(Leaf(Paragraph)), Inline(Atom(Str)), End);
         test_parse!(
-            "this is a paragraph\n\nfollowed by another one",
+            "para",
             Start(Leaf(Paragraph)),
-            Inline(Atom(Str)),
+            Inline(Node(Str.span(0, 4))),
+            End
+        );
+        test_parse!(
+            "pa     ra",
+            Start(Leaf(Paragraph)),
+            Inline(Node(Str.span(0, 9))),
+            End
+        );
+        test_parse!(
+            "para0\n\npara1",
+            Start(Leaf(Paragraph)),
+            Inline(Node(Str.span(0, 6))),
             End,
+            Blankline,
             Start(Leaf(Paragraph)),
-            Inline(Atom(Str)),
+            Inline(Node(Str.span(7, 12))),
             End,
         );
     }

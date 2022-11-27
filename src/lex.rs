@@ -229,9 +229,7 @@ impl<'s> Iterator for Lexer<'s> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(token) = self.next.take() {
-            Some(token)
-        } else {
+        self.next.take().or_else(|| {
             let mut current = self.token();
 
             // concatenate text tokens
@@ -244,7 +242,7 @@ impl<'s> Iterator for Lexer<'s> {
             }
 
             current
-        }
+        })
     }
 }
 

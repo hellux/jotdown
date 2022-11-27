@@ -16,6 +16,10 @@ impl Span {
         }
     }
 
+    pub fn empty_at(start: usize) -> Self {
+        Self::by_len(start, 0)
+    }
+
     pub fn with_start(self, start: usize) -> Self {
         Self::new(start, self.end())
     }
@@ -29,6 +33,14 @@ impl Span {
             self.start().checked_add(n).unwrap(),
             self.end().checked_add(n).unwrap(),
         )
+    }
+
+    pub fn extend(self, n: usize) -> Self {
+        Self::new(self.start(), self.end() + n)
+    }
+
+    pub fn union(self, span: Self) -> Self {
+        Self::new(self.start(), span.end())
     }
 
     pub fn start(self) -> usize {

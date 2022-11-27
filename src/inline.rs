@@ -6,10 +6,10 @@ use lex::Symbol;
 
 use Atom::*;
 use Container::*;
+use NodeKind::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
-    Str,
     Softbreak,
     Hardbreak,
     Escape,
@@ -19,15 +19,31 @@ pub enum Atom {
     ImageMarker, // ??
     EmDash,
     EnDash,
+    Lt,
+    Gt,
+    Ampersand,
+    Quote,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Node {
+    pub kind: NodeKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeKind {
+    Str,
+    // link
     FootnoteReference,
-    Link,
     ReferenceLink,
+    Link,
     Emoji,
+    // verbatim
+    Verbatim,
     RawFormat,
-    // math
     DisplayMath,
     InlineMath,
-    Verbatim,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -60,6 +76,7 @@ pub enum Event {
     Enter(Container),
     Exit(Container),
     Atom(Atom),
+    Node(Node),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,21 +88,148 @@ pub enum Dir {
 
 pub struct Parser<'s> {
     openers: Vec<Container>,
-    events: Vec<Event>,
-    lexer: Option<std::iter::Peekable<lex::Lexer<'s>>>,
+    close_containers: Option<usize>,
+    next: Option<Event>,
+    span: Span,
+
+    lexer: std::iter::Peekable<lex::Lexer<'s>>,
 }
 
 impl<'s> Parser<'s> {
     pub fn new() -> Self {
         Self {
             openers: Vec::new(),
-            events: Vec::new(),
-            lexer: None,
+            close_containers: None,
+            next: None,
+            span: Span::new(0, 0),
+
+            lexer: lex::Lexer::new("").peekable(),
         }
     }
 
     pub fn parse(&mut self, src: &'s str) {
-        self.lexer = Some(lex::Lexer::new(src).peekable());
+        self.lexer = lex::Lexer::new(src).peekable();
+    }
+
+    fn eat(&mut self) -> Option<lex::Token> {
+        let tok = self.lexer.next();
+        if let Some(t) = &tok {
+            self.span = self.span.extend(t.len);
+        }
+        tok
+    }
+
+    fn peek(&mut self) -> Option<&lex::Token> {
+        self.lexer.peek()
+    }
+
+    fn reset_span(&mut self) {
+        self.span = Span::empty_at(self.span.end());
+    }
+
+    fn node(&self, kind: NodeKind) -> Event {
+        Event::Node(Node {
+            span: self.span,
+            kind,
+        })
+    }
+
+    fn parse_event(&mut self) -> Option<Event> {
+        self.reset_span();
+        self.eat().map(|first| {
+            self.parse_verbatim(&first)
+                .or_else(|| self.parse_container(&first))
+                .or_else(|| self.parse_atom(&first))
+                .unwrap_or_else(|| self.node(Str))
+        })
+    }
+
+    fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
+        match first.kind {
+            lex::Kind::Escape => Some(Event::Atom(Escape)),
+            lex::Kind::Nbsp => Some(Event::Atom(Nbsp)),
+            lex::Kind::Sym(lex::Symbol::Lt) => Some(Event::Atom(Lt)),
+            lex::Kind::Sym(lex::Symbol::Gt) => Some(Event::Atom(Gt)),
+            lex::Kind::Sym(lex::Symbol::Quote2) => Some(Event::Atom(Quote)),
+            _ => None,
+        }
+    }
+
+    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
+        match first.kind {
+            lex::Kind::Seq(lex::Sequence::Dollar) => {
+                let math_opt = (first.len <= 2)
+                    .then(|| {
+                        if let Some(lex::Token {
+                            kind: lex::Kind::Seq(lex::Sequence::Backtick),
+                            len,
+                        }) = self.peek()
+                        {
+                            Some((DisplayMath, first.len))
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten();
+                if math_opt.is_some() {
+                    self.eat(); // backticks
+                }
+                math_opt
+            }
+            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
+            _ => None,
+        }
+        .map(|(kind, opener_len)| {
+            let mut span = Span::empty_at(self.span.end());
+            while let Some(tok) = self.eat() {
+                if matches!(tok.kind, lex::Kind::Seq(lex::Sequence::Backtick))
+                    && tok.len == opener_len
+                {
+                    break;
+                }
+                span = span.extend(tok.len);
+            }
+            Event::Node(Node { kind, span })
+        })
+    }
+
+    fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
+        match first.kind {
+            lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
+            lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
+            lex::Kind::Sym(Symbol::Caret) => Some((Superscript, Dir::Both)),
+            lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
+            lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
+            lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
+            lex::Kind::Open(Delimiter::Bracket) => Some((LinkText, Dir::Open)),
+            lex::Kind::Close(Delimiter::Bracket) => Some((LinkText, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
+            lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
+            lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
+            _ => None,
+        }
+        .and_then(|(cont, dir)| {
+            if matches!(dir, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
+                self.close_containers = self.openers.iter().rposition(|o| *o == cont);
+                Some(Event::Exit(self.openers.pop().unwrap()))
+            } else if matches!(dir, Dir::Open | Dir::Both) {
+                self.openers.push(cont);
+                Some(Event::Enter(cont))
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -93,142 +237,42 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.events.is_empty() {
-            if let Some(lexer) = &mut self.lexer {
-                Parse::new(lexer, &mut self.openers, &mut self.events).parse();
-            }
-        }
-
-        self.events.pop()
-    }
-}
-
-struct Parse<'l, 's, 'e> {
-    tokens: &'l mut std::iter::Peekable<lex::Lexer<'s>>,
-    openers: &'e mut Vec<Container>,
-    events: &'e mut Vec<Event>,
-}
-
-impl<'l, 's, 'e> Parse<'l, 's, 'e> {
-    fn new(
-        tokens: &'l mut std::iter::Peekable<lex::Lexer<'s>>,
-        openers: &'e mut Vec<Container>,
-        events: &'e mut Vec<Event>,
-    ) -> Self {
-        Self {
-            tokens,
-            openers,
-            events,
-        }
-    }
-
-    fn peek(&mut self) -> Option<&lex::Kind> {
-        self.tokens.peek().map(|t| &t.kind)
-    }
-
-    fn parse(&mut self) {
-        let mut t = if let Some(t) = self.tokens.next() {
-            t
-        } else {
-            return;
-        };
-
-        {
-            let verbatim_opt = match t.kind {
-                lex::Kind::Seq(lex::Sequence::Dollar) => {
-                    let math_opt = (t.len <= 2)
-                        .then(|| {
-                            if let Some(lex::Kind::Seq(lex::Sequence::Backtick)) = self.peek() {
-                                Some((DisplayMath, t.len))
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten();
-                    if math_opt.is_some() {
-                        self.tokens.next(); // backticks
+        self.next.take().or_else(|| {
+            self.close_containers
+                .and_then(|i| {
+                    if i < self.openers.len() {
+                        Some(Event::Exit(self.openers.pop().unwrap()))
+                    } else {
+                        self.close_containers = None;
+                        None
                     }
-                    math_opt
-                }
-                lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, t.len)),
-                _ => None,
-            };
+                })
+                .or_else(|| {
+                    let mut current = self.parse_event();
 
-            if let Some((atom, opener_len)) = verbatim_opt {
-                for tok in &mut self.tokens {
-                    if matches!(tok.kind, lex::Kind::Seq(lex::Sequence::Backtick))
-                        && tok.len == opener_len
-                    {
-                        self.events.push(Event::Atom(atom));
-                        return;
-                    }
-                }
-            }
-        }
-
-        {
-            let container_opt = match t.kind {
-                lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
-                lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
-                lex::Kind::Sym(Symbol::Caret) => Some((Superscript, Dir::Both)),
-                lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
-                lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
-                lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
-                lex::Kind::Open(Delimiter::Bracket) => Some((LinkText, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
-                lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript, Dir::Open)),
-                lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Open)),
-                lex::Kind::Close(Delimiter::Bracket) => Some((LinkText, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
-                lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript, Dir::Close)),
-                lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
-                _ => None,
-            };
-
-            if let Some((cont, dir)) = container_opt {
-                if matches!(dir, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
-                    loop {
-                        let c = self.openers.pop().unwrap();
-                        self.events.push(Event::Exit(c));
-                        if c == cont {
-                            break;
+                    if let Some(Event::Node(Node { kind: Str, span })) = &mut current {
+                        self.next = self.parse_event();
+                        while let Some(Event::Node(Node { kind: Str, span: s })) = self.next {
+                            *span = span.union(s);
+                            self.next = self.parse_event();
                         }
                     }
-                    return;
-                } else if matches!(dir, Dir::Open | Dir::Both) {
-                    self.openers.push(cont);
-                    self.events.push(Event::Enter(cont));
-                    return;
-                }
-            }
-        }
 
-        {
-            if let lex::Kind::Open(Delimiter::Brace) = t.kind {
-                todo!(); // check for attr
-            }
-        }
-
-        if let Some(Event::Atom(Str)) = self.events.last() {
-        } else {
-            self.events.push(Event::Atom(Str));
-        }
+                    current
+                })
+                .or_else(|| self.openers.pop().map(Event::Exit))
+        })
     }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::Span;
+
     use super::Atom::*;
     use super::Container::*;
     use super::Event::*;
+    use super::NodeKind::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -241,14 +285,99 @@ mod test {
         };
     }
 
-    #[test]
-    fn str() {
-        test_parse!("abc", Atom(Str));
-        test_parse!("abc def", Atom(Str));
+    impl super::NodeKind {
+        pub fn span(self, start: usize, end: usize) -> super::Node {
+            super::Node {
+                span: Span::new(start, end),
+                kind: self,
+            }
+        }
     }
 
     #[test]
-    fn container_brace() {
-        test_parse!("{_abc_}", Enter(Emphasis), Atom(Str), Exit(Emphasis));
+    fn str() {
+        test_parse!("abc", Node(Str.span(0, 3)));
+        test_parse!("abc def", Node(Str.span(0, 7)));
+    }
+
+    #[test]
+    fn verbatim() {
+        test_parse!("`abc`", Node(Verbatim.span(1, 4)));
+        test_parse!("`abc", Node(Verbatim.span(1, 4)));
+        test_parse!("``abc``", Node(Verbatim.span(2, 5)));
+        test_parse!("abc `def`", Node(Str.span(0, 4)), Node(Verbatim.span(5, 8)));
+    }
+
+    #[test]
+    fn container_basic() {
+        test_parse!(
+            "_abc_",
+            Enter(Emphasis),
+            Node(Str.span(1, 4)),
+            Exit(Emphasis)
+        );
+        test_parse!(
+            "{_abc_}",
+            Enter(Emphasis),
+            Node(Str.span(2, 5)),
+            Exit(Emphasis)
+        );
+    }
+
+    #[test]
+    fn container_nest() {
+        test_parse!(
+            "{_{_abc_}_}",
+            Enter(Emphasis),
+            Enter(Emphasis),
+            Node(Str.span(4, 7)),
+            Exit(Emphasis),
+            Exit(Emphasis)
+        );
+        test_parse!(
+            "*_abc_*",
+            Enter(Strong),
+            Enter(Emphasis),
+            Node(Str.span(2, 5)),
+            Exit(Emphasis),
+            Exit(Strong)
+        );
+    }
+
+    #[test]
+    fn container_unopened() {
+        test_parse!("*}abc", Node(Str.span(0, 5)),);
+    }
+
+    #[test]
+    fn container_close_parent() {
+        test_parse!(
+            "{*{_abc*}",
+            Enter(Strong),
+            Enter(Emphasis),
+            Node(Str.span(4, 7)),
+            Exit(Emphasis),
+            Exit(Strong)
+        );
+    }
+
+    #[test]
+    fn container_close_block() {
+        test_parse!(
+            "{_abc",
+            Enter(Emphasis),
+            Node(Str.span(2, 5)),
+            Exit(Emphasis)
+        );
+        test_parse!(
+            "{_{*{_abc",
+            Enter(Emphasis),
+            Enter(Strong),
+            Enter(Emphasis),
+            Node(Str.span(6, 9)),
+            Exit(Emphasis),
+            Exit(Strong),
+            Exit(Emphasis),
+        );
     }
 }
