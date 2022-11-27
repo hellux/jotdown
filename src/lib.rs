@@ -80,9 +80,7 @@ impl<'s> Iterator for Iter<'s> {
         while let Some(parser) = &mut self.parser {
             // inside leaf block, with inline content
             if let Some(mut inline) = parser.next() {
-                if let inline::Event::Node(inline::Node { span, .. }) = &mut inline {
-                    *span = span.translate(self.inline_start);
-                }
+                inline.span = inline.span.translate(self.inline_start);
                 return Some(Event::Inline(inline));
             } else if let Some(ev) = self.tree.next() {
                 match ev {
@@ -123,8 +121,8 @@ mod test {
     use crate::block::Container::*;
     use crate::block::Leaf::*;
     use crate::inline::Atom::*;
-    use crate::inline::Event::*;
-    use crate::inline::NodeKind::*;
+    use crate::inline::EventKind::*;
+    use crate::inline::Node::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -140,23 +138,23 @@ mod test {
         test_parse!(
             "para",
             Start(Leaf(Paragraph)),
-            Inline(Node(Str.span(0, 4))),
+            Inline(Node(Str).span(0, 4)),
             End
         );
         test_parse!(
             "pa     ra",
             Start(Leaf(Paragraph)),
-            Inline(Node(Str.span(0, 9))),
+            Inline(Node(Str).span(0, 9)),
             End
         );
         test_parse!(
             "para0\n\npara1",
             Start(Leaf(Paragraph)),
-            Inline(Node(Str.span(0, 6))),
+            Inline(Node(Str).span(0, 6)),
             End,
             Blankline,
             Start(Leaf(Paragraph)),
-            Inline(Node(Str.span(7, 12))),
+            Inline(Node(Str).span(7, 12)),
             End,
         );
     }

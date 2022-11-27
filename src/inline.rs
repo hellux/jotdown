@@ -6,7 +6,7 @@ use lex::Symbol;
 
 use Atom::*;
 use Container::*;
-use NodeKind::*;
+use Node::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
@@ -26,13 +26,7 @@ pub enum Atom {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Node {
-    pub kind: NodeKind,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NodeKind {
+pub enum Node {
     Str,
     // link
     Url,
@@ -64,11 +58,17 @@ pub enum Container {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Event {
+pub enum EventKind {
     Enter(Container, OpenerState),
     Exit(Container),
     Atom(Atom),
     Node(Node),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Event {
+    pub kind: EventKind,
+    pub span: Span,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -123,11 +123,11 @@ impl<'s> Parser<'s> {
         self.span = Span::empty_at(self.span.end());
     }
 
-    fn node(&self, kind: NodeKind) -> Event {
-        Event::Node(Node {
+    fn node(&self, kind: Node) -> Event {
+        Event {
+            kind: EventKind::Node(kind),
             span: self.span,
-            kind,
-        })
+        }
     }
 
     fn parse_event(&mut self) -> Option<Event> {
@@ -141,14 +141,19 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
-        match first.kind {
-            lex::Kind::Escape => Some(Event::Atom(Escape)),
-            lex::Kind::Nbsp => Some(Event::Atom(Nbsp)),
-            lex::Kind::Sym(lex::Symbol::Lt) => Some(Event::Atom(Lt)),
-            lex::Kind::Sym(lex::Symbol::Gt) => Some(Event::Atom(Gt)),
-            lex::Kind::Sym(lex::Symbol::Quote2) => Some(Event::Atom(Quote)),
-            _ => None,
-        }
+        let atom = match first.kind {
+            lex::Kind::Escape => Escape,
+            lex::Kind::Nbsp => Nbsp,
+            lex::Kind::Sym(lex::Symbol::Lt) => Lt,
+            lex::Kind::Sym(lex::Symbol::Gt) => Gt,
+            lex::Kind::Sym(lex::Symbol::Quote2) => Quote,
+            _ => return None,
+        };
+
+        Some(Event {
+            kind: EventKind::Atom(atom),
+            span: self.span,
+        })
     }
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
@@ -192,7 +197,10 @@ impl<'s> Parser<'s> {
                 }
                 span = span.extend(tok.len);
             }
-            Event::Node(Node { kind, span })
+            Event {
+                kind: EventKind::Node(kind),
+                span,
+            }
         })
     }
 
@@ -229,10 +237,10 @@ impl<'s> Parser<'s> {
                 .and_then(|o| {
                     matches!(dir, Dir::Close | Dir::Both).then(|| {
                         let (_, e) = &mut self.openers[o];
-                        if let Event::Enter(_, state_ev) = &mut self.events[*e] {
+                        if let EventKind::Enter(_, state_ev) = &mut self.events[*e].kind {
                             *state_ev = OpenerState::Closed;
                             self.openers.drain(o..);
-                            Event::Exit(cont_new)
+                            EventKind::Exit(cont_new)
                         } else {
                             panic!()
                         }
@@ -240,8 +248,12 @@ impl<'s> Parser<'s> {
                 })
                 .unwrap_or_else(|| {
                     self.openers.push((cont_new, self.events.len()));
-                    Event::Enter(cont_new, OpenerState::Unclosed)
+                    EventKind::Enter(cont_new, OpenerState::Unclosed)
                 })
+        })
+        .map(|kind| Event {
+            kind,
+            span: self.span,
         })
     }
 }
@@ -269,8 +281,8 @@ mod test {
 
     use super::Atom::*;
     use super::Container::*;
-    use super::Event::*;
-    use super::NodeKind::*;
+    use super::EventKind::*;
+    use super::Node::*;
     use super::OpenerState::*;
 
     macro_rules! test_parse {
@@ -284,9 +296,9 @@ mod test {
         };
     }
 
-    impl super::NodeKind {
-        pub fn span(self, start: usize, end: usize) -> super::Node {
-            super::Node {
+    impl super::EventKind {
+        pub fn span(self, start: usize, end: usize) -> super::Event {
+            super::Event {
                 span: Span::new(start, end),
                 kind: self,
             }
@@ -295,37 +307,37 @@ mod test {
 
     #[test]
     fn str() {
-        test_parse!("abc", Node(Str.span(0, 3)));
-        test_parse!("abc def", Node(Str.span(0, 7)));
+        test_parse!("abc", Node(Str).span(0, 3));
+        test_parse!("abc def", Node(Str).span(0, 7));
     }
 
     #[test]
     fn verbatim() {
-        test_parse!("`abc`", Node(Verbatim.span(1, 4)));
-        test_parse!("`abc", Node(Verbatim.span(1, 4)));
-        test_parse!("``abc``", Node(Verbatim.span(2, 5)));
-        test_parse!("abc `def`", Node(Str.span(0, 4)), Node(Verbatim.span(5, 8)));
+        test_parse!("`abc`", Node(Verbatim).span(1, 4));
+        test_parse!("`abc", Node(Verbatim).span(1, 4));
+        test_parse!("``abc``", Node(Verbatim).span(2, 5));
+        test_parse!("abc `def`", Node(Str).span(0, 4), Node(Verbatim).span(5, 8));
     }
 
     #[test]
     fn math() {
-        test_parse!("$`abc`", Node(InlineMath.span(2, 5)));
-        test_parse!("$$```abc", Node(DisplayMath.span(5, 8)));
+        test_parse!("$`abc`", Node(InlineMath).span(2, 5));
+        test_parse!("$$```abc", Node(DisplayMath).span(5, 8));
     }
 
     #[test]
     fn container_basic() {
         test_parse!(
             "_abc_",
-            Enter(Emphasis, Closed),
-            Node(Str.span(1, 4)),
-            Exit(Emphasis)
+            Enter(Emphasis, Closed).span(0, 1),
+            Node(Str).span(1, 4),
+            Exit(Emphasis).span(4, 5),
         );
         test_parse!(
             "{_abc_}",
-            Enter(Emphasis, Closed),
-            Node(Str.span(2, 5)),
-            Exit(Emphasis)
+            Enter(Emphasis, Closed).span(0, 2),
+            Node(Str).span(2, 5),
+            Exit(Emphasis).span(5, 7),
         );
     }
 
@@ -333,47 +345,51 @@ mod test {
     fn container_nest() {
         test_parse!(
             "{_{_abc_}_}",
-            Enter(Emphasis, Closed),
-            Enter(Emphasis, Closed),
-            Node(Str.span(4, 7)),
-            Exit(Emphasis),
-            Exit(Emphasis)
+            Enter(Emphasis, Closed).span(0, 2),
+            Enter(Emphasis, Closed).span(2, 4),
+            Node(Str).span(4, 7),
+            Exit(Emphasis).span(7, 9),
+            Exit(Emphasis).span(9, 11),
         );
         test_parse!(
             "*_abc_*",
-            Enter(Strong, Closed),
-            Enter(Emphasis, Closed),
-            Node(Str.span(2, 5)),
-            Exit(Emphasis),
-            Exit(Strong)
+            Enter(Strong, Closed).span(0, 1),
+            Enter(Emphasis, Closed).span(1, 2),
+            Node(Str).span(2, 5),
+            Exit(Emphasis).span(5, 6),
+            Exit(Strong).span(6, 7),
         );
     }
 
     #[test]
     fn container_unopened() {
-        test_parse!("*}abc", Node(Str.span(0, 5)),);
+        test_parse!("*}abc", Node(Str).span(0, 5));
     }
 
     #[test]
     fn container_close_parent() {
         test_parse!(
             "{*{_abc*}",
-            Enter(Strong, Closed),
-            Enter(Emphasis, Unclosed),
-            Node(Str.span(4, 7)),
-            Exit(Strong),
+            Enter(Strong, Closed).span(0, 2),
+            Enter(Emphasis, Unclosed).span(2, 4),
+            Node(Str).span(4, 7),
+            Exit(Strong).span(7, 9),
         );
     }
 
     #[test]
     fn container_close_block() {
-        test_parse!("{_abc", Enter(Emphasis, Unclosed), Node(Str.span(2, 5)));
+        test_parse!(
+            "{_abc",
+            Enter(Emphasis, Unclosed).span(0, 2),
+            Node(Str).span(2, 5),
+        );
         test_parse!(
             "{_{*{_abc",
-            Enter(Emphasis, Unclosed),
-            Enter(Strong, Unclosed),
-            Enter(Emphasis, Unclosed),
-            Node(Str.span(6, 9)),
+            Enter(Emphasis, Unclosed).span(0, 2),
+            Enter(Strong, Unclosed).span(2, 4),
+            Enter(Emphasis, Unclosed).span(4, 6),
+            Node(Str).span(6, 9),
         );
     }
 }
