@@ -57,7 +57,7 @@ pub enum Container {
     Delete,
     Emphasis,
     Strong,
-    //Mark,
+    Mark,
     // smart quoting
     SingleQuoted,
     DoubleQuoted,
@@ -65,10 +65,16 @@ pub enum Container {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
-    Enter(Container),
+    Enter(Container, OpenerState),
     Exit(Container),
     Atom(Atom),
     Node(Node),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum OpenerState {
+    Unclosed,
+    Closed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -79,9 +85,8 @@ pub enum Dir {
 }
 
 pub struct Parser<'s> {
-    openers: Vec<Container>,
-    close_containers: Option<usize>,
-    next: Option<Event>,
+    openers: Vec<(Container, usize)>,
+    events: std::collections::VecDeque<Event>,
     span: Span,
 
     lexer: std::iter::Peekable<lex::Lexer<'s>>,
@@ -91,8 +96,7 @@ impl<'s> Parser<'s> {
     pub fn new() -> Self {
         Self {
             openers: Vec::new(),
-            close_containers: None,
-            next: None,
+            events: std::collections::VecDeque::new(),
             span: Span::new(0, 0),
 
             lexer: lex::Lexer::new("").peekable(),
@@ -206,8 +210,8 @@ impl<'s> Parser<'s> {
             lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
-            //lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
-            //lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
             lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
@@ -218,16 +222,28 @@ impl<'s> Parser<'s> {
             lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
             _ => None,
         }
-        .and_then(|(cont, dir)| {
-            if matches!(dir, Dir::Close | Dir::Both) && self.openers.contains(&cont) {
-                self.close_containers = self.openers.iter().rposition(|o| *o == cont);
-                Some(Event::Exit(self.openers.pop().unwrap()))
-            } else if matches!(dir, Dir::Open | Dir::Both) {
-                self.openers.push(cont);
-                Some(Event::Enter(cont))
-            } else {
-                None
-            }
+        .map(|(cont_new, dir)| {
+            self.openers
+                .iter()
+                .rposition(|(c, _)| *c == cont_new)
+                .and_then(|o| {
+                    matches!(dir, Dir::Close | Dir::Both).then(|| {
+                        let (cont_open, e) = &mut self.openers[o];
+                        assert_eq!(*cont_open, cont_new);
+                        if let Event::Enter(cont_ev, state_ev) = &mut self.events[*e] {
+                            assert_eq!(*cont_ev, cont_new);
+                            *state_ev = OpenerState::Closed;
+                            self.openers.drain(o..);
+                            Event::Exit(cont_new)
+                        } else {
+                            panic!()
+                        }
+                    })
+                })
+                .unwrap_or_else(|| {
+                    self.openers.push((cont_new, self.events.len()));
+                    Event::Enter(cont_new, OpenerState::Unclosed)
+                })
         })
     }
 }
@@ -236,31 +252,16 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next.take().or_else(|| {
-            self.close_containers
-                .and_then(|i| {
-                    if i < self.openers.len() {
-                        Some(Event::Exit(self.openers.pop().unwrap()))
-                    } else {
-                        self.close_containers = None;
-                        None
-                    }
-                })
-                .or_else(|| {
-                    let mut current = self.parse_event();
+        while self.events.is_empty() || !self.openers.is_empty() {
+            if let Some(ev) = self.parse_event() {
+                self.events.push_back(ev);
+            } else {
+                break;
+            }
+        }
 
-                    if let Some(Event::Node(Node { kind: Str, span })) = &mut current {
-                        self.next = self.parse_event();
-                        while let Some(Event::Node(Node { kind: Str, span: s })) = self.next {
-                            *span = span.union(s);
-                            self.next = self.parse_event();
-                        }
-                    }
-
-                    current
-                })
-                .or_else(|| self.openers.pop().map(Event::Exit))
-        })
+        // TODO merge str/unclosed enters
+        self.events.pop_front()
     }
 }
 
@@ -272,6 +273,7 @@ mod test {
     use super::Container::*;
     use super::Event::*;
     use super::NodeKind::*;
+    use super::OpenerState::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -317,13 +319,13 @@ mod test {
     fn container_basic() {
         test_parse!(
             "_abc_",
-            Enter(Emphasis),
+            Enter(Emphasis, Closed),
             Node(Str.span(1, 4)),
             Exit(Emphasis)
         );
         test_parse!(
             "{_abc_}",
-            Enter(Emphasis),
+            Enter(Emphasis, Closed),
             Node(Str.span(2, 5)),
             Exit(Emphasis)
         );
@@ -333,16 +335,16 @@ mod test {
     fn container_nest() {
         test_parse!(
             "{_{_abc_}_}",
-            Enter(Emphasis),
-            Enter(Emphasis),
+            Enter(Emphasis, Closed),
+            Enter(Emphasis, Closed),
             Node(Str.span(4, 7)),
             Exit(Emphasis),
             Exit(Emphasis)
         );
         test_parse!(
             "*_abc_*",
-            Enter(Strong),
-            Enter(Emphasis),
+            Enter(Strong, Closed),
+            Enter(Emphasis, Closed),
             Node(Str.span(2, 5)),
             Exit(Emphasis),
             Exit(Strong)
@@ -358,31 +360,22 @@ mod test {
     fn container_close_parent() {
         test_parse!(
             "{*{_abc*}",
-            Enter(Strong),
-            Enter(Emphasis),
+            Enter(Strong, Closed),
+            Enter(Emphasis, Unclosed),
             Node(Str.span(4, 7)),
-            Exit(Emphasis),
-            Exit(Strong)
+            Exit(Strong),
         );
     }
 
     #[test]
     fn container_close_block() {
-        test_parse!(
-            "{_abc",
-            Enter(Emphasis),
-            Node(Str.span(2, 5)),
-            Exit(Emphasis)
-        );
+        test_parse!("{_abc", Enter(Emphasis, Unclosed), Node(Str.span(2, 5)));
         test_parse!(
             "{_{*{_abc",
-            Enter(Emphasis),
-            Enter(Strong),
-            Enter(Emphasis),
+            Enter(Emphasis, Unclosed),
+            Enter(Strong, Unclosed),
+            Enter(Emphasis, Unclosed),
             Node(Str.span(6, 9)),
-            Exit(Emphasis),
-            Exit(Strong),
-            Exit(Emphasis),
         );
     }
 }
