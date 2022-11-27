@@ -228,10 +228,8 @@ impl<'s> Parser<'s> {
                 .rposition(|(c, _)| *c == cont_new)
                 .and_then(|o| {
                     matches!(dir, Dir::Close | Dir::Both).then(|| {
-                        let (cont_open, e) = &mut self.openers[o];
-                        assert_eq!(*cont_open, cont_new);
-                        if let Event::Enter(cont_ev, state_ev) = &mut self.events[*e] {
-                            assert_eq!(*cont_ev, cont_new);
+                        let (_, e) = &mut self.openers[o];
+                        if let Event::Enter(_, state_ev) = &mut self.events[*e] {
                             *state_ev = OpenerState::Closed;
                             self.openers.drain(o..);
                             Event::Exit(cont_new)
