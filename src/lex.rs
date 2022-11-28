@@ -22,7 +22,6 @@ pub enum Kind {
     Close(Delimiter),
     Sym(Symbol),
     Seq(Sequence),
-    Eof,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

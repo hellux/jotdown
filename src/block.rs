@@ -13,13 +13,13 @@ pub fn parse(src: &str) -> Tree {
     Parser::new(src).parse()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
     Leaf(Leaf),
     Container(Container),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Leaf {
     Paragraph,
     Heading { level: u8 },
@@ -27,9 +27,10 @@ pub enum Leaf {
     Table,
     LinkDefinition,
     CodeBlock { fence_length: u8 },
+    ThematicBreak,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Container {
     Blockquote,
     Div { fence_length: u8 },
@@ -37,14 +38,14 @@ pub enum Container {
     Footnote { indent: u8 },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Atom {
     /// Inline content with unparsed inline elements.
     Inline,
     /// A line with no non-whitespace characters.
     Blankline,
-    /// Thematic break.
-    ThematicBreak,
+    ///// Thematic break.
+    //ThematicBreak,
 }
 
 struct Parser<'s> {
@@ -65,7 +66,7 @@ impl<'s> Parser<'s> {
     pub fn parse(mut self) -> Tree {
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
-        loop {
+        while line_pos < lines.len() {
             let line_count = self.parse_block(&mut lines[line_pos..]);
             if line_count == 0 {
                 break;
@@ -202,7 +203,6 @@ impl Block {
                     .flatten()
             }
             _ => {
-                /*
                 let thematic_break = || {
                     let mut without_whitespace = line.chars().filter(|c| !c.is_whitespace());
                     let length = without_whitespace.clone().count();
@@ -211,9 +211,8 @@ impl Block {
                             || without_whitespace.all(|c| c == '*')))
                     .then(|| (Self::Leaf(ThematicBreak), Span::by_len(start, line.len())))
                 };
-                */
-                //thematic_break()
-                None
+
+                thematic_break()
             }
         }
         .unwrap_or((Self::Leaf(Paragraph), Span::new(0, 0)))
@@ -225,7 +224,7 @@ impl Block {
             Self::Leaf(Paragraph | Heading { .. } | Table | LinkDefinition) => {
                 !line.trim().is_empty()
             }
-            Self::Leaf(Attributes) => false,
+            Self::Leaf(Attributes | ThematicBreak) => false,
             Self::Container(Blockquote) => line.trim().starts_with('>'),
             Self::Container(Footnote { indent } | ListItem { indent }) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
@@ -276,7 +275,7 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
-    use crate::tree::Event;
+    use crate::tree::EventKind::*;
     use crate::Span;
 
     use super::Atom::*;
@@ -288,81 +287,82 @@ mod test {
     macro_rules! test_parse {
         ($src:expr $(,$($event:expr),* $(,)?)?) => {
             let t = super::Parser::new($src).parse();
-            let actual = t.iter().collect::<Vec<_>>();
+            let actual = t.iter().map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($event),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
     }
 
     #[test]
-    fn parse_elem_oneline() {
+    fn parse_para_oneline() {
         test_parse!(
             "para\n",
-            Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
-            Event::Element(&Inline, Span::new(0, 5)),
-            Event::Exit,
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), "para\n"),
+            (Exit, ""),
         );
     }
 
     #[test]
-    fn parse_elem_multiline() {
+    fn parse_para_multiline() {
         test_parse!(
-            "para\npara\n",
-            Event::Enter(&Leaf(Paragraph), Span::new(0, 0)),
-            Event::Element(&Inline, Span::new(0, 5)),
-            Event::Element(&Inline, Span::new(5, 10)),
-            Event::Exit,
+            "para0\npara1\n",
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), "para0\n"),
+            (Element(Inline), "para1\n"),
+            (Exit, ""),
         );
     }
 
     #[test]
-    fn parse_elem_multi() {
+    fn parse_heading_multi() {
         test_parse!(
             concat!(
                 "# 2\n",
                 "\n",
-                " # 8\n",
+                " #   8\n",
                 "  12\n",
                 "15\n", //
             ),
-            Event::Enter(&Leaf(Heading { level: 1 }), Span::new(0, 1)),
-            Event::Element(&Inline, Span::new(1, 4)),
-            Event::Exit,
-            Event::Element(&Blankline, Span::new(4, 5)),
-            Event::Enter(&Leaf(Heading { level: 1 }), Span::new(6, 7)),
-            Event::Element(&Inline, Span::new(7, 10)),
-            Event::Element(&Inline, Span::new(10, 15)),
-            Event::Element(&Inline, Span::new(15, 18)),
-            Event::Exit,
+            (Enter(Leaf(Heading { level: 1 })), "#"),
+            (Element(Inline), " 2\n"),
+            (Exit, "#"),
+            (Element(Blankline), "\n"),
+            (Enter(Leaf(Heading { level: 1 })), "#"),
+            (Element(Inline), "   8\n"),
+            (Element(Inline), "  12\n"),
+            (Element(Inline), "15\n"),
+            (Exit, "#"),
         );
     }
 
     #[test]
-    fn parse_container() {
+    fn parse_blockquote() {
         test_parse!(
             concat!(
                 "> a\n",
                 ">\n",
                 "> ## hl\n",
                 ">\n",
-                "> para\n", //
+                ">  para\n", //
             ),
-            Event::Enter(&Container(Blockquote), Span::new(0, 1)),
-            Event::Enter(&Leaf(Paragraph), Span::new(1, 1)),
-            Event::Element(&Inline, Span::new(1, 4)),
-            Event::Exit,
-            Event::Element(&Blankline, Span::new(5, 6)),
-            Event::Enter(&Leaf(Heading { level: 2 }), Span::new(8, 10)),
-            Event::Element(&Inline, Span::new(10, 14)),
-            Event::Exit,
-            Event::Element(&Blankline, Span::new(15, 16)),
-            Event::Enter(&Leaf(Paragraph), Span::new(17, 17)),
-            Event::Element(&Inline, Span::new(17, 23)),
-            Event::Exit,
-            Event::Exit,
+            (Enter(Container(Blockquote)), ">"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), " a\n"),
+            (Exit, ""),
+            (Element(Blankline), "\n"),
+            (Enter(Leaf(Heading { level: 2 })), "##"),
+            (Element(Inline), " hl\n"),
+            (Exit, "##"),
+            (Element(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), "  para\n"),
+            (Exit, ""),
+            (Exit, ">"),
         );
     }
 
+    /*
     #[test]
     fn parse_code_block() {
         test_parse!(
@@ -372,12 +372,13 @@ mod test {
                 "l1\n",
                 "```", //
             ),
-            Event::Enter(&Leaf(CodeBlock { fence_length: 3 }), Span::new(0, 8)),
-            Event::Element(&Inline, Span::new(8, 11)),
-            Event::Element(&Inline, Span::new(11, 14)),
-            Event::Exit
+            (Event::Enter(Leaf(CodeBlock { fence_length: 3 })), "```lang\n"),
+            (Event::Element(Inline), "l0\n"),
+            (Event::Element(Inline), "l1\n"),
+            (Event::Exit, "```lang\n"),
         );
     }
+    */
 
     macro_rules! test_block {
         ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {

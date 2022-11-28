@@ -1,11 +1,24 @@
 use crate::Span;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EventKind<C, E> {
+    Enter(C),
+    Element(E),
+    Exit,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Event<C, A> {
+    pub kind: EventKind<C, A>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct Tree<C, E> {
     nodes: Vec<Node<C, E>>,
 }
 
-impl<C, E> Tree<C, E> {
+impl<C: Copy, E: Copy> Tree<C, E> {
     fn new(nodes: Vec<Node<C, E>>) -> Self {
         Self { nodes }
     }
@@ -15,53 +28,41 @@ impl<C, E> Tree<C, E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Event<'a, C, E> {
-    Enter(&'a C, Span),
-    Element(&'a E, Span),
-    Exit,
-}
-
-impl<'a, C, E> Event<'a, C, E> {
-    pub fn span(&self) -> Span {
-        match self {
-            Self::Enter(_, sp) | Self::Element(_, sp) => *sp,
-            Self::Exit => panic!(),
-        }
-    }
-}
-
 pub struct Iter<'a, C, E> {
     nodes: &'a [Node<C, E>],
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
 
-impl<'a, C, E> Iterator for Iter<'a, C, E> {
-    type Item = Event<'a, C, E>;
+impl<'a, C: Copy, E: Copy> Iterator for Iter<'a, C, E> {
+    type Item = Event<C, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(head) = self.head {
             let n = &self.nodes[head.index()];
-            match &n.kind {
+            let kind = match &n.kind {
                 NodeKind::Root => {
                     self.head = n.next;
-                    self.next()
+                    return self.next();
                 }
                 NodeKind::Container(c, child) => {
                     self.branch.push(head);
                     self.head = *child;
-                    Some(Event::Enter(c, n.span))
+                    EventKind::Enter(*c)
                 }
                 NodeKind::Element(e) => {
                     self.head = n.next;
-                    Some(Event::Element(e, n.span))
+                    EventKind::Element(*e)
                 }
-            }
+            };
+            Some(Event { kind, span: n.span })
         } else if let Some(block_ni) = self.branch.pop() {
-            let Node { next, .. } = &self.nodes[block_ni.index()];
+            let Node { next, span, .. } = &self.nodes[block_ni.index()];
             self.head = *next;
-            Some(Event::Exit)
+            Some(Event {
+                kind: EventKind::Exit,
+                span: *span,
+            })
         } else {
             None
         }
@@ -117,7 +118,7 @@ pub struct Builder<C, E> {
     head: Option<NodeIndex>,
 }
 
-impl<C, E> Builder<C, E> {
+impl<C: Copy, E: Copy> Builder<C, E> {
     pub(super) fn new() -> Self {
         Builder {
             nodes: vec![Node {
@@ -188,30 +189,32 @@ impl<C, E> Builder<C, E> {
     }
 }
 
-impl<C: std::fmt::Display + Clone, E: std::fmt::Display + Clone> std::fmt::Display
-    for Builder<C, E>
-{
+impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display for Builder<C, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.clone().finish().fmt(f)
     }
 }
 
-impl<C: std::fmt::Display, E: std::fmt::Display> std::fmt::Display for Tree<C, E> {
+impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display for Tree<C, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
         for e in self.iter() {
             let indent = INDENT.repeat(level);
-            match e {
-                Event::Enter(container, sp) => {
-                    writeln!(f, "{}{} ({}:{})", indent, container, sp.start(), sp.end())?;
+            match e.kind {
+                EventKind::Enter(container) => {
+                    write!(f, "{}{}", indent, container)?;
                     level += 1;
                 }
-                Event::Exit => level -= 1,
-                Event::Element(element, sp) => {
-                    writeln!(f, "{}{} ({}:{})", indent, element, sp.start(), sp.end())?;
+                EventKind::Exit => {
+                    level -= 1;
+                    continue;
+                }
+                EventKind::Element(element) => {
+                    write!(f, "{}{}", indent, element)?;
                 }
             }
+            writeln!(f, " ({}:{})", e.span.start(), e.span.end())?;
         }
         Ok(())
     }

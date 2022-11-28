@@ -303,7 +303,7 @@ mod test {
             #[allow(unused)]
             let mut p = super::Parser::new();
             p.parse($src);
-            let actual = p.collect::<Vec<_>>();
+            let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
@@ -320,37 +320,40 @@ mod test {
 
     #[test]
     fn str() {
-        test_parse!("abc", Node(Str).span(0, 3));
-        test_parse!("abc def", Node(Str).span(0, 7));
+        test_parse!("abc", (Node(Str), "abc"));
+        test_parse!("abc def", (Node(Str), "abc def"));
     }
 
     #[test]
     fn verbatim() {
-        test_parse!("`abc`", Node(Verbatim).span(1, 4));
-        test_parse!("`abc", Node(Verbatim).span(1, 4));
-        test_parse!("``abc``", Node(Verbatim).span(2, 5));
-        test_parse!("abc `def`", Node(Str).span(0, 4), Node(Verbatim).span(5, 8));
+        test_parse!("`abc`", (Node(Verbatim), "abc"));
+        test_parse!("`abc", (Node(Verbatim), "abc"));
+        test_parse!("``abc``", (Node(Verbatim), "abc"));
+        test_parse!("abc `def`", (Node(Str), "abc "), (Node(Verbatim), "def"));
     }
 
     #[test]
     fn math() {
-        test_parse!("$`abc`", Node(InlineMath).span(2, 5));
-        test_parse!("$$```abc", Node(DisplayMath).span(5, 8));
+        test_parse!("$`abc`", (Node(InlineMath), "abc"));
+        test_parse!("$`abc` str", (Node(InlineMath), "abc"), (Node(Str), " str"));
+        test_parse!("$$`abc`", (Node(DisplayMath), "abc"));
+        test_parse!("$`abc", (Node(InlineMath), "abc"));
+        test_parse!("$```abc```", (Node(InlineMath), "abc"),);
     }
 
     #[test]
     fn container_basic() {
         test_parse!(
             "_abc_",
-            Enter(Emphasis).span(0, 1),
-            Node(Str).span(1, 4),
-            Exit(Emphasis).span(4, 5),
+            (Enter(Emphasis), "_"),
+            (Node(Str), "abc"),
+            (Exit(Emphasis), "_"),
         );
         test_parse!(
             "{_abc_}",
-            Enter(Emphasis).span(0, 2),
-            Node(Str).span(2, 5),
-            Exit(Emphasis).span(5, 7),
+            (Enter(Emphasis), "{_"),
+            (Node(Str), "abc"),
+            (Exit(Emphasis), "_}"),
         );
     }
 
@@ -358,40 +361,40 @@ mod test {
     fn container_nest() {
         test_parse!(
             "{_{_abc_}_}",
-            Enter(Emphasis).span(0, 2),
-            Enter(Emphasis).span(2, 4),
-            Node(Str).span(4, 7),
-            Exit(Emphasis).span(7, 9),
-            Exit(Emphasis).span(9, 11),
+            (Enter(Emphasis), "{_"),
+            (Enter(Emphasis), "{_"),
+            (Node(Str), "abc"),
+            (Exit(Emphasis), "_}"),
+            (Exit(Emphasis), "_}"),
         );
         test_parse!(
             "*_abc_*",
-            Enter(Strong).span(0, 1),
-            Enter(Emphasis).span(1, 2),
-            Node(Str).span(2, 5),
-            Exit(Emphasis).span(5, 6),
-            Exit(Strong).span(6, 7),
+            (Enter(Strong), "*"),
+            (Enter(Emphasis), "_"),
+            (Node(Str), "abc"),
+            (Exit(Emphasis), "_"),
+            (Exit(Strong), "*"),
         );
     }
 
     #[test]
     fn container_unopened() {
-        test_parse!("*}abc", Node(Str).span(0, 5));
+        test_parse!("*}abc", (Node(Str), "*}abc"));
     }
 
     #[test]
     fn container_close_parent() {
         test_parse!(
             "{*{_abc*}",
-            Enter(Strong).span(0, 2),
-            Node(Str).span(2, 7),
-            Exit(Strong).span(7, 9),
+            (Enter(Strong), "{*"),
+            (Node(Str), "{_abc"),
+            (Exit(Strong), "*}"),
         );
     }
 
     #[test]
     fn container_close_block() {
-        test_parse!("{_abc", Node(Str).span(0, 5),);
-        test_parse!("{_{*{_abc", Node(Str).span(0, 9),);
+        test_parse!("{_abc", (Node(Str), "{_abc"));
+        test_parse!("{_{*{_abc", (Node(Str), "{_{*{_abc"));
     }
 }

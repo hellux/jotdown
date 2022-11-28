@@ -1,14 +1,15 @@
 mod block;
+mod html;
 mod inline;
 mod lex;
 mod span;
 mod tree;
 
+use span::Span;
+
 pub struct Block;
 
 const EOF: char = '\0';
-
-use span::Span;
 
 pub struct Parser<'s> {
     src: &'s str,
@@ -35,11 +36,13 @@ impl<'s> Parser<'s> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum ListType {
     Unordered,
     Ordered,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum TagKind<'s> {
     Paragraph,
     Heading { level: u8 },
@@ -56,6 +59,13 @@ pub enum TagKind<'s> {
     DescriptionList,
     DescriptionItem,
     Footnote { tag: &'s str },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Event2<'s> {
+    Start(TagKind<'s>),
+    End(TagKind<'s>),
+    Blankline,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,33 +93,33 @@ impl<'s> Iterator for Iter<'s> {
                 inline.span = inline.span.translate(self.inline_start);
                 return Some(Event::Inline(inline));
             } else if let Some(ev) = self.tree.next() {
-                match ev {
-                    tree::Event::Element(atom, sp) => {
-                        assert_eq!(*atom, block::Atom::Inline);
-                        parser.parse(sp.of(self.src));
-                        self.inline_start = sp.start();
+                match ev.kind {
+                    tree::EventKind::Element(atom) => {
+                        assert_eq!(atom, block::Atom::Inline);
+                        parser.parse(ev.span.of(self.src));
+                        self.inline_start = ev.span.start();
                     }
-                    tree::Event::Exit => {
+                    tree::EventKind::Exit => {
                         self.parser = None;
                         return Some(Event::End);
                     }
-                    tree::Event::Enter(..) => unreachable!(),
+                    tree::EventKind::Enter(..) => unreachable!(),
                 }
             }
         }
 
-        self.tree.next().map(|ev| match ev {
-            tree::Event::Element(atom, _sp) => {
-                assert_eq!(*atom, block::Atom::Blankline);
+        self.tree.next().map(|ev| match ev.kind {
+            tree::EventKind::Element(atom) => {
+                assert_eq!(atom, block::Atom::Blankline);
                 Event::Blankline
             }
-            tree::Event::Enter(block, ..) => {
+            tree::EventKind::Enter(block) => {
                 if matches!(block, block::Block::Leaf(..)) {
                     self.parser = Some(inline::Parser::new());
                 }
-                Event::Start(block.clone())
+                Event::Start(block)
             }
-            tree::Event::Exit => Event::End,
+            tree::EventKind::Exit => Event::End,
         })
     }
 }
