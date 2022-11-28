@@ -4,7 +4,7 @@ use crate::Span;
 pub enum EventKind<C, E> {
     Enter(C),
     Element(E),
-    Exit,
+    Exit(C),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,10 +53,15 @@ impl<C: Copy, E: Copy> Iterator for Tree<C, E> {
             };
             Some(Event { kind, span: n.span })
         } else if let Some(block_ni) = self.branch.pop() {
-            let Node { next, span, .. } = &self.nodes[block_ni.index()];
+            let Node { next, kind, span } = &self.nodes[block_ni.index()];
+            let cont = if let NodeKind::Container(c, _) = kind {
+                c
+            } else {
+                panic!();
+            };
             self.head = *next;
             Some(Event {
-                kind: EventKind::Exit,
+                kind: EventKind::Exit(*cont),
                 span: *span,
             })
         } else {
@@ -192,7 +197,7 @@ impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display
                     write!(f, "{}{}", indent, container)?;
                     level += 1;
                 }
-                EventKind::Exit => {
+                EventKind::Exit(_) => {
                     level -= 1;
                     continue;
                 }

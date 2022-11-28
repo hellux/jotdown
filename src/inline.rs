@@ -15,7 +15,7 @@ pub enum Atom {
     Escape,
     Nbsp,
     OpenMarker, // ??
-    Ellipses,
+    Ellipsis,
     ImageMarker, // ??
     EmDash,
     EnDash,

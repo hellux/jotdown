@@ -306,8 +306,8 @@ mod test {
         test_parse!(
             "para\n",
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "para\n"),
-            (Exit, ""),
+            (Element(Inline), "para"),
+            (Exit(Leaf(Paragraph)), ""),
         );
     }
 
@@ -317,8 +317,8 @@ mod test {
             "para0\npara1\n",
             (Enter(Leaf(Paragraph)), ""),
             (Element(Inline), "para0\n"),
-            (Element(Inline), "para1\n"),
-            (Exit, ""),
+            (Element(Inline), "para1"),
+            (Exit(Leaf(Paragraph)), ""),
         );
     }
 
@@ -333,14 +333,14 @@ mod test {
                 "15\n", //
             ),
             (Enter(Leaf(Heading { level: 1 })), "#"),
-            (Element(Inline), " 2\n"),
-            (Exit, "#"),
+            (Element(Inline), "2"),
+            (Exit(Leaf(Heading { level: 1 })), "#"),
             (Element(Blankline), "\n"),
             (Enter(Leaf(Heading { level: 1 })), "#"),
             (Element(Inline), "   8\n"),
             (Element(Inline), "  12\n"),
-            (Element(Inline), "15\n"),
-            (Exit, "#"),
+            (Element(Inline), "15"),
+            (Exit(Leaf(Heading { level: 1 })), "#"),
         );
     }
 
@@ -356,17 +356,17 @@ mod test {
             ),
             (Enter(Container(Blockquote)), ">"),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), " a\n"),
-            (Exit, ""),
-            (Element(Blankline), "\n"),
+            (Element(Inline), "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Element(Blankline), ""),
             (Enter(Leaf(Heading { level: 2 })), "##"),
-            (Element(Inline), " hl\n"),
-            (Exit, "##"),
-            (Element(Blankline), "\n"),
+            (Element(Inline), "hl"),
+            (Exit(Leaf(Heading { level: 2 })), "##"),
+            (Element(Blankline), ""),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "  para\n"),
-            (Exit, ""),
-            (Exit, ">"),
+            (Element(Inline), "para"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(Blockquote)), ">"),
         );
     }
 
@@ -379,9 +379,13 @@ mod test {
                 "```", //
             ),
             (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
-            (Element(Inline), "\n"),
-            (Element(Inline), "l0\n"),
-            (Exit, "```"),
+            (Element(Inline), ""),
+            (Element(Inline), "l0"),
+            (Exit(Leaf(CodeBlock { fence_length: 3 })), "```"),
+            (Element(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), "para"),
+            (Exit(Leaf(Paragraph)), ""),
         );
         test_parse!(
             concat!(
@@ -395,8 +399,8 @@ mod test {
             (Element(Inline), "lang\n"),
             (Element(Inline), "l0\n"),
             (Element(Inline), "```\n"),
-            (Element(Inline), " l1\n"),
-            (Exit, "````"),
+            (Element(Inline), " l1"),
+            (Exit(Leaf(CodeBlock { fence_length: 4 })), "````"),
         );
     }
 
