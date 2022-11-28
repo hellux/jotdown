@@ -226,7 +226,8 @@ impl Block {
     }
 
     /// Determine if this line continues a block of a certain type.
-    fn continues(&self, line: &str) -> bool {
+    fn continues(self, line: &str) -> bool {
+        //let start = Self::start(line); // TODO allow starting new block without blank line
         match self {
             Self::Leaf(Paragraph | Heading { .. } | Table | LinkDefinition) => {
                 !line.trim().is_empty()
@@ -235,11 +236,11 @@ impl Block {
             Self::Container(Blockquote) => line.trim().starts_with('>'),
             Self::Container(Footnote { indent } | ListItem { indent }) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                !line.trim().is_empty() && spaces >= (*indent).into()
+                !line.trim().is_empty() && spaces >= (indent).into()
             }
             Self::Container(Div { fence_length }) | Self::Leaf(CodeBlock { fence_length }) => {
                 let mut c = line.chars();
-                !((&mut c).take((*fence_length).into()).all(|c| c == ':')
+                !((&mut c).take((fence_length).into()).all(|c| c == ':')
                     && c.next().map_or(false, char::is_whitespace))
             }
         }
