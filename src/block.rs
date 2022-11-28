@@ -7,7 +7,6 @@ use Container::*;
 use Leaf::*;
 
 pub type Tree = tree::Tree<Block, Atom>;
-pub type TreeIter<'t> = tree::Iter<'t, Block, Atom>;
 
 pub fn parse(src: &str) -> Tree {
     Parser::new(src).parse()
@@ -285,13 +284,13 @@ mod test {
     use super::Leaf::*;
 
     macro_rules! test_parse {
-        ($src:expr $(,$($event:expr),* $(,)?)?) => {
-            let t = super::Parser::new($src).parse();
-            let actual = t.iter().map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
-            let expected = &[$($($event),*,)?];
-            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
-        };
-    }
+            ($src:expr $(,$($event:expr),* $(,)?)?) => {
+                let t = super::Parser::new($src).parse();
+                let actual = t.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
+                let expected = &[$($($event),*,)?];
+                assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+            };
+        }
 
     #[test]
     fn parse_para_oneline() {

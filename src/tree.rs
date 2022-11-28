@@ -16,25 +16,21 @@ pub struct Event<C, A> {
 #[derive(Debug, Clone)]
 pub struct Tree<C, E> {
     nodes: Vec<Node<C, E>>,
-}
-
-impl<C: Copy, E: Copy> Tree<C, E> {
-    fn new(nodes: Vec<Node<C, E>>) -> Self {
-        Self { nodes }
-    }
-
-    pub fn iter(&self) -> Iter<C, E> {
-        self.into()
-    }
-}
-
-pub struct Iter<'a, C, E> {
-    nodes: &'a [Node<C, E>],
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
 
-impl<'a, C: Copy, E: Copy> Iterator for Iter<'a, C, E> {
+impl<C, E> Tree<C, E> {
+    fn new(nodes: Vec<Node<C, E>>) -> Self {
+        Self {
+            nodes,
+            branch: Vec::new(),
+            head: Some(NodeIndex::root()),
+        }
+    }
+}
+
+impl<C: Copy, E: Copy> Iterator for Tree<C, E> {
     type Item = Event<C, E>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -65,16 +61,6 @@ impl<'a, C: Copy, E: Copy> Iterator for Iter<'a, C, E> {
             })
         } else {
             None
-        }
-    }
-}
-
-impl<'a, C, E> From<&'a Tree<C, E>> for Iter<'a, C, E> {
-    fn from(tree: &'a Tree<C, E>) -> Self {
-        Self {
-            nodes: &tree.nodes,
-            branch: Vec::new(),
-            head: Some(NodeIndex::root()),
         }
     }
 }
@@ -199,7 +185,7 @@ impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
-        for e in self.iter() {
+        for e in self.clone() {
             let indent = INDENT.repeat(level);
             match e.kind {
                 EventKind::Enter(container) => {

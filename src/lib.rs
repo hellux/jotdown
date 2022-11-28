@@ -11,31 +11,6 @@ pub struct Block;
 
 const EOF: char = '\0';
 
-pub struct Parser<'s> {
-    src: &'s str,
-    tree: block::Tree,
-}
-
-impl<'s> Parser<'s> {
-    #[must_use]
-    pub fn new(src: &'s str) -> Self {
-        Self {
-            src,
-            tree: block::parse(src),
-        }
-    }
-
-    #[must_use]
-    pub fn iter(&self) -> Iter {
-        Iter {
-            src: self.src,
-            tree: self.tree.iter(),
-            parser: None,
-            inline_start: 0,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum ListType {
     Unordered,
@@ -76,14 +51,26 @@ pub enum Event {
     Blankline,
 }
 
-pub struct Iter<'s> {
+pub struct Parser<'s> {
     src: &'s str,
-    tree: block::TreeIter<'s>,
+    tree: block::Tree,
     parser: Option<inline::Parser<'s>>,
     inline_start: usize,
 }
 
-impl<'s> Iterator for Iter<'s> {
+impl<'s> Parser<'s> {
+    #[must_use]
+    pub fn new(src: &'s str) -> Self {
+        Self {
+            src,
+            tree: block::parse(src),
+            parser: None,
+            inline_start: 0,
+        }
+    }
+}
+
+impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -137,7 +124,7 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Parser::new($src).iter().collect::<Vec<_>>();
+            let actual = super::Parser::new($src).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
