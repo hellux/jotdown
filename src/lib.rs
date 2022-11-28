@@ -12,36 +12,131 @@ pub struct Block;
 const EOF: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ListType {
-    Unordered,
-    Ordered,
+pub enum Event2<'s> {
+    /// Start of a tag.
+    Start(TagKind<'s>, Attributes<'s>),
+    /// End of a tag.
+    End(TagKind<'s>),
+    /// A string object, text only.
+    Str(&'s str),
+    /// A verbatim string.
+    Verbatim(&'s str),
+    /// An inline or display math element.
+    Math { content: &'s str, display: bool },
+    /// An ellipsis, i.e. a set of three periods.
+    Ellipsis,
+    /// An en dash.
+    EnDash,
+    /// An em dash.
+    EmDash,
+    /// A thematic break, typically a horizontal rule.
+    ThematicBreak,
+    /// A blank line.
+    Blankline,
+    /// A space that may not break a line.
+    NonBreakingSpace,
+    /// A newline that may or may not break a line in the output format.
+    Softbreak,
+    /// A newline that must break a line.
+    HardBreak,
 }
+
+// Attributes are rare, better to pay 8 bytes always and sometimes an extra allocation instead of
+// always 24 bytes.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Attributes<'s>(Option<Box<Vec<(&'s str, &'s str)>>>);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TagKind<'s> {
+    /// A paragraph.
     Paragraph,
+    /// A heading.
     Heading { level: u8 },
-    Table,
-    TableRow,
-    TableCell,
-    RawBlock { format: &'s str },
-    CodeBlock { language: &'s str },
-    Blockquote,
+    /// A link with a destination URL.
+    Link(&'s str, LinkType),
+    /// An image.
+    Image(&'s str),
+    /// A divider element.
     Div,
-    UnorderedList,
-    OrderedList { start: usize },
+    /// An inline divider element.
+    Span,
+    /// A table element.
+    Table,
+    /// A row element of a table.
+    TableRow,
+    /// A cell element of row within a table.
+    TableCell,
+    /// A block with raw markup for a specific output format.
+    RawBlock { format: &'s str },
+    /// A block with code in a specific language.
+    CodeBlock { language: Option<&'s str> },
+    /// A blockquote element.
+    Blockquote,
+    /// A list.
+    List(List),
+    /// An item of a list
     ListItem,
+    /// A description list element.
     DescriptionList,
+    /// A item of a description list.
     DescriptionItem,
+    /// A footnote definition.
     Footnote { tag: &'s str },
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Event2<'s> {
-    Start(TagKind<'s>),
-    End(TagKind<'s>),
-    Blankline,
+pub enum LinkType {
+    Inline,
+    Reference,
+    Autolink,
+    Email,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum List {
+    Unordered,
+    Ordered {
+        kind: OrderedListKind,
+        start: u32,
+        format: OrderedListFormat,
+    },
+    Description,
+    Task(bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderedListKind {
+    /// Decimal numbering, e.g. `1)`.
+    Decimal,
+    /// Lowercase alphabetic numbering, e.g. `a)`.
+    AlphaLower,
+    /// Uppercase alphabetic numbering, e.g. `A)`.
+    AlphaUpper,
+    /// Lowercase roman numbering, e.g. `iv)`.
+    RomanLower,
+    /// Uppercase roman numbering, e.g. `IV)`.
+    RomanUpper,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderedListFormat {
+    /// Number is followed by a period, e.g. `1.`.
+    Period,
+    /// Number is followed by a closing parenthesis, e.g. `1)`.
+    Paren,
+    /// Number is enclosed by parentheses, e.g. `(1)`.
+    ParenParen,
+}
+
+/*
+impl<'s> Event<'s> {
+    fn from_inline(src: &'s str, inline: inline::Event) -> Self {
+        match inline {
+            Enter
+        }
+    }
+}
+*/
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
