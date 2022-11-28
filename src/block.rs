@@ -85,52 +85,59 @@ impl<'s> Parser<'s> {
             })
             .count();
         let lines = &mut lines[blanklines..];
-        Block::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(0, |(kind, span, len)| {
-            let start = lines.get(0).map(|sp| sp.start()).unwrap();
-            let span = span.translate(start);
-            match &kind {
-                Block::Leaf(_) => {
-                    self.tree.enter(kind, span);
-                    lines[0] = lines[0].with_start(span.end());
-                    for line in lines.iter().take(len) {
-                        self.tree.elem(Atom::Inline, *line);
+        Block::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
+            blanklines,
+            |(kind, span, len)| {
+                let start = lines.get(0).map(|sp| sp.start()).unwrap();
+                let span = span.translate(start);
+                match &kind {
+                    Block::Leaf(l) => {
+                        self.tree.enter(kind, span);
+                        lines[0] = lines[0].with_start(span.end());
+                        let len = match l {
+                            CodeBlock { .. } => len - 2,
+                            _ => len,
+                        };
+                        for line in &lines[0..len] {
+                            self.tree.elem(Atom::Inline, *line);
+                        }
+                    }
+                    Block::Container(c) => {
+                        let (skip_chars, skip_lines_suffix) = match &c {
+                            Blockquote => (2, 0),
+                            ListItem { indent } | Footnote { indent } => (*indent, 0),
+                            Div { .. } => (0, 1),
+                        };
+                        let line_count_inner = lines.len() - skip_lines_suffix;
+
+                        // update spans, remove indentation / container prefix
+                        lines[0] = lines[0].with_start(span.end());
+                        lines
+                            .iter_mut()
+                            .skip(1)
+                            .take(line_count_inner)
+                            .for_each(|sp| {
+                                let skip = (sp
+                                    .of(self.src)
+                                    .chars()
+                                    .take_while(|c| c.is_whitespace())
+                                    .count()
+                                    + usize::from(skip_chars))
+                                .min(sp.len());
+                                *sp = sp.trim_start(skip);
+                            });
+
+                        self.tree.enter(kind, span);
+                        let mut l = 0;
+                        while l < line_count_inner {
+                            l += self.parse_block(&mut lines[l..line_count_inner]);
+                        }
                     }
                 }
-                Block::Container(c) => {
-                    let (skip_chars, skip_lines_suffix) = match &c {
-                        Blockquote => (2, 0),
-                        ListItem { indent } | Footnote { indent } => (*indent, 0),
-                        Div { .. } => (0, 1),
-                    };
-                    let line_count_inner = lines.len() - skip_lines_suffix;
-
-                    // update spans, remove indentation / container prefix
-                    lines[0] = lines[0].with_start(span.end());
-                    lines
-                        .iter_mut()
-                        .skip(1)
-                        .take(line_count_inner)
-                        .for_each(|sp| {
-                            let skip = (sp
-                                .of(self.src)
-                                .chars()
-                                .take_while(|c| c.is_whitespace())
-                                .count()
-                                + usize::from(skip_chars))
-                            .min(sp.len());
-                            *sp = sp.trim_start(skip);
-                        });
-
-                    self.tree.enter(kind, span);
-                    let mut l = 0;
-                    while l < line_count_inner {
-                        l += self.parse_block(&mut lines[l..line_count_inner]);
-                    }
-                }
-            }
-            self.tree.exit();
-            blanklines + len
-        })
+                self.tree.exit();
+                blanklines + len
+            },
+        )
     }
 }
 
@@ -139,12 +146,13 @@ impl Block {
     fn parse<'b, I: Iterator<Item = &'b str>>(mut lines: I) -> Option<(Block, Span, usize)> {
         lines.next().map(|l| {
             let (kind, sp) = Block::start(l);
+            let has_end_delimiter = matches!(
+                kind,
+                Self::Leaf(CodeBlock { .. }) | Self::Container(Div { .. })
+            );
             let line_count = 1
                 + lines.take_while(|l| kind.continues(l)).count()
-                + usize::from(matches!(
-                    kind,
-                    Self::Leaf(CodeBlock { .. }) | Self::Container(Div { .. })
-                ));
+                + usize::from(has_end_delimiter);
             (kind, sp, line_count)
         })
     }
@@ -195,7 +203,7 @@ impl Block {
                                     ':' => Self::Container(Div { fence_length }),
                                     _ => unreachable!(),
                                 },
-                                Span::by_len(start, line.len()),
+                                Span::by_len(start, fence_length.into()),
                             )
                         })
                     })
@@ -361,23 +369,35 @@ mod test {
         );
     }
 
-    /*
     #[test]
     fn parse_code_block() {
         test_parse!(
             concat!(
-                "```lang\n",
+                "```\n",
                 "l0\n",
-                "l1\n",
                 "```", //
             ),
-            (Event::Enter(Leaf(CodeBlock { fence_length: 3 })), "```lang\n"),
-            (Event::Element(Inline), "l0\n"),
-            (Event::Element(Inline), "l1\n"),
-            (Event::Exit, "```lang\n"),
+            (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
+            (Element(Inline), "\n"),
+            (Element(Inline), "l0\n"),
+            (Exit, "```"),
+        );
+        test_parse!(
+            concat!(
+                "````lang\n",
+                "l0\n",
+                "```\n",
+                " l1\n",
+                "````", //
+            ),
+            (Enter(Leaf(CodeBlock { fence_length: 4 })), "````"),
+            (Element(Inline), "lang\n"),
+            (Element(Inline), "l0\n"),
+            (Element(Inline), "```\n"),
+            (Element(Inline), " l1\n"),
+            (Exit, "````"),
         );
     }
-    */
 
     macro_rules! test_block {
         ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
