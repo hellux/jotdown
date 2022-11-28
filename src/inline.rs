@@ -59,7 +59,7 @@ pub enum Container {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum EventKind {
-    Enter(Container, OpenerState),
+    Enter(Container),
     Exit(Container),
     Atom(Atom),
     Node(Node),
@@ -69,12 +69,6 @@ pub enum EventKind {
 pub struct Event {
     pub kind: EventKind,
     pub span: Span,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum OpenerState {
-    Unclosed,
-    Closed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -230,25 +224,22 @@ impl<'s> Parser<'s> {
             lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
             _ => None,
         }
-        .map(|(cont_new, dir)| {
+        .map(|(cont, dir)| {
             self.openers
                 .iter()
-                .rposition(|(c, _)| *c == cont_new)
+                .rposition(|(c, _)| *c == cont)
                 .and_then(|o| {
                     matches!(dir, Dir::Close | Dir::Both).then(|| {
                         let (_, e) = &mut self.openers[o];
-                        if let EventKind::Enter(_, state_ev) = &mut self.events[*e].kind {
-                            *state_ev = OpenerState::Closed;
-                            self.openers.drain(o..);
-                            EventKind::Exit(cont_new)
-                        } else {
-                            panic!()
-                        }
+                        self.events[*e].kind = EventKind::Enter(cont);
+                        self.openers.drain(o..);
+                        EventKind::Exit(cont)
                     })
                 })
                 .unwrap_or_else(|| {
-                    self.openers.push((cont_new, self.events.len()));
-                    EventKind::Enter(cont_new, OpenerState::Unclosed)
+                    self.openers.push((cont, self.events.len()));
+                    // use str for now, replace if closed later
+                    EventKind::Node(Str)
                 })
         })
         .map(|kind| Event {
@@ -264,7 +255,10 @@ impl<'s> Iterator for Parser<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
             || !self.openers.is_empty()
-            || self.events.back().map_or(false, |ev| ev.kind.is_str())
+            || self
+                .events
+                .back()
+                .map_or(false, |ev| matches!(ev.kind, EventKind::Node(Str)))
         {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
@@ -274,10 +268,14 @@ impl<'s> Iterator for Parser<'s> {
         }
 
         self.events.pop_front().map(|e| {
-            if e.kind.is_str() {
+            if matches!(e.kind, EventKind::Node(Str)) {
                 // merge str events
                 let mut span = e.span;
-                while self.events.front().map_or(false, |ev| ev.kind.is_str()) {
+                while self
+                    .events
+                    .front()
+                    .map_or(false, |ev| matches!(ev.kind, EventKind::Node(Str)))
+                {
                     span = span.union(self.events.pop_front().unwrap().span);
                 }
                 Event {
@@ -291,15 +289,6 @@ impl<'s> Iterator for Parser<'s> {
     }
 }
 
-impl EventKind {
-    fn is_str(&self) -> bool {
-        matches!(
-            self,
-            EventKind::Node(Str) | EventKind::Enter(_, OpenerState::Unclosed)
-        )
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::Span;
@@ -308,7 +297,6 @@ mod test {
     use super::Container::*;
     use super::EventKind::*;
     use super::Node::*;
-    use super::OpenerState::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -354,13 +342,13 @@ mod test {
     fn container_basic() {
         test_parse!(
             "_abc_",
-            Enter(Emphasis, Closed).span(0, 1),
+            Enter(Emphasis).span(0, 1),
             Node(Str).span(1, 4),
             Exit(Emphasis).span(4, 5),
         );
         test_parse!(
             "{_abc_}",
-            Enter(Emphasis, Closed).span(0, 2),
+            Enter(Emphasis).span(0, 2),
             Node(Str).span(2, 5),
             Exit(Emphasis).span(5, 7),
         );
@@ -370,16 +358,16 @@ mod test {
     fn container_nest() {
         test_parse!(
             "{_{_abc_}_}",
-            Enter(Emphasis, Closed).span(0, 2),
-            Enter(Emphasis, Closed).span(2, 4),
+            Enter(Emphasis).span(0, 2),
+            Enter(Emphasis).span(2, 4),
             Node(Str).span(4, 7),
             Exit(Emphasis).span(7, 9),
             Exit(Emphasis).span(9, 11),
         );
         test_parse!(
             "*_abc_*",
-            Enter(Strong, Closed).span(0, 1),
-            Enter(Emphasis, Closed).span(1, 2),
+            Enter(Strong).span(0, 1),
+            Enter(Emphasis).span(1, 2),
             Node(Str).span(2, 5),
             Exit(Emphasis).span(5, 6),
             Exit(Strong).span(6, 7),
@@ -395,7 +383,7 @@ mod test {
     fn container_close_parent() {
         test_parse!(
             "{*{_abc*}",
-            Enter(Strong, Closed).span(0, 2),
+            Enter(Strong).span(0, 2),
             Node(Str).span(2, 7),
             Exit(Strong).span(7, 9),
         );
