@@ -7,6 +7,5 @@ fn main() {
         .expect("failed to read unicode file");
 
     let p = jotdown::Parser::new(&src);
-    //let v = p.parse().collect::<Vec<_>>();
-    //print!("{:?}", v);
+    jotdown::html::write(std::io::stdout(), p).unwrap();
 }

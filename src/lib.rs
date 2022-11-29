@@ -1,5 +1,6 @@
+pub mod html;
+
 mod block;
-mod html;
 mod inline;
 mod lex;
 mod span;
@@ -13,60 +14,22 @@ const EOF: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event<'s> {
-    /// Start of a tag.
-    Start(Tag<'s>, Attributes<'s>),
-    /// End of a tag.
-    End(Tag<'s>),
+    /// Start of a container.
+    Start(Container<'s>, Attributes<'s>),
+    /// End of a container.
+    End(Container<'s>),
     /// A string object, text only.
     Str(&'s str),
+    /// An atomic element.
+    Atom(Atom),
     /// A verbatim string.
     Verbatim(&'s str),
     /// An inline or display math element.
     Math { content: &'s str, display: bool },
-    /// An ellipsis, i.e. a set of three periods.
-    Ellipsis,
-    /// An en dash.
-    EnDash,
-    /// An em dash.
-    EmDash,
-    /// A thematic break, typically a horizontal rule.
-    ThematicBreak,
-    /// A blank line.
-    Blankline,
-    /// A space that may not break a line.
-    NonBreakingSpace,
-    /// A newline that may or may not break a line in the output format.
-    Softbreak,
-    /// A newline that must break a line.
-    Hardbreak,
-    /// An escape character, not visible in output.
-    Escape,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Tag<'s> {
-    /// A paragraph.
-    Paragraph,
-    /// A heading.
-    Heading { level: u8 },
-    /// A link with a destination URL.
-    Link(&'s str, LinkType),
-    /// An image.
-    Image(&'s str),
-    /// A divider element.
-    Div,
-    /// An inline divider element.
-    Span,
-    /// A table element.
-    Table,
-    /// A row element of a table.
-    TableRow,
-    /// A cell element of row within a table.
-    TableCell,
-    /// A block with raw markup for a specific output format.
-    RawBlock { format: &'s str },
-    /// A block with code in a specific language.
-    CodeBlock { language: Option<&'s str> },
+pub enum Container<'s> {
     /// A blockquote element.
     Blockquote,
     /// A list.
@@ -75,10 +38,32 @@ pub enum Tag<'s> {
     ListItem,
     /// A description list element.
     DescriptionList,
-    /// A item of a description list.
-    DescriptionItem,
+    /// Details describing a term within a description list.
+    DescriptionDetails,
     /// A footnote definition.
     Footnote { tag: &'s str },
+    /// A table element.
+    Table,
+    /// A row element of a table.
+    TableRow,
+    /// A block-level divider element.
+    Div,
+    /// A paragraph.
+    Paragraph,
+    /// A heading.
+    Heading { level: u8 },
+    /// A link with a destination URL.
+    Link(&'s str, LinkType),
+    /// An image.
+    Image(&'s str),
+    /// An inline divider element.
+    Span,
+    /// A cell element of row within a table.
+    TableCell,
+    /// A block with raw markup for a specific output format.
+    RawBlock { format: &'s str },
+    /// A block with code in a specific language.
+    CodeBlock { language: Option<&'s str> },
     /// A subscripted element.
     Subscript,
     /// A superscripted element.
@@ -143,22 +128,44 @@ pub enum OrderedListFormat {
     ParenParen,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Atom {
+    /// An ellipsis, i.e. a set of three periods.
+    Ellipsis,
+    /// An en dash.
+    EnDash,
+    /// An em dash.
+    EmDash,
+    /// A thematic break, typically a horizontal rule.
+    ThematicBreak,
+    /// A blank line.
+    Blankline,
+    /// A space that may not break a line.
+    NonBreakingSpace,
+    /// A newline that may or may not break a line in the output format.
+    Softbreak,
+    /// A newline that must break a line.
+    Hardbreak,
+    /// An escape character, not visible in output.
+    Escape,
+}
+
 impl<'s> Event<'s> {
     fn from_inline(src: &'s str, inline: inline::Event) -> Self {
         let content = inline.span.of(src);
         match inline.kind {
             inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                 let t = match c {
-                    inline::Container::Span => Tag::Span,
-                    inline::Container::Subscript => Tag::Subscript,
-                    inline::Container::Superscript => Tag::Superscript,
-                    inline::Container::Insert => Tag::Insert,
-                    inline::Container::Delete => Tag::Delete,
-                    inline::Container::Emphasis => Tag::Emphasis,
-                    inline::Container::Strong => Tag::Strong,
-                    inline::Container::Mark => Tag::Mark,
-                    inline::Container::SingleQuoted => Tag::SingleQuoted,
-                    inline::Container::DoubleQuoted => Tag::DoubleQuoted,
+                    inline::Container::Span => Container::Span,
+                    inline::Container::Subscript => Container::Subscript,
+                    inline::Container::Superscript => Container::Superscript,
+                    inline::Container::Insert => Container::Insert,
+                    inline::Container::Delete => Container::Delete,
+                    inline::Container::Emphasis => Container::Emphasis,
+                    inline::Container::Strong => Container::Strong,
+                    inline::Container::Mark => Container::Mark,
+                    inline::Container::SingleQuoted => Container::SingleQuoted,
+                    inline::Container::DoubleQuoted => Container::DoubleQuoted,
                     _ => todo!(),
                 };
                 if matches!(inline.kind, inline::EventKind::Enter(_)) {
@@ -167,16 +174,16 @@ impl<'s> Event<'s> {
                     Self::End(t)
                 }
             }
-            inline::EventKind::Atom(a) => match a {
-                inline::Atom::Ellipsis => Self::Ellipsis,
-                inline::Atom::EnDash => Self::EnDash,
-                inline::Atom::EmDash => Self::EmDash,
-                inline::Atom::Nbsp => Self::NonBreakingSpace,
-                inline::Atom::Softbreak => Self::Softbreak,
-                inline::Atom::Hardbreak => Self::Hardbreak,
-                inline::Atom::Escape => Self::Escape,
+            inline::EventKind::Atom(a) => Event::Atom(match a {
+                inline::Atom::Ellipsis => Atom::Ellipsis,
+                inline::Atom::EnDash => Atom::EnDash,
+                inline::Atom::EmDash => Atom::EmDash,
+                inline::Atom::Nbsp => Atom::NonBreakingSpace,
+                inline::Atom::Softbreak => Atom::Softbreak,
+                inline::Atom::Hardbreak => Atom::Hardbreak,
+                inline::Atom::Escape => Atom::Escape,
                 _ => todo!(),
-            },
+            }),
             inline::EventKind::Node(n) => match n {
                 inline::Node::Str => Self::Str(content),
                 inline::Node::Verbatim => Self::Verbatim(content),
@@ -194,7 +201,7 @@ impl<'s> Event<'s> {
     }
 }
 
-impl<'s> Tag<'s> {
+impl<'s> Container<'s> {
     fn from_block(src: &'s str, block: block::Block) -> Self {
         match block {
             block::Block::Leaf(l) => match l {
@@ -272,7 +279,7 @@ impl<'s> Iterator for Parser<'s> {
                     }
                     tree::EventKind::Exit(block) => {
                         self.parser = None;
-                        return Some(Event::End(Tag::from_block(self.src, block)));
+                        return Some(Event::End(Container::from_block(self.src, block)));
                     }
                     tree::EventKind::Enter(..) => unreachable!(),
                 }
@@ -282,24 +289,25 @@ impl<'s> Iterator for Parser<'s> {
         self.tree.next().map(|ev| match ev.kind {
             tree::EventKind::Element(atom) => {
                 assert_eq!(atom, block::Atom::Blankline);
-                Event::Blankline
+                Event::Atom(Atom::Blankline)
             }
             tree::EventKind::Enter(block) => {
                 if matches!(block, block::Block::Leaf(..)) {
                     self.parser = Some(inline::Parser::new());
                 }
-                Event::Start(Tag::from_block(self.src, block), Attributes::none())
+                Event::Start(Container::from_block(self.src, block), Attributes::none())
             }
-            tree::EventKind::Exit(block) => Event::End(Tag::from_block(self.src, block)),
+            tree::EventKind::Exit(block) => Event::End(Container::from_block(self.src, block)),
         })
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::Atom::*;
     use super::Attributes;
+    use super::Container::*;
     use super::Event::*;
-    use super::Tag::*;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -364,7 +372,7 @@ mod test {
             Start(Paragraph, Attributes::none()),
             Str("para0\n"),
             End(Paragraph),
-            Blankline,
+            Atom(Blankline),
             Start(Paragraph, Attributes::none()),
             Str("para1"),
             End(Paragraph),
