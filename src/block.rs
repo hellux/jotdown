@@ -98,29 +98,33 @@ impl<'s> Parser<'s> {
                 }
                 Block::Container(c) => {
                     let (skip_chars, skip_lines_suffix) = match &c {
-                        Blockquote => (1, 0),
+                        Blockquote => (2, 0),
                         ListItem { indent } | Footnote { indent } => (*indent, 0),
                         Div { .. } => (0, 1),
                     };
-                    let line_count = lines.len() - skip_lines_suffix;
+                    let line_count_inner = lines.len() - skip_lines_suffix;
 
                     // update spans, remove indentation / container prefix
                     lines[0] = lines[0].with_start(span.end());
-                    lines.iter_mut().skip(1).take(line_count).for_each(|sp| {
-                        let skip = (sp
-                            .of(self.src)
-                            .chars()
-                            .take_while(|c| c.is_whitespace())
-                            .count()
-                            + usize::from(skip_chars))
-                        .min(sp.len());
-                        *sp = sp.trim_start(skip);
-                    });
+                    lines
+                        .iter_mut()
+                        .skip(1)
+                        .take(line_count_inner)
+                        .for_each(|sp| {
+                            let skip = (sp
+                                .of(self.src)
+                                .chars()
+                                .take_while(|c| c.is_whitespace())
+                                .count()
+                                + usize::from(skip_chars))
+                            .min(sp.len());
+                            *sp = sp.trim_start(skip);
+                        });
 
                     self.tree.enter(kind, span);
                     let mut l = 0;
-                    while l < line_count {
-                        l += self.parse_block(&mut lines[l..line_count]);
+                    while l < line_count_inner {
+                        l += self.parse_block(&mut lines[l..line_count_inner]);
                     }
                 }
             }
@@ -165,12 +169,21 @@ impl Block {
                         })
                 })
                 .flatten(),
-            '>' => chars.next().map_or(true, |c| c == ' ').then(|| {
-                (
-                    Self::Container(Blockquote),
-                    Span::by_len(start, line.len() - chars.as_str().len() - 1),
-                )
-            }),
+            '>' => {
+                if let Some(c) = chars.next() {
+                    c.is_whitespace().then(|| {
+                        (
+                            Self::Container(Blockquote),
+                            Span::by_len(start, line.len() - chars.as_str().len() - 1),
+                        )
+                    })
+                } else {
+                    Some((
+                        Self::Container(Blockquote),
+                        Span::by_len(start, line.len() - chars.as_str().len()),
+                    ))
+                }
+            }
             f @ ('`' | ':') => {
                 let fence_length = chars.take_while(|c| *c == f).count() + 1;
                 (fence_length >= 3)
