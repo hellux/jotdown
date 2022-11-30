@@ -56,6 +56,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
         for e in &mut self.events {
             match e {
                 Event::Start(c, _attrs) => {
+                    if c.is_block() {
+                        self.out.write_char('\n')?;
+                    }
                     match c {
                         Container::Blockquote => self.out.write_str("<blockquote>")?,
                         Container::List(..) => todo!(),
@@ -86,6 +89,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                     }
                 }
                 Event::End(c) => {
+                    if c.is_block_container() && !matches!(c, Container::Footnote { .. }) {
+                        self.out.write_char('\n')?;
+                    }
                     match c {
                         Container::Blockquote => self.out.write_str("</blockquote>")?,
                         Container::List(..) => todo!(),

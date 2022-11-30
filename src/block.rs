@@ -284,7 +284,6 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 #[cfg(test)]
 mod test {
     use crate::tree::EventKind::*;
-    use crate::Span;
 
     use super::Atom::*;
     use super::Block;
@@ -326,12 +325,12 @@ mod test {
     fn parse_heading_multi() {
         test_parse!(
             concat!(
-                "# 2\n",
-                "\n",
-                " #   8\n",
-                "  12\n",
-                "15\n", //
-            ),
+                    "# 2\n",
+                    "\n",
+                    " #   8\n",
+                    "  12\n",
+                    "15\n", //
+                ),
             (Enter(Leaf(Heading { level: 1 })), "#"),
             (Element(Inline), "2"),
             (Exit(Leaf(Heading { level: 1 })), "#"),
@@ -346,6 +345,26 @@ mod test {
 
     #[test]
     fn parse_blockquote() {
+        test_parse!(
+            "> a\n",
+            (Enter(Container(Blockquote)), ">"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Element(Inline), "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(Blockquote)), ">"),
+        );
+        test_parse!(
+            "> \n",
+            (Enter(Container(Blockquote)), ">"),
+            (Element(Blankline), " \n"),
+            (Exit(Container(Blockquote)), ">"),
+        );
+        test_parse!(
+            ">",
+            (Enter(Container(Blockquote)), ">"),
+            (Element(Blankline), ""),
+            (Exit(Container(Blockquote)), ">"),
+        );
         test_parse!(
             concat!(
                 "> a\n",

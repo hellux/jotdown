@@ -78,10 +78,76 @@ pub enum Container<'s> {
     Emphasis,
     /// A highlighted inline element.
     Mark,
-    /// An quoted element, using single quotes.
+    /// An quoted inline element, using single quotes.
     SingleQuoted,
     /// A quoted inline element, using double quotes.
     DoubleQuoted,
+}
+
+impl<'s> Container<'s> {
+    /// Is a block element.
+    fn is_block(&self) -> bool {
+        match self {
+            Self::Blockquote
+            | Self::List(..)
+            | Self::ListItem
+            | Self::DescriptionList
+            | Self::DescriptionDetails
+            | Self::Footnote { .. }
+            | Self::Table
+            | Self::TableRow
+            | Self::Div
+            | Self::Paragraph
+            | Self::Heading { .. }
+            | Self::TableCell
+            | Self::RawBlock { .. }
+            | Self::CodeBlock { .. } => true,
+            Self::Span
+            | Self::Link(..)
+            | Self::Image(..)
+            | Self::Subscript
+            | Self::Superscript
+            | Self::Insert
+            | Self::Delete
+            | Self::Strong
+            | Self::Emphasis
+            | Self::Mark
+            | Self::SingleQuoted
+            | Self::DoubleQuoted => false,
+        }
+    }
+
+    /// Is a block element that may contain children blocks.
+    fn is_block_container(&self) -> bool {
+        match self {
+            Self::Blockquote
+            | Self::List(..)
+            | Self::ListItem
+            | Self::DescriptionList
+            | Self::DescriptionDetails
+            | Self::Footnote { .. }
+            | Self::Table
+            | Self::TableRow
+            | Self::Div => true,
+            Self::Paragraph
+            | Self::Heading { .. }
+            | Self::TableCell
+            | Self::RawBlock { .. }
+            | Self::CodeBlock { .. }
+            | Self::Span
+            | Self::Link(..)
+            | Self::Image(..)
+            | Self::Subscript
+            | Self::Superscript
+            | Self::Insert
+            | Self::Delete
+            | Self::Strong
+            | Self::Emphasis
+            | Self::Mark
+            | Self::SingleQuoted
+            | Self::DoubleQuoted => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,7 +196,7 @@ pub enum OrderedListFormat {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Atom {
-    /// An ellipsis, i.e. a set of three periods.
+    /// A horizontal ellipsis, i.e. a set of three periods.
     Ellipsis,
     /// An en dash.
     EnDash,
