@@ -14,8 +14,10 @@ pub(crate) struct Token {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     Text,
+    Newline,
     Whitespace,
     Nbsp,
+    Hardbreak,
     Escape,
     Integer,
     Open(Delimiter),
@@ -124,6 +126,7 @@ impl<'s> Lexer<'s> {
 
         let kind = match first {
             _ if escape && first == ' ' => Nbsp,
+            _ if escape && first == '\n' => Hardbreak,
             _ if escape => Text,
 
             '\\' => {
@@ -136,6 +139,7 @@ impl<'s> Lexer<'s> {
                 }
             }
 
+            '\n' => Newline,
             _ if first.is_whitespace() => {
                 self.eat_while(char::is_whitespace);
                 Whitespace

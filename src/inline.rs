@@ -14,11 +14,9 @@ pub enum Atom {
     Hardbreak,
     Escape,
     Nbsp,
-    OpenMarker, // ??
     Ellipsis,
-    ImageMarker, // ??
-    EmDash,
     EnDash,
+    EmDash,
     Lt,
     Gt,
     Ampersand,
@@ -29,13 +27,12 @@ pub enum Atom {
 pub enum Node {
     Str,
     // link
-    Url,
-    ImageSource,
-    LinkReference,
-    FootnoteReference,
-    // verbatim
+    //Url,
+    //ImageSource,
+    //LinkReference,
+    //FootnoteReference,
     Verbatim,
-    RawFormat,
+    RawFormat { format: Span },
     InlineMath,
     DisplayMath,
 }
@@ -138,6 +135,9 @@ impl<'s> Parser<'s> {
         let atom = match first.kind {
             lex::Kind::Escape => Escape,
             lex::Kind::Nbsp => Nbsp,
+            lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
+            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
+            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
             lex::Kind::Sym(lex::Symbol::Lt) => Lt,
             lex::Kind::Sym(lex::Symbol::Gt) => Gt,
             lex::Kind::Sym(lex::Symbol::Quote2) => Quote,
