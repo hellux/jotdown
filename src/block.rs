@@ -91,11 +91,22 @@ impl<'s> Parser<'s> {
                 match &kind {
                     Block::Leaf(l) => {
                         self.tree.enter(kind, span);
-                        lines[0] = lines[0].with_start(span.end());
+                        let first = &mut lines[0];
+                        *first = first.with_start(span.end());
+                        // trim starting whitespace of block
+                        *first = Span::new(
+                            first.end() - first.of(self.src).trim_start().len(),
+                            first.end(),
+                        );
                         let len = match l {
                             CodeBlock { .. } => len - 2,
                             _ => len,
                         };
+                        if !matches!(l, Leaf::CodeBlock { .. }) {
+                            // trim ending whitespace of block
+                            let last = &mut lines[len - 1];
+                            *last = last.with_len(last.of(self.src).trim_end().len());
+                        }
                         for line in &lines[0..len] {
                             self.tree.elem(Atom::Inline, *line);
                         }

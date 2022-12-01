@@ -24,6 +24,10 @@ impl Span {
         Self::new(start, self.end())
     }
 
+    pub fn with_len(self, len: usize) -> Self {
+        Self::by_len(self.start(), len)
+    }
+
     pub fn trim_start(self, n: usize) -> Self {
         Self::new(self.start().checked_add(n).unwrap(), self.end())
     }
