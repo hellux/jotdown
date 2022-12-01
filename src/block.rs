@@ -43,8 +43,6 @@ pub enum Atom {
     Inline,
     /// A line with no non-whitespace characters.
     Blankline,
-    ///// Thematic break.
-    //ThematicBreak,
 }
 
 struct Parser<'s> {
