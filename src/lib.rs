@@ -60,6 +60,8 @@ pub enum Container<'s> {
     Span,
     /// A cell element of row within a table.
     TableCell,
+    /// A term within a description list.
+    DescriptionTerm,
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
@@ -99,6 +101,7 @@ impl<'s> Container<'s> {
             | Self::Div
             | Self::Paragraph
             | Self::Heading { .. }
+            | Self::DescriptionTerm
             | Self::TableCell
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
@@ -132,6 +135,7 @@ impl<'s> Container<'s> {
             Self::Paragraph
             | Self::Heading { .. }
             | Self::TableCell
+            | Self::DescriptionTerm
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. }
             | Self::Span
