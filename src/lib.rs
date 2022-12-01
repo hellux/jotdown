@@ -52,12 +52,6 @@ pub enum Container<'s> {
     Paragraph,
     /// A heading.
     Heading { level: u8 },
-    /// A link with a destination URL.
-    Link(&'s str, LinkType),
-    /// An image.
-    Image(&'s str),
-    /// An inline divider element.
-    Span,
     /// A cell element of row within a table.
     TableCell,
     /// A term within a description list.
@@ -66,17 +60,23 @@ pub enum Container<'s> {
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
     CodeBlock { language: Option<&'s str> },
+    /// An inline divider element.
+    Span,
+    /// An inline link with a destination URL.
+    Link(&'s str, LinkType),
+    /// An inline image.
+    Image(&'s str),
     /// A subscripted element.
     Subscript,
     /// A superscripted element.
     Superscript,
-    /// An inserted element.
+    /// An inserted inline element.
     Insert,
-    /// A deleted element.
+    /// A deleted inline element.
     Delete,
-    /// An element emphasized with a bold typeface.
+    /// An inline element emphasized with a bold typeface.
     Strong,
-    /// An emphasized element.
+    /// An emphasized inline element.
     Emphasis,
     /// A highlighted inline element.
     Mark,
@@ -168,7 +168,6 @@ pub enum List {
     Ordered {
         kind: OrderedListKind,
         start: u32,
-        format: OrderedListFormat,
     },
     Description,
     Task(bool),
@@ -189,7 +188,7 @@ pub enum OrderedListKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OrderedListFormat {
+pub enum OrderedListStyle {
     /// Number is followed by a period, e.g. `1.`.
     Period,
     /// Number is followed by a closing parenthesis, e.g. `1)`.
