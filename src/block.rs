@@ -404,12 +404,30 @@ mod test {
     }
 
     #[test]
+    fn parse_blockquote_empty() {
+        test_parse!(
+            "> \n",
+            (Enter(Container(Blockquote)), ">"),
+            (Element(Blankline), "\n"),
+            (Exit(Container(Blockquote)), ">"),
+        );
+        test_parse!(
+            ">",
+            (Enter(Container(Blockquote)), ">"),
+            (Element(Blankline), ""),
+            (Exit(Container(Blockquote)), ">"),
+        );
+    }
+
+    #[test]
     fn parse_code_block() {
         test_parse!(
             concat!(
                 "```\n",
                 "l0\n",
-                "```", //
+                "```\n",
+                "\n",
+                "para\n", //
             ),
             (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
             (Element(Inline), ""),
@@ -479,7 +497,7 @@ mod test {
     }
 
     #[test]
-    fn block_container() {
+    fn block_blockquote() {
         test_block!(
             concat!(
                 "> a\n",    //
@@ -491,6 +509,35 @@ mod test {
             Block::Container(Blockquote),
             ">",
             5,
+        );
+    }
+
+    #[test]
+    fn block_code_block_seq() {
+        test_block!(
+            concat!(
+                "````  lang\n",
+                "l0\n",
+                "```\n",
+                " l1\n",
+                "````", //
+            ),
+            Block::Leaf(CodeBlock { fence_length: 4 }),
+            "````",
+            5,
+        );
+        test_block!(
+            concat!(
+                "```\n", //
+                "a\n",   //
+                "```\n", //
+                "```\n", //
+                "bbb\n", //
+                "```\n", //
+            ),
+            Block::Leaf(CodeBlock { fence_length: 3 }),
+            "```",
+            3,
         );
     }
 }
