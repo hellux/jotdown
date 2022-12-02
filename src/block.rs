@@ -85,7 +85,7 @@ impl<'s> Parser<'s> {
         let lines = &mut lines[blanklines..];
         Block::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
             blanklines,
-            |(kind, span, len)| {
+            |(kind, span, line_count)| {
                 let start = lines.get(0).map(|sp| sp.start()).unwrap();
                 let span = span.translate(start);
                 match &kind {
@@ -99,8 +99,8 @@ impl<'s> Parser<'s> {
                             first.end(),
                         );
                         let len = match l {
-                            CodeBlock { .. } => len - 2,
-                            _ => len,
+                            CodeBlock { .. } => line_count - 2,
+                            _ => line_count,
                         };
                         if !matches!(l, Leaf::CodeBlock { .. }) {
                             // trim ending whitespace of block
@@ -144,7 +144,7 @@ impl<'s> Parser<'s> {
                     }
                 }
                 self.tree.exit();
-                blanklines + len
+                blanklines + line_count
             },
         )
     }
@@ -159,9 +159,8 @@ impl Block {
                 kind,
                 Self::Leaf(CodeBlock { .. }) | Self::Container(Div { .. })
             );
-            let line_count = 1
-                + lines.take_while(|l| kind.continues(l)).count()
-                + usize::from(has_end_delimiter);
+            let line_count_match = lines.take_while(|l| kind.continues(l)).count();
+            let line_count = 1 + line_count_match + usize::from(has_end_delimiter);
             (kind, sp, line_count)
         })
     }
@@ -417,7 +416,7 @@ mod test {
         );
         test_parse!(
             concat!(
-                "````lang\n",
+                "````  lang\n",
                 "l0\n",
                 "```\n",
                 " l1\n",
