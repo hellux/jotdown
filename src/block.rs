@@ -431,7 +431,7 @@ mod test {
             ),
             (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
             (Element(Inline), ""),
-            (Element(Inline), "l0"),
+            (Element(Inline), "l0\n"),
             (Exit(Leaf(CodeBlock { fence_length: 3 })), "```"),
             (Element(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
