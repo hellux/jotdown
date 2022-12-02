@@ -359,6 +359,7 @@ impl<'s> Iterator for Parser<'s> {
             tree::EventKind::Enter(block) => {
                 if matches!(block, block::Block::Leaf(l)) {
                     self.parser = Some(inline::Parser::new());
+                    self.inline_start = ev.span.start();
                 }
                 Event::Start(Container::from_block(self.src, block), Attributes::none())
             }
