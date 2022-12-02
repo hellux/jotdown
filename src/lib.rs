@@ -440,7 +440,6 @@ mod test {
             "para0\n\npara1",
             Start(Paragraph, Attributes::none()),
             Str("para0"),
-            Atom(Softbreak),
             End(Paragraph),
             Atom(Blankline),
             Start(Paragraph, Attributes::none()),

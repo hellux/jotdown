@@ -123,8 +123,15 @@ impl<'s> Lexer<'s> {
         let escape = self.escape;
 
         let kind = match first {
-            _ if escape && first == ' ' => Nbsp,
             _ if escape && first == '\n' => Hardbreak,
+            _ if escape
+                && matches!(first, '\t' | ' ')
+                && self.chars.clone().find(|c| !matches!(c, ' ' | '\t')) == Some('\n') =>
+            {
+                while self.eat() != Some('\n') {}
+                Hardbreak
+            }
+            _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
             '\\' => {
