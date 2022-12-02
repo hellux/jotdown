@@ -165,10 +165,7 @@ pub enum LinkType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum List {
     Unordered,
-    Ordered {
-        kind: OrderedListKind,
-        start: u32,
-    },
+    Ordered { kind: OrderedListKind, start: u32 },
     Description,
     Task(bool),
 }
