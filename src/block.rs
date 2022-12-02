@@ -98,16 +98,16 @@ impl<'s> Parser<'s> {
                             first.end() - first.of(self.src).trim_start().len(),
                             first.end(),
                         );
-                        let len = match l {
-                            CodeBlock { .. } => line_count - 2,
+                        let line_count = match l {
+                            CodeBlock { .. } => line_count - 1,
                             _ => line_count,
                         };
                         if !matches!(l, Leaf::CodeBlock { .. }) {
                             // trim ending whitespace of block
-                            let last = &mut lines[len - 1];
+                            let last = &mut lines[line_count - 1];
                             *last = last.with_len(last.of(self.src).trim_end().len());
                         }
-                        for line in &lines[0..len] {
+                        for line in &lines[0..line_count] {
                             self.tree.elem(Atom::Inline, *line);
                         }
                     }
