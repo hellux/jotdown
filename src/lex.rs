@@ -83,7 +83,6 @@ impl Sequence {
 
 #[derive(Clone)]
 pub(crate) struct Lexer<'s> {
-    src: &'s str,
     chars: std::str::Chars<'s>,
     escape: bool,
     next: Option<Token>,
@@ -93,7 +92,6 @@ pub(crate) struct Lexer<'s> {
 impl<'s> Lexer<'s> {
     pub fn new(src: &'s str) -> Lexer<'s> {
         Lexer {
-            src,
             chars: src.chars(),
             escape: false,
             next: None,
