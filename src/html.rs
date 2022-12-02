@@ -77,7 +77,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::TableCell => self.out.write_str("<td>")?,
                         Container::DescriptionTerm => self.out.write_str("<dt>")?,
                         Container::RawBlock { .. } => todo!(),
-                        Container::CodeBlock { .. } => todo!(),
+                        Container::CodeBlock { language } => {
+                            if let Some(l) = language {
+                                write!(self.out, r#"<pre><code class="language-{}">"#, l)?;
+                            } else {
+                                self.out.write_str("<pre><code>")?;
+                            }
+                        }
                         Container::Subscript => self.out.write_str("<sub>")?,
                         Container::Superscript => self.out.write_str("<sup>")?,
                         Container::Insert => self.out.write_str("<ins>")?,
