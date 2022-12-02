@@ -341,7 +341,6 @@ impl<'s> Iterator for Parser<'s> {
                     tree::EventKind::Element(atom) => {
                         assert_eq!(atom, block::Atom::Inline);
                         parser.parse(ev.span.of(self.src));
-                        self.inline_start = ev.span.start();
                     }
                     tree::EventKind::Exit(block) => {
                         self.parser = None;

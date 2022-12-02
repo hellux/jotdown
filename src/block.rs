@@ -429,6 +429,24 @@ mod test {
             (Element(Inline), " l1"),
             (Exit(Leaf(CodeBlock { fence_length: 4 })), "````"),
         );
+        test_parse!(
+            concat!(
+                "```\n", //
+                "a\n",   //
+                "```\n", //
+                "```\n", //
+                "bbb\n", //
+                "```\n", //
+            ),
+            (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
+            (Element(Inline), ""),
+            (Element(Inline), "a\n"),
+            (Exit(Leaf(CodeBlock { fence_length: 3 })), "```"),
+            (Enter(Leaf(CodeBlock { fence_length: 3 })), "```"),
+            (Element(Inline), ""),
+            (Element(Inline), "bbb\n"),
+            (Exit(Leaf(CodeBlock { fence_length: 3 })), "```"),
+        );
     }
 
     macro_rules! test_block {
