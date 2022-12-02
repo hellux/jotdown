@@ -136,7 +136,7 @@ impl<'s> Lexer<'s> {
 
             '\\' => {
                 let next = self.peek();
-                if next == ' ' || next.is_ascii_punctuation() {
+                if next.is_whitespace() || next.is_ascii_punctuation() {
                     self.escape = true;
                     Escape
                 } else {
@@ -314,6 +314,13 @@ mod test {
         test_lex!(r#"\."#, Escape.l(1), Text.l(1));
         test_lex!(r#"\ "#, Escape.l(1), Nbsp.l(1));
         test_lex!(r#"\{-"#, Escape.l(1), Text.l(1), Seq(Hyphen).l(1));
+    }
+
+    #[test]
+    fn hardbreak() {
+        test_lex!("a\\\n", Text.l(1), Escape.l(1), Hardbreak.l(1));
+        test_lex!("a\\   \n", Text.l(1), Escape.l(1), Hardbreak.l(4));
+        test_lex!("a\\\t \t \n", Text.l(1), Escape.l(1), Hardbreak.l(5));
     }
 
     #[test]
