@@ -344,7 +344,7 @@ mod test {
             (Exit(Leaf(Heading { level: 1 })), "#"),
             (Element(Blankline), "\n"),
             (Enter(Leaf(Heading { level: 1 })), "#"),
-            (Element(Inline), "   8\n"),
+            (Element(Inline), "8\n"),
             (Element(Inline), "  12\n"),
             (Element(Inline), "15"),
             (Exit(Leaf(Heading { level: 1 })), "#"),

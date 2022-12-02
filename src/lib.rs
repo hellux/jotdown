@@ -361,7 +361,7 @@ impl<'s> Iterator for Parser<'s> {
                 Event::Atom(Atom::Blankline)
             }
             tree::EventKind::Enter(block) => {
-                if matches!(block, block::Block::Leaf(..)) {
+                if matches!(block, block::Block::Leaf(l)) {
                     self.parser = Some(inline::Parser::new());
                 }
                 Event::Start(Container::from_block(self.src, block), Attributes::none())
