@@ -450,7 +450,7 @@ mod test {
             (Element(Inline), "lang\n"),
             (Element(Inline), "l0\n"),
             (Element(Inline), "```\n"),
-            (Element(Inline), " l1"),
+            (Element(Inline), " l1\n"),
             (Exit(Leaf(CodeBlock { fence_length: 4 })), "````"),
         );
         test_parse!(
