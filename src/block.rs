@@ -201,8 +201,9 @@ impl Block {
                 }
             }
             f @ ('`' | ':') => {
-                let fence_length = chars.take_while(|c| *c == f).count() + 1;
-                (fence_length >= 3)
+                let fence_length = (&mut chars).take_while(|c| *c == f).count() + 1;
+                let valid_spec = !line[fence_length..].trim().chars().any(char::is_whitespace);
+                (valid_spec && fence_length >= 3)
                     .then(|| {
                         u8::try_from(fence_length).ok().map(|fence_length| {
                             (
@@ -247,6 +248,11 @@ impl Block {
                 !line.trim().is_empty() && spaces >= (indent).into()
             }
             Self::Container(Div { fence_length }) | Self::Leaf(CodeBlock { fence_length }) => {
+                let fence = if matches!(self, Self::Container(..)) {
+                    ':'
+                } else {
+                    '`'
+                };
                 let mut c = line.chars();
                 !((&mut c).take((fence_length).into()).all(|c| c == ':')
                     && c.next().map_or(false, char::is_whitespace))
