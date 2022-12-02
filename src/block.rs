@@ -254,8 +254,8 @@ impl Block {
                     '`'
                 };
                 let mut c = line.chars();
-                !((&mut c).take((fence_length).into()).all(|c| c == ':')
-                    && c.next().map_or(false, char::is_whitespace))
+                !((&mut c).take((fence_length).into()).all(|c| c == fence)
+                    && c.next().map_or(true, char::is_whitespace))
             }
         }
     }
