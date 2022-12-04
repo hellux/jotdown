@@ -47,6 +47,10 @@ impl Span {
         Self::new(self.start(), span.end())
     }
 
+    pub fn is_empty(self) -> bool {
+        self.start == self.end
+    }
+
     pub fn start(self) -> usize {
         self.start.try_into().unwrap()
     }

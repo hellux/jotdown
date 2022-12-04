@@ -359,7 +359,16 @@ impl<'s> Iterator for Parser<'s> {
             tree::EventKind::Enter(block) => {
                 if matches!(block, block::Block::Leaf(l)) {
                     self.parser = Some(inline::Parser::new());
-                    self.inline_start = ev.span.start();
+                }
+                match block {
+                    block::Block::Leaf(block::Leaf::Paragraph) => self.inline_start = ev.span.end(),
+                    block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
+                        let lang = self.tree.next().unwrap();
+                        self.inline_start = lang.span.end();
+                        let lang = (!lang.span.is_empty()).then(|| lang.span.of(self.src).trim());
+                        return Event::Start(Container::CodeBlock { lang }, Attributes::none());
+                    }
+                    _ => {}
                 }
                 Event::Start(Container::from_block(self.src, block), Attributes::none())
             }
