@@ -59,7 +59,7 @@ pub enum Container<'s> {
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
-    CodeBlock { language: Option<&'s str> },
+    CodeBlock { lang: Option<&'s str> },
     /// An inline divider element.
     Span,
     /// An inline link with a destination URL.
@@ -273,7 +273,7 @@ impl<'s> Container<'s> {
             block::Block::Leaf(l) => match l {
                 block::Leaf::Paragraph => Self::Paragraph,
                 block::Leaf::Heading { level } => Self::Heading { level },
-                block::Leaf::CodeBlock { .. } => Self::CodeBlock { language: None },
+                block::Leaf::CodeBlock { .. } => Self::CodeBlock { lang: None },
                 _ => todo!(),
             },
             block::Block::Container(c) => match c {
