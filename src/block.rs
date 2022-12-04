@@ -513,7 +513,7 @@ mod test {
     }
 
     #[test]
-    fn block_code_block_seq() {
+    fn block_code_block() {
         test_block!(
             concat!(
                 "````  lang\n",
@@ -537,6 +537,16 @@ mod test {
             ),
             Block::Leaf(CodeBlock { fence_length: 3 }),
             "```",
+            3,
+        );
+        test_block!(
+            concat!(
+                "``` no space in lang specifier\n",
+                "l0\n",
+                "```\n", //
+            ),
+            Block::Leaf(Paragraph),
+            "",
             3,
         );
     }
