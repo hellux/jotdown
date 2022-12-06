@@ -167,7 +167,7 @@ pub enum List {
     Unordered,
     Ordered { kind: OrderedListKind, start: u32 },
     Description,
-    Task(bool),
+    Task,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -286,9 +286,9 @@ impl<'s> Container<'s> {
     }
 }
 
-// Attributes are rare, better to pay 8 bytes always and sometimes an extra allocation instead of
+// Attributes are rare, better to pay 8 bytes always and sometimes an extra indirection instead of
 // always 24 bytes.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attributes<'s>(Option<Box<Vec<(&'s str, &'s str)>>>);
 
 impl<'s> Attributes<'s> {

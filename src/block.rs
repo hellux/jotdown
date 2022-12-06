@@ -22,7 +22,6 @@ pub enum Block {
 pub enum Leaf {
     Paragraph,
     Heading { level: u8 },
-    Attributes,
     Table,
     LinkDefinition,
     CodeBlock { fence_length: u8 },
@@ -43,6 +42,8 @@ pub enum Atom {
     Inline,
     /// A line with no non-whitespace characters.
     Blankline,
+    /// A list of attributes.
+    Attributes,
 }
 
 struct Parser<'s> {
@@ -170,6 +171,7 @@ impl Block {
         let start = line.chars().take_while(|c| c.is_whitespace()).count();
         let line = &line[start..];
         let mut chars = line.chars();
+
         match chars.next().unwrap_or(EOF) {
             '#' => chars
                 .find(|c| *c != '#')
@@ -200,6 +202,49 @@ impl Block {
                     ))
                 }
             }
+            '|' => (&line[line.len() - 1..] == "|"
+                && &line[line.len() - 2..line.len() - 1] != "\\")
+                .then(|| (Self::Leaf(Table), Span::by_len(start, 1))),
+            '[' => {
+                let first = chars.next();
+                let is_footnote = chars.next() == Some('^');
+                if first != Some(']') {
+                    (&mut chars).take_while(|c| *c != ']').count();
+                }
+                (chars.next() == Some(':')).then(|| {
+                    (
+                        if is_footnote {
+                            Self::Container(Footnote {
+                                indent: u8::try_from(start).unwrap(),
+                            })
+                        } else {
+                            Self::Leaf(LinkDefinition)
+                        },
+                        Span::by_len(start, 0),
+                    )
+                })
+            }
+            '-' | '*' if Self::is_thematic_break(chars.clone()) => {
+                Some((Self::Leaf(ThematicBreak), Span::by_len(start, line.len())))
+            }
+            '-' => chars.next().map_or(true, char::is_whitespace).then(|| {
+                let task_list = chars.next() == Some('[')
+                    && matches!(chars.next(), Some('X' | ' '))
+                    && chars.next() == Some(']')
+                    && chars.next().map_or(true, char::is_whitespace);
+                (
+                    Self::Container(ListItem {
+                        indent: u8::try_from(start).unwrap(),
+                    }),
+                    Span::by_len(start, if task_list { 3 } else { 1 }),
+                )
+            }),
+            '+' | '*' | ':' if chars.next().map_or(true, char::is_whitespace) => Some((
+                Self::Container(ListItem {
+                    indent: u8::try_from(start).unwrap(),
+                }),
+                Span::by_len(start, 1),
+            )),
             f @ ('`' | ':') => {
                 let fence_length = (&mut chars).take_while(|c| *c == f).count() + 1;
                 let valid_spec = !line[fence_length..].trim().chars().any(char::is_whitespace);
@@ -218,30 +263,30 @@ impl Block {
                     })
                     .flatten()
             }
-            _ => {
-                let thematic_break = || {
-                    let mut without_whitespace = line.chars().filter(|c| !c.is_whitespace());
-                    let length = without_whitespace.clone().count();
-                    (length >= 3
-                        && (without_whitespace.clone().all(|c| c == '-')
-                            || without_whitespace.all(|c| c == '*')))
-                    .then(|| (Self::Leaf(ThematicBreak), Span::by_len(start, line.len())))
-                };
-
-                thematic_break()
-            }
+            _ => None,
         }
         .unwrap_or((Self::Leaf(Paragraph), Span::new(0, 0)))
+    }
+
+    fn is_thematic_break(chars: std::str::Chars) -> bool {
+        let mut n = 1;
+        for c in chars {
+            if matches!(c, '-' | '*') {
+                n += 1;
+            } else if !c.is_whitespace() {
+                return false;
+            }
+        }
+        n >= 3
     }
 
     /// Determine if this line continues a block of a certain type.
     fn continues(self, line: &str) -> bool {
         //let start = Self::start(line); // TODO allow starting new block without blank line
         match self {
-            Self::Leaf(Paragraph | Heading { .. } | Table | LinkDefinition) => {
-                !line.trim().is_empty()
-            }
-            Self::Leaf(Attributes | ThematicBreak) => false,
+            Self::Leaf(Paragraph | Heading { .. } | Table) => !line.trim().is_empty(),
+            Self::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
+            Self::Leaf(ThematicBreak) => false,
             Self::Container(Blockquote) => line.trim().starts_with('>'),
             Self::Container(Footnote { indent } | ListItem { indent }) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
@@ -548,6 +593,29 @@ mod test {
             Block::Leaf(Paragraph),
             "",
             3,
+        );
+    }
+
+    #[test]
+    fn block_link_definition() {
+        test_block!("[tag]: url\n", Block::Leaf(LinkDefinition), "", 1);
+        test_block!(
+            concat!(
+                "[tag]: uuu\n",
+                " rl\n", //
+            ),
+            Block::Leaf(LinkDefinition),
+            "",
+            2,
+        );
+        test_block!(
+            concat!(
+                "[tag]: url\n",
+                "para\n", //
+            ),
+            Block::Leaf(LinkDefinition),
+            "",
+            1,
         );
     }
 }
