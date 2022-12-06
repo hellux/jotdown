@@ -95,10 +95,7 @@ impl<'s> Parser<'s> {
                         let first = &mut lines[0];
                         *first = first.with_start(span.end());
                         // trim starting whitespace of block
-                        *first = Span::new(
-                            first.end() - first.of(self.src).trim_start().len(),
-                            first.end(),
-                        );
+                        *first = first.trim_start(self.src);
                         let line_count = match l {
                             CodeBlock { .. } => line_count - 1,
                             _ => line_count,
@@ -106,7 +103,7 @@ impl<'s> Parser<'s> {
                         if !matches!(l, Leaf::CodeBlock { .. }) {
                             // trim ending whitespace of block
                             let last = &mut lines[line_count - 1];
-                            *last = last.with_len(last.of(self.src).trim_end().len());
+                            *last = last.trim_end(self.src);
                         }
                         for line in &lines[0..line_count] {
                             self.tree.elem(Atom::Inline, *line);
@@ -134,7 +131,7 @@ impl<'s> Parser<'s> {
                                     .count()
                                     + usize::from(skip_chars))
                                 .min(sp.len());
-                                *sp = sp.trim_start(skip);
+                                *sp = sp.skip(skip);
                             });
 
                         self.tree.enter(kind, span);
