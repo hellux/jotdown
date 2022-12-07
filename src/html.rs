@@ -68,7 +68,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::Footnote { .. } => todo!(),
                         Container::Table => self.out.write_str("<table>")?,
                         Container::TableRow => self.out.write_str("<tr>")?,
-                        Container::Div => self.out.write_str("<div>")?,
+                        Container::Div { class } => {
+                            if let Some(c) = class {
+                                write!(self.out, r#"<div class="{}">"#, c)?;
+                            } else {
+                                self.out.write_str("<div>")?;
+                            }
+                        }
                         Container::Span => self.out.write_str("<span>")?,
                         Container::Paragraph => self.out.write_str("<p>")?,
                         Container::Heading { level } => write!(self.out, "<h{}>", level)?,
@@ -108,7 +114,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::Footnote { .. } => todo!(),
                         Container::Table => self.out.write_str("</table>")?,
                         Container::TableRow => self.out.write_str("</tr>")?,
-                        Container::Div => self.out.write_str("</div>")?,
+                        Container::Div { .. } => self.out.write_str("</div>")?,
                         Container::Paragraph => self.out.write_str("</p>")?,
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell => self.out.write_str("</td>")?,

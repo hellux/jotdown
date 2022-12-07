@@ -47,7 +47,7 @@ pub enum Container<'s> {
     /// A row element of a table.
     TableRow,
     /// A block-level divider element.
-    Div,
+    Div { class: Option<&'s str> },
     /// A paragraph.
     Paragraph,
     /// A heading.
@@ -98,7 +98,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow
-            | Self::Div
+            | Self::Div { .. }
             | Self::Paragraph
             | Self::Heading { .. }
             | Self::DescriptionTerm
@@ -131,7 +131,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow
-            | Self::Div => true,
+            | Self::Div { .. } => true,
             Self::Paragraph
             | Self::Heading { .. }
             | Self::TableCell
@@ -204,8 +204,6 @@ pub enum Atom {
     EmDash,
     /// A thematic break, typically a horizontal rule.
     ThematicBreak,
-    /// A blank line.
-    Blankline,
     /// A space that may not break a line.
     NonBreakingSpace,
     /// A newline that may or may not break a line in the output format.
@@ -214,6 +212,8 @@ pub enum Atom {
     Hardbreak,
     /// An escape character, not visible in output.
     Escape,
+    /// A blank line, not visible in output.
+    Blankline,
 }
 
 impl<'s> Event<'s> {
@@ -278,7 +278,7 @@ impl<'s> Container<'s> {
             },
             block::Block::Container(c) => match c {
                 block::Container::Blockquote => Self::Blockquote,
-                block::Container::Div { .. } => Self::Div,
+                block::Container::Div { .. } => Self::Div { class: None },
                 block::Container::Footnote { .. } => Self::Footnote { tag: todo!() },
                 _ => todo!(),
             },
@@ -297,13 +297,16 @@ impl<'s> Attributes<'s> {
         Self(None)
     }
 
+    pub fn take(&mut self) -> Self {
+        Self(self.0.take())
+    }
+
     #[must_use]
     pub fn valid(src: &str) -> bool {
         todo!()
     }
 
-    #[must_use]
-    pub fn parse(src: &'s str) -> Self {
+    pub fn parse(&mut self, src: &'s str) {
         todo!()
     }
 }
@@ -313,6 +316,7 @@ pub struct Parser<'s> {
     tree: block::Tree,
     parser: Option<inline::Parser<'s>>,
     inline_start: usize,
+    attributes: Attributes<'s>,
 }
 
 impl<'s> Parser<'s> {
@@ -323,6 +327,7 @@ impl<'s> Parser<'s> {
             tree: block::parse(src),
             parser: None,
             inline_start: 0,
+            attributes: Attributes::none(),
         }
     }
 }
@@ -351,29 +356,42 @@ impl<'s> Iterator for Parser<'s> {
             }
         }
 
-        self.tree.next().map(|ev| match ev.kind {
-            tree::EventKind::Element(atom) => {
-                assert_eq!(atom, block::Atom::Blankline);
-                Event::Atom(Atom::Blankline)
-            }
-            tree::EventKind::Enter(block) => {
-                if matches!(block, block::Block::Leaf(l)) {
-                    self.parser = Some(inline::Parser::new());
-                }
-                match block {
-                    block::Block::Leaf(block::Leaf::Paragraph) => self.inline_start = ev.span.end(),
-                    block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
-                        let lang = self.tree.next().unwrap();
-                        self.inline_start = lang.span.end();
-                        let lang = (!lang.span.is_empty()).then(|| lang.span.of(self.src).trim());
-                        return Event::Start(Container::CodeBlock { lang }, Attributes::none());
+        for ev in &mut self.tree {
+            let content = ev.span.of(self.src);
+            let event = match ev.kind {
+                tree::EventKind::Element(atom) => match atom {
+                    block::Atom::Inline => panic!("inline outside leaf block"),
+                    block::Atom::Blankline => Event::Atom(Atom::Blankline),
+                    block::Atom::Attributes => {
+                        self.attributes.parse(content);
+                        continue;
                     }
-                    _ => {}
+                },
+                tree::EventKind::Enter(block) => {
+                    if matches!(block, block::Block::Leaf(_)) {
+                        self.parser = Some(inline::Parser::new());
+                        self.inline_start = ev.span.end();
+                    }
+                    let container = match block {
+                        block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
+                            self.inline_start += 1; // skip newline
+                            Container::CodeBlock {
+                                lang: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
+                            }
+                        }
+                        block::Block::Container(block::Container::Div { .. }) => Container::Div {
+                            class: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
+                        },
+                        b => Container::from_block(self.src, b),
+                    };
+                    Event::Start(container, self.attributes.take())
                 }
-                Event::Start(Container::from_block(self.src, block), Attributes::none())
-            }
-            tree::EventKind::Exit(block) => Event::End(Container::from_block(self.src, block)),
-        })
+                tree::EventKind::Exit(block) => Event::End(Container::from_block(self.src, block)),
+            };
+            return Some(event);
+        }
+
+        None
     }
 }
 
@@ -447,7 +465,6 @@ mod test {
             Start(Paragraph, Attributes::none()),
             Str("para0"),
             End(Paragraph),
-            Atom(Blankline),
             Start(Paragraph, Attributes::none()),
             Str("para1"),
             End(Paragraph),
