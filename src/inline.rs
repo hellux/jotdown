@@ -125,6 +125,8 @@ impl<'s> Parser<'s> {
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
         let atom = match first.kind {
+            lex::Kind::Newline => Softbreak,
+            lex::Kind::Hardbreak => Hardbreak,
             lex::Kind::Escape => Escape,
             lex::Kind::Nbsp => Nbsp,
             lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,

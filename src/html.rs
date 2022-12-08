@@ -145,7 +145,29 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::DoubleQuoted => self.out.write_str("&rdquo;")?,
                     }
                 }
-                Event::Str(s) => self.out.write_str(s)?,
+                Event::Str(mut s) => {
+                    let mut ent = "";
+                    while let Some(i) = s.chars().position(|c| {
+                        if let Some(s) = match c {
+                            '<' => Some("&lt;"),
+                            '>' => Some("&gt;"),
+                            '&' => Some("&amp;"),
+                            '"' => Some("&quot;"),
+                            _ => None,
+                        } {
+                            ent = s;
+                            true
+                        } else {
+                            false
+                        }
+                    }) {
+                        self.out.write_str(&s[..i])?;
+                        self.out.write_str(ent)?;
+                        s = &s[i + 1..];
+                    }
+                    self.out.write_str(s)?;
+                }
+
                 Event::Atom(a) => match a {
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
                     Atom::EnDash => self.out.write_str("&ndash;")?,
