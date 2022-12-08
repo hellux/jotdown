@@ -22,10 +22,6 @@ pub enum Event<'s> {
     Str(&'s str),
     /// An atomic element.
     Atom(Atom),
-    /// A verbatim string.
-    Verbatim(&'s str),
-    /// An inline or display math element.
-    Math { content: &'s str, display: bool },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,6 +62,12 @@ pub enum Container<'s> {
     Link(&'s str, LinkType),
     /// An inline image.
     Image(&'s str),
+    /// An inline verbatim string.
+    Verbatim,
+    /// An inline or display math element.
+    Math { display: bool },
+    /// Inline raw markup for a specific output format.
+    RawInline { format: &'s str },
     /// A subscripted element.
     Subscript,
     /// A superscripted element.
@@ -108,6 +110,9 @@ impl<'s> Container<'s> {
             Self::Span
             | Self::Link(..)
             | Self::Image(..)
+            | Self::Verbatim
+            | Self::Math { .. }
+            | Self::RawInline { .. }
             | Self::Subscript
             | Self::Superscript
             | Self::Insert
@@ -141,6 +146,9 @@ impl<'s> Container<'s> {
             | Self::Span
             | Self::Link(..)
             | Self::Image(..)
+            | Self::Verbatim
+            | Self::Math { .. }
+            | Self::RawInline { .. }
             | Self::Subscript
             | Self::Superscript
             | Self::Insert
@@ -223,6 +231,10 @@ impl<'s> Event<'s> {
             inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                 let t = match c {
                     inline::Container::Span => Container::Span,
+                    inline::Container::Verbatim => Container::Verbatim,
+                    inline::Container::InlineMath => Container::Math { display: false },
+                    inline::Container::DisplayMath => Container::Math { display: true },
+                    inline::Container::RawFormat => Container::RawInline { format: todo!() },
                     inline::Container::Subscript => Container::Subscript,
                     inline::Container::Superscript => Container::Superscript,
                     inline::Container::Insert => Container::Insert,
@@ -248,21 +260,8 @@ impl<'s> Event<'s> {
                 inline::Atom::Softbreak => Atom::Softbreak,
                 inline::Atom::Hardbreak => Atom::Hardbreak,
                 inline::Atom::Escape => Atom::Escape,
-                _ => todo!(),
             }),
-            inline::EventKind::Node(n) => match n {
-                inline::Node::Str => Self::Str(content),
-                inline::Node::Verbatim => Self::Verbatim(content),
-                inline::Node::InlineMath => Self::Math {
-                    content,
-                    display: false,
-                },
-                inline::Node::DisplayMath => Self::Math {
-                    content,
-                    display: true,
-                },
-                _ => todo!(),
-            },
+            inline::EventKind::Str => Self::Str(content),
         }
     }
 }
@@ -316,7 +315,7 @@ pub struct Parser<'s> {
     tree: block::Tree,
     parser: Option<inline::Parser<'s>>,
     inline_start: usize,
-    attributes: Attributes<'s>,
+    block_attributes: Attributes<'s>,
 }
 
 impl<'s> Parser<'s> {
@@ -327,7 +326,7 @@ impl<'s> Parser<'s> {
             tree: block::parse(src),
             parser: None,
             inline_start: 0,
-            attributes: Attributes::none(),
+            block_attributes: Attributes::none(),
         }
     }
 }
@@ -345,7 +344,8 @@ impl<'s> Iterator for Parser<'s> {
                 match ev.kind {
                     tree::EventKind::Element(atom) => {
                         assert_eq!(atom, block::Atom::Inline);
-                        parser.parse(ev.span.of(self.src));
+                        let last_inline = self.tree.neighbors().next().is_none();
+                        parser.parse(ev.span.of(self.src), last_inline);
                     }
                     tree::EventKind::Exit(block) => {
                         self.parser = None;
@@ -363,7 +363,7 @@ impl<'s> Iterator for Parser<'s> {
                     block::Atom::Inline => panic!("inline outside leaf block"),
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
                     block::Atom::Attributes => {
-                        self.attributes.parse(content);
+                        self.block_attributes.parse(content);
                         continue;
                     }
                 },
@@ -384,7 +384,7 @@ impl<'s> Iterator for Parser<'s> {
                         },
                         b => Container::from_block(self.src, b),
                     };
-                    Event::Start(container, self.attributes.take())
+                    Event::Start(container, self.block_attributes.take())
                 }
                 tree::EventKind::Exit(block) => Event::End(Container::from_block(self.src, block)),
             };
@@ -467,6 +467,19 @@ mod test {
             End(Paragraph),
             Start(Paragraph, Attributes::none()),
             Str("para1"),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn verbatim() {
+        test_parse!(
+            "`abc\ndef",
+            Start(Paragraph, Attributes::none()),
+            Start(Verbatim, Attributes::none()),
+            Str("abc\n"),
+            Str("def"),
+            End(Verbatim),
             End(Paragraph),
         );
     }

@@ -309,7 +309,8 @@ impl Block {
             f @ ('`' | ':' | '~') => {
                 let fence_length = (&mut chars).take_while(|c| *c == f).count() + 1;
                 let lang = line_t[fence_length..].trim();
-                let valid_spec = !lang.chars().any(char::is_whitespace);
+                let valid_spec =
+                    !lang.chars().any(char::is_whitespace) && !lang.chars().any(|c| c == '`');
                 (valid_spec && fence_length >= 3)
                     .then(|| {
                         u8::try_from(fence_length).ok().map(|fence_length| {

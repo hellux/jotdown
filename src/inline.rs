@@ -6,7 +6,6 @@ use lex::Symbol;
 
 use Atom::*;
 use Container::*;
-use Node::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
@@ -17,24 +16,6 @@ pub enum Atom {
     Ellipsis,
     EnDash,
     EmDash,
-    Lt,
-    Gt,
-    Ampersand,
-    Quote,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Node {
-    Str,
-    // link
-    //Url,
-    //ImageSource,
-    //LinkReference,
-    //FootnoteReference,
-    Verbatim,
-    RawFormat { format: Span },
-    InlineMath,
-    DisplayMath,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -52,6 +33,11 @@ pub enum Container {
     // smart quoting
     SingleQuoted,
     DoubleQuoted,
+    // Verbatim
+    Verbatim,
+    RawFormat,
+    InlineMath,
+    DisplayMath,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -59,7 +45,7 @@ pub enum EventKind {
     Enter(Container),
     Exit(Container),
     Atom(Atom),
-    Node(Node),
+    Str,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -81,6 +67,9 @@ pub struct Parser<'s> {
     span: Span,
 
     lexer: std::iter::Peekable<lex::Lexer<'s>>,
+
+    verbatim: Option<(Container, usize)>,
+    last: bool,
 }
 
 impl<'s> Parser<'s> {
@@ -91,11 +80,18 @@ impl<'s> Parser<'s> {
             span: Span::new(0, 0),
 
             lexer: lex::Lexer::new("").peekable(),
+
+            verbatim: None,
+            last: false,
         }
     }
 
-    pub fn parse(&mut self, src: &'s str) {
+    pub fn parse(&mut self, src: &'s str, last: bool) {
         self.lexer = lex::Lexer::new(src).peekable();
+        if last {
+            assert!(!self.last);
+        }
+        self.last = last;
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -114,20 +110,16 @@ impl<'s> Parser<'s> {
         self.span = Span::empty_at(self.span.end());
     }
 
-    fn node(&self, kind: Node) -> Event {
-        Event {
-            kind: EventKind::Node(kind),
-            span: self.span,
-        }
-    }
-
     fn parse_event(&mut self) -> Option<Event> {
         self.reset_span();
         self.eat().map(|first| {
             self.parse_verbatim(&first)
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
-                .unwrap_or_else(|| self.node(Str))
+                .unwrap_or(Event {
+                    kind: EventKind::Str,
+                    span: self.span,
+                })
         })
     }
 
@@ -138,9 +130,6 @@ impl<'s> Parser<'s> {
             lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
             lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
             lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
-            lex::Kind::Sym(lex::Symbol::Lt) => Lt,
-            lex::Kind::Sym(lex::Symbol::Gt) => Gt,
-            lex::Kind::Sym(lex::Symbol::Quote2) => Quote,
             _ => return None,
         };
 
@@ -151,51 +140,62 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
-        match first.kind {
-            lex::Kind::Seq(lex::Sequence::Dollar) => {
-                let math_opt = (first.len <= 2)
-                    .then(|| {
-                        if let Some(lex::Token {
-                            kind: lex::Kind::Seq(lex::Sequence::Backtick),
-                            len,
-                        }) = self.peek()
-                        {
-                            Some((
-                                if first.len == 2 {
-                                    DisplayMath
-                                } else {
-                                    InlineMath
-                                },
-                                *len,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten();
-                if math_opt.is_some() {
-                    self.eat(); // backticks
-                }
-                math_opt
-            }
-            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
-            _ => None,
-        }
-        .map(|(kind, opener_len)| {
-            let mut span = Span::empty_at(self.span.end());
-            while let Some(tok) = self.eat() {
-                if matches!(tok.kind, lex::Kind::Seq(lex::Sequence::Backtick))
-                    && tok.len == opener_len
+        self.verbatim
+            .map(|(kind, opener_len)| {
+                let kind = if matches!(first.kind, lex::Kind::Seq(lex::Sequence::Backtick))
+                    && first.len == opener_len
                 {
-                    break;
+                    self.verbatim = None;
+                    EventKind::Exit(kind)
+                } else {
+                    EventKind::Str
+                };
+                Event {
+                    kind,
+                    span: self.span,
                 }
-                span = span.extend(tok.len);
-            }
-            Event {
-                kind: EventKind::Node(kind),
-                span,
-            }
-        })
+            })
+            .or_else(|| {
+                match first.kind {
+                    lex::Kind::Seq(lex::Sequence::Dollar) => {
+                        let math_opt = (first.len <= 2)
+                            .then(|| {
+                                if let Some(lex::Token {
+                                    kind: lex::Kind::Seq(lex::Sequence::Backtick),
+                                    len,
+                                }) = self.peek()
+                                {
+                                    Some((
+                                        if first.len == 2 {
+                                            Container::DisplayMath
+                                        } else {
+                                            Container::InlineMath
+                                        },
+                                        *len,
+                                    ))
+                                } else {
+                                    None
+                                }
+                            })
+                            .flatten();
+                        if math_opt.is_some() {
+                            self.eat(); // backticks
+                        }
+                        math_opt
+                    }
+                    lex::Kind::Seq(lex::Sequence::Backtick) => {
+                        Some((Container::Verbatim, first.len))
+                    }
+                    _ => None,
+                }
+                .map(|(kind, opener_len)| {
+                    self.verbatim = Some((kind, opener_len));
+                    Event {
+                        kind: EventKind::Enter(kind),
+                        span: self.span,
+                    }
+                })
+            })
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
@@ -239,7 +239,7 @@ impl<'s> Parser<'s> {
                 .unwrap_or_else(|| {
                     self.openers.push((cont, self.events.len()));
                     // use str for now, replace if closed later
-                    EventKind::Node(Str)
+                    EventKind::Str
                 })
         })
         .map(|kind| Event {
@@ -258,7 +258,7 @@ impl<'s> Iterator for Parser<'s> {
             || self
                 .events
                 .back()
-                .map_or(false, |ev| matches!(ev.kind, EventKind::Node(Str)))
+                .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
@@ -267,25 +267,39 @@ impl<'s> Iterator for Parser<'s> {
             }
         }
 
-        self.events.pop_front().map(|e| {
-            if matches!(e.kind, EventKind::Node(Str)) {
-                // merge str events
-                let mut span = e.span;
-                while self
-                    .events
-                    .front()
-                    .map_or(false, |ev| matches!(ev.kind, EventKind::Node(Str)))
-                {
-                    span = span.union(self.events.pop_front().unwrap().span);
+        self.events
+            .pop_front()
+            .map(|e| {
+                if matches!(e.kind, EventKind::Str) {
+                    // merge str events
+                    let mut span = e.span;
+                    while self
+                        .events
+                        .front()
+                        .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                    {
+                        let ev = self.events.pop_front().unwrap();
+                        assert_eq!(span.end(), ev.span.start());
+                        span = span.union(ev.span);
+                    }
+                    Event {
+                        kind: EventKind::Str,
+                        span,
+                    }
+                } else {
+                    e
                 }
-                Event {
-                    kind: EventKind::Node(Str),
-                    span,
+            })
+            .or_else(|| {
+                if self.last {
+                    self.verbatim.take().map(|(kind, _)| Event {
+                        kind: EventKind::Exit(kind),
+                        span: self.span,
+                    })
+                } else {
+                    None
                 }
-            } else {
-                e
-            }
-        })
+            })
     }
 }
 
@@ -296,49 +310,106 @@ mod test {
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
-    use super::Node::*;
+    use super::Verbatim;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
             let mut p = super::Parser::new();
-            p.parse($src);
+            p.parse($src, true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
     }
 
-    impl super::EventKind {
-        pub fn span(self, start: usize, end: usize) -> super::Event {
-            super::Event {
-                span: Span::new(start, end),
-                kind: self,
-            }
-        }
-    }
-
     #[test]
     fn str() {
-        test_parse!("abc", (Node(Str), "abc"));
-        test_parse!("abc def", (Node(Str), "abc def"));
+        test_parse!("abc", (Str, "abc"));
+        test_parse!("abc def", (Str, "abc def"));
     }
 
     #[test]
     fn verbatim() {
-        test_parse!("`abc`", (Node(Verbatim), "abc"));
-        test_parse!("`abc", (Node(Verbatim), "abc"));
-        test_parse!("``abc``", (Node(Verbatim), "abc"));
-        test_parse!("abc `def`", (Node(Str), "abc "), (Node(Verbatim), "def"));
+        test_parse!(
+            "`abc`",
+            (Enter(Verbatim), "`"),
+            (Str, "abc"),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            "`abc\ndef`",
+            (Enter(Verbatim), "`"),
+            (Str, "abc\ndef"),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            "`abc&def`",
+            (Enter(Verbatim), "`"),
+            (Str, "abc&def"),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            "`abc",
+            (Enter(Verbatim), "`"),
+            (Str, "abc"),
+            (Exit(Verbatim), ""),
+        );
+        test_parse!(
+            "``abc``",
+            (Enter(Verbatim), "``"),
+            (Str, "abc"),
+            (Exit(Verbatim), "``"),
+        );
+        test_parse!(
+            "abc `def`",
+            (Str, "abc "),
+            (Enter(Verbatim), "`"),
+            (Str, "def"),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            "abc`def`",
+            (Str, "abc"),
+            (Enter(Verbatim), "`"),
+            (Str, "def"),
+            (Exit(Verbatim), "`"),
+        );
     }
 
     #[test]
     fn math() {
-        test_parse!("$`abc`", (Node(InlineMath), "abc"));
-        test_parse!("$`abc` str", (Node(InlineMath), "abc"), (Node(Str), " str"));
-        test_parse!("$$`abc`", (Node(DisplayMath), "abc"));
-        test_parse!("$`abc", (Node(InlineMath), "abc"));
-        test_parse!("$```abc```", (Node(InlineMath), "abc"),);
+        test_parse!(
+            "$`abc`",
+            (Enter(InlineMath), "$`"),
+            (Str, "abc"),
+            (Exit(InlineMath), "`"),
+        );
+        test_parse!(
+            "$`abc` str",
+            (Enter(InlineMath), "$`"),
+            (Str, "abc"),
+            (Exit(InlineMath), "`"),
+            (Str, " str"),
+        );
+        test_parse!(
+            "$$`abc`",
+            (Enter(DisplayMath), "$$`"),
+            (Str, "abc"),
+            (Exit(DisplayMath), "`"),
+        );
+        test_parse!(
+            "$`abc",
+            (Enter(InlineMath), "$`"),
+            (Str, "abc"),
+            (Exit(InlineMath), ""),
+        );
+        test_parse!(
+            "$```abc```",
+            (Enter(InlineMath), "$```"),
+            (Str, "abc"),
+            (Exit(InlineMath), "```"),
+        );
     }
 
     #[test]
@@ -346,13 +417,13 @@ mod test {
         test_parse!(
             "_abc_",
             (Enter(Emphasis), "_"),
-            (Node(Str), "abc"),
+            (Str, "abc"),
             (Exit(Emphasis), "_"),
         );
         test_parse!(
             "{_abc_}",
             (Enter(Emphasis), "{_"),
-            (Node(Str), "abc"),
+            (Str, "abc"),
             (Exit(Emphasis), "_}"),
         );
     }
@@ -363,7 +434,7 @@ mod test {
             "{_{_abc_}_}",
             (Enter(Emphasis), "{_"),
             (Enter(Emphasis), "{_"),
-            (Node(Str), "abc"),
+            (Str, "abc"),
             (Exit(Emphasis), "_}"),
             (Exit(Emphasis), "_}"),
         );
@@ -371,7 +442,7 @@ mod test {
             "*_abc_*",
             (Enter(Strong), "*"),
             (Enter(Emphasis), "_"),
-            (Node(Str), "abc"),
+            (Str, "abc"),
             (Exit(Emphasis), "_"),
             (Exit(Strong), "*"),
         );
@@ -379,7 +450,7 @@ mod test {
 
     #[test]
     fn container_unopened() {
-        test_parse!("*}abc", (Node(Str), "*}abc"));
+        test_parse!("*}abc", (Str, "*}abc"));
     }
 
     #[test]
@@ -387,14 +458,14 @@ mod test {
         test_parse!(
             "{*{_abc*}",
             (Enter(Strong), "{*"),
-            (Node(Str), "{_abc"),
+            (Str, "{_abc"),
             (Exit(Strong), "*}"),
         );
     }
 
     #[test]
     fn container_close_block() {
-        test_parse!("{_abc", (Node(Str), "{_abc"));
-        test_parse!("{_{*{_abc", (Node(Str), "{_{*{_abc"));
+        test_parse!("{_abc", (Str, "{_abc"));
+        test_parse!("{_{*{_abc", (Str, "{_{*{_abc"));
     }
 }

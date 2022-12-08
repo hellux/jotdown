@@ -75,11 +75,8 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                                 self.out.write_str("<div>")?;
                             }
                         }
-                        Container::Span => self.out.write_str("<span>")?,
                         Container::Paragraph => self.out.write_str("<p>")?,
                         Container::Heading { level } => write!(self.out, "<h{}>", level)?,
-                        Container::Link(..) => todo!(),
-                        Container::Image(..) => todo!(),
                         Container::TableCell => self.out.write_str("<td>")?,
                         Container::DescriptionTerm => self.out.write_str("<dt>")?,
                         Container::RawBlock { .. } => todo!(),
@@ -90,6 +87,16 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                                 self.out.write_str("<pre><code>")?;
                             }
                         }
+                        Container::Span => self.out.write_str("<span>")?,
+                        Container::Link(..) => todo!(),
+                        Container::Image(..) => todo!(),
+                        Container::Verbatim => self.out.write_str("<code>")?,
+                        Container::Math { display } => self.out.write_str(if display {
+                            r#"<span class="math display">\["#
+                        } else {
+                            r#"<span class="math inline">\("#
+                        })?,
+                        Container::RawInline { .. } => todo!(),
                         Container::Subscript => self.out.write_str("<sub>")?,
                         Container::Superscript => self.out.write_str("<sup>")?,
                         Container::Insert => self.out.write_str("<ins>")?,
@@ -119,11 +126,14 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
-                        Container::RawBlock { .. } => self.out.write_str("</code></pre>")?,
+                        Container::RawBlock { .. } => todo!(),
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
                         Container::Span => self.out.write_str("</span>")?,
                         Container::Link(..) => todo!(),
                         Container::Image(..) => todo!(),
+                        Container::Verbatim => self.out.write_str("</code>")?,
+                        Container::Math { .. } => self.out.write_str("</span>")?,
+                        Container::RawInline { .. } => todo!(),
                         Container::Subscript => self.out.write_str("</sub>")?,
                         Container::Superscript => self.out.write_str("</sup>")?,
                         Container::Insert => self.out.write_str("</ins>")?,
@@ -136,22 +146,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                     }
                 }
                 Event::Str(s) => self.out.write_str(s)?,
-                Event::Verbatim(s) => write!(self.out, "<code>{}</code>", s)?,
-                Event::Math { content, display } => {
-                    if display {
-                        write!(
-                            self.out,
-                            r#"<span class="math display">\[{}\]</span>"#,
-                            content,
-                        )?;
-                    } else {
-                        write!(
-                            self.out,
-                            r#"<span class="math inline">\({}\)</span>"#,
-                            content,
-                        )?;
-                    }
-                }
                 Event::Atom(a) => match a {
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
                     Atom::EnDash => self.out.write_str("&ndash;")?,

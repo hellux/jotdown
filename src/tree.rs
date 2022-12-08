@@ -13,6 +13,16 @@ pub struct Event<C, A> {
     pub span: Span,
 }
 
+pub struct Object<C, E> {
+    kind: ObjectKind<C, E>,
+    span: Span,
+}
+
+pub enum ObjectKind<C, E> {
+    Container(C),
+    Element(E),
+}
+
 #[derive(Debug, Clone)]
 pub struct Tree<C, E> {
     nodes: Vec<Node<C, E>>,
@@ -20,13 +30,31 @@ pub struct Tree<C, E> {
     head: Option<NodeIndex>,
 }
 
-impl<C, E> Tree<C, E> {
+impl<C: Copy, E: Copy> Tree<C, E> {
     fn new(nodes: Vec<Node<C, E>>) -> Self {
+        let head = nodes[NodeIndex::root().index()].next;
         Self {
             nodes,
             branch: Vec::new(),
-            head: Some(NodeIndex::root()),
+            head,
         }
+    }
+
+    pub fn neighbors(&self) -> impl Iterator<Item = Object<C, E>> + '_ {
+        let mut head = self.head;
+        std::iter::from_fn(move || {
+            head.take().map(|h| {
+                let n = &self.nodes[h.index()];
+                let kind = match &n.kind {
+                    NodeKind::Root => unreachable!(),
+                    NodeKind::Container(c, _) => ObjectKind::Container(*c),
+                    NodeKind::Element(e) => ObjectKind::Element(*e),
+                };
+                let span = n.span;
+                head = n.next;
+                Object { kind, span }
+            })
+        })
     }
 }
 
@@ -37,10 +65,7 @@ impl<C: Copy, E: Copy> Iterator for Tree<C, E> {
         if let Some(head) = self.head {
             let n = &self.nodes[head.index()];
             let kind = match &n.kind {
-                NodeKind::Root => {
-                    self.head = n.next;
-                    return self.next();
-                }
+                NodeKind::Root => unreachable!(),
                 NodeKind::Container(c, child) => {
                     self.branch.push(head);
                     self.head = *child;
