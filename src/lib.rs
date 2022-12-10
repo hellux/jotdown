@@ -47,7 +47,7 @@ pub enum Container<'s> {
     /// A paragraph.
     Paragraph,
     /// A heading.
-    Heading { level: u8 },
+    Heading { level: usize },
     /// A cell element of row within a table.
     TableCell,
     /// A term within a description list.
@@ -267,20 +267,22 @@ impl<'s> Event<'s> {
 }
 
 impl<'s> Container<'s> {
-    fn from_block(src: &'s str, block: block::Block) -> Self {
+    fn from_block(content: &'s str, block: block::Block) -> Self {
         match block {
             block::Block::Atom(a) => todo!(),
             block::Block::Leaf(l) => match l {
                 block::Leaf::Paragraph => Self::Paragraph,
-                block::Leaf::Heading { level } => Self::Heading { level },
-                block::Leaf::CodeBlock { .. } => Self::CodeBlock { lang: None },
+                block::Leaf::Heading => Self::Heading {
+                    level: content.len(),
+                },
+                block::Leaf::CodeBlock => Self::CodeBlock { lang: None },
                 _ => todo!(),
             },
             block::Block::Container(c) => match c {
                 block::Container::Blockquote => Self::Blockquote,
-                block::Container::Div { .. } => Self::Div { class: None },
-                block::Container::Footnote { .. } => Self::Footnote { tag: todo!() },
-                _ => todo!(),
+                block::Container::Div => Self::Div { class: None },
+                block::Container::Footnote => Self::Footnote { tag: content },
+                block::Container::ListItem => todo!(),
             },
         }
     }
@@ -350,7 +352,7 @@ impl<'s> Iterator for Parser<'s> {
                     }
                     tree::EventKind::Exit(c) => {
                         self.parser = None;
-                        return Some(Event::End(Container::from_block(self.src, c)));
+                        return Some(Event::End(Container::from_block(ev.span.of(self.src), c)));
                     }
                     tree::EventKind::Enter(..) => unreachable!(),
                 }
@@ -384,11 +386,11 @@ impl<'s> Iterator for Parser<'s> {
                         block::Block::Container(block::Container::Div { .. }) => Container::Div {
                             class: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
                         },
-                        b => Container::from_block(self.src, b),
+                        b => Container::from_block(content, b),
                     };
                     Event::Start(container, self.block_attributes.take())
                 }
-                tree::EventKind::Exit(c) => Event::End(Container::from_block(self.src, c)),
+                tree::EventKind::Exit(c) => Event::End(Container::from_block(content, c)),
             };
             return Some(event);
         }
