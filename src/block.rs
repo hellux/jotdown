@@ -163,8 +163,11 @@ impl<'s> Parser<'s> {
 
                         // trim ending whitespace of block if not verbatim
                         if !matches!(l, Leaf::CodeBlock { .. }) {
-                            let last = &mut lines[line_count - 1];
-                            *last = last.trim_end(self.src);
+                            let l = lines.len();
+                            if l > 0 {
+                                let last = &mut lines[l - 1];
+                                *last = last.trim_end(self.src);
+                            }
                         }
 
                         lines
@@ -725,6 +728,21 @@ mod test {
             Block::Container(Blockquote),
             ">",
             5,
+        );
+    }
+
+    #[test]
+    fn block_thematic_break() {
+        test_block!("---\n", Block::Leaf(ThematicBreak), "---", 1);
+        test_block!(
+            concat!(
+                "   -*- -*-\n",
+                "\n",   //
+                "para", //
+            ),
+            Block::Leaf(ThematicBreak),
+            "-*- -*-",
+            1
         );
     }
 
