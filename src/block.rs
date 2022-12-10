@@ -278,7 +278,6 @@ impl BlockParser {
                 } else {
                     (tag, false)
                 };
-                dbg!(line, line_t, tag);
                 (
                     if is_footnote {
                         Block::Container(Footnote)
