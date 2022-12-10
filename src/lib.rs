@@ -269,6 +269,7 @@ impl<'s> Event<'s> {
 impl<'s> Container<'s> {
     fn from_block(src: &'s str, block: block::Block) -> Self {
         match block {
+            block::Block::Atom(a) => todo!(),
             block::Block::Leaf(l) => match l {
                 block::Leaf::Paragraph => Self::Paragraph,
                 block::Leaf::Heading { level } => Self::Heading { level },
@@ -342,14 +343,14 @@ impl<'s> Iterator for Parser<'s> {
                 return Some(Event::from_inline(self.src, inline));
             } else if let Some(ev) = self.tree.next() {
                 match ev.kind {
-                    tree::EventKind::Element(atom) => {
-                        assert_eq!(atom, block::Atom::Inline);
-                        let last_inline = self.tree.neighbors().next().is_none();
+                    tree::EventKind::Atom(a) => {
+                        assert_eq!(a, block::Atom::Inline);
+                        let last_inline = self.tree.atoms().next().is_none();
                         parser.parse(ev.span.of(self.src), last_inline);
                     }
-                    tree::EventKind::Exit(block) => {
+                    tree::EventKind::Exit(c) => {
                         self.parser = None;
-                        return Some(Event::End(Container::from_block(self.src, block)));
+                        return Some(Event::End(Container::from_block(self.src, c)));
                     }
                     tree::EventKind::Enter(..) => unreachable!(),
                 }
@@ -359,20 +360,21 @@ impl<'s> Iterator for Parser<'s> {
         for ev in &mut self.tree {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
-                tree::EventKind::Element(atom) => match atom {
+                tree::EventKind::Atom(a) => match a {
                     block::Atom::Inline => panic!("inline outside leaf block"),
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
+                    block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
                     block::Atom::Attributes => {
                         self.block_attributes.parse(content);
                         continue;
                     }
                 },
-                tree::EventKind::Enter(block) => {
-                    if matches!(block, block::Block::Leaf(_)) {
+                tree::EventKind::Enter(c) => {
+                    if matches!(c, block::Block::Leaf(_)) {
                         self.parser = Some(inline::Parser::new());
                         self.inline_start = ev.span.end();
                     }
-                    let container = match block {
+                    let container = match c {
                         block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
                             self.inline_start += 1; // skip newline
                             Container::CodeBlock {
@@ -386,7 +388,7 @@ impl<'s> Iterator for Parser<'s> {
                     };
                     Event::Start(container, self.block_attributes.take())
                 }
-                tree::EventKind::Exit(block) => Event::End(Container::from_block(self.src, block)),
+                tree::EventKind::Exit(c) => Event::End(Container::from_block(self.src, c)),
             };
             return Some(event);
         }
@@ -465,6 +467,7 @@ mod test {
             Start(Paragraph, Attributes::none()),
             Str("para0"),
             End(Paragraph),
+            Atom(Blankline),
             Start(Paragraph, Attributes::none()),
             Str("para1"),
             End(Paragraph),

@@ -1,10 +1,10 @@
 use crate::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EventKind<C, E> {
+pub enum EventKind<C, A> {
     Enter(C),
-    Element(E),
     Exit(C),
+    Atom(A),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,25 +13,15 @@ pub struct Event<C, A> {
     pub span: Span,
 }
 
-pub struct Object<C, E> {
-    kind: ObjectKind<C, E>,
-    span: Span,
-}
-
-pub enum ObjectKind<C, E> {
-    Container(C),
-    Element(E),
-}
-
-#[derive(Debug, Clone)]
-pub struct Tree<C, E> {
-    nodes: Vec<Node<C, E>>,
+#[derive(Clone)]
+pub struct Tree<C, A> {
+    nodes: Vec<Node<C, A>>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
 
-impl<C: Copy, E: Copy> Tree<C, E> {
-    fn new(nodes: Vec<Node<C, E>>) -> Self {
+impl<C: Copy, A: Copy> Tree<C, A> {
+    fn new(nodes: Vec<Node<C, A>>) -> Self {
         let head = nodes[NodeIndex::root().index()].next;
         Self {
             nodes,
@@ -40,26 +30,25 @@ impl<C: Copy, E: Copy> Tree<C, E> {
         }
     }
 
-    pub fn neighbors(&self) -> impl Iterator<Item = Object<C, E>> + '_ {
+    pub fn atoms(&self) -> impl Iterator<Item = (A, Span)> + '_ {
         let mut head = self.head;
         std::iter::from_fn(move || {
             head.take().map(|h| {
                 let n = &self.nodes[h.index()];
                 let kind = match &n.kind {
                     NodeKind::Root => unreachable!(),
-                    NodeKind::Container(c, _) => ObjectKind::Container(*c),
-                    NodeKind::Element(e) => ObjectKind::Element(*e),
+                    NodeKind::Container(..) => panic!(),
+                    NodeKind::Atom(a) => *a,
                 };
-                let span = n.span;
                 head = n.next;
-                Object { kind, span }
+                (kind, n.span)
             })
         })
     }
 }
 
-impl<C: Copy, E: Copy> Iterator for Tree<C, E> {
-    type Item = Event<C, E>;
+impl<C: Copy, A: Copy> Iterator for Tree<C, A> {
+    type Item = Event<C, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(head) = self.head {
@@ -71,9 +60,9 @@ impl<C: Copy, E: Copy> Iterator for Tree<C, E> {
                     self.head = *child;
                     EventKind::Enter(*c)
                 }
-                NodeKind::Element(e) => {
+                NodeKind::Atom(e) => {
                     self.head = n.next;
-                    EventKind::Element(*e)
+                    EventKind::Atom(*e)
                 }
             };
             Some(Event { kind, span: n.span })
@@ -114,27 +103,27 @@ impl NodeIndex {
 }
 
 #[derive(Debug, Clone)]
-enum NodeKind<C, E> {
+enum NodeKind<C, A> {
     Root,
     Container(C, Option<NodeIndex>),
-    Element(E),
+    Atom(A),
 }
 
 #[derive(Debug, Clone)]
-struct Node<C, E> {
+struct Node<C, A> {
     span: Span,
-    kind: NodeKind<C, E>,
+    kind: NodeKind<C, A>,
     next: Option<NodeIndex>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Builder<C, E> {
-    nodes: Vec<Node<C, E>>,
+#[derive(Clone)]
+pub struct Builder<C, A> {
+    nodes: Vec<Node<C, A>>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
 
-impl<C: Copy, E: Copy> Builder<C, E> {
+impl<C: Copy, A: Copy> Builder<C, A> {
     pub(super) fn new() -> Self {
         Builder {
             nodes: vec![Node {
@@ -147,10 +136,10 @@ impl<C: Copy, E: Copy> Builder<C, E> {
         }
     }
 
-    pub(super) fn elem(&mut self, e: E, span: Span) {
+    pub(super) fn atom(&mut self, a: A, span: Span) {
         self.add_node(Node {
             span,
-            kind: NodeKind::Element(e),
+            kind: NodeKind::Atom(a),
             next: None,
         });
     }
@@ -172,17 +161,17 @@ impl<C: Copy, E: Copy> Builder<C, E> {
         }
     }
 
-    pub(super) fn finish(self) -> Tree<C, E> {
+    pub(super) fn finish(self) -> Tree<C, A> {
         Tree::new(self.nodes)
     }
 
-    fn add_node(&mut self, node: Node<C, E>) {
+    fn add_node(&mut self, node: Node<C, A>) {
         let ni = NodeIndex::new(self.nodes.len());
         self.nodes.push(node);
         if let Some(head_ni) = &mut self.head {
             let mut head = &mut self.nodes[head_ni.index()];
             match &mut head.kind {
-                NodeKind::Root | NodeKind::Element(_) => {
+                NodeKind::Root | NodeKind::Atom(_) => {
                     // update next pointer of previous node
                     assert_eq!(head.next, None);
                     head.next = Some(ni);
@@ -205,30 +194,28 @@ impl<C: Copy, E: Copy> Builder<C, E> {
     }
 }
 
-impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display for Builder<C, E> {
+impl<C: Copy + std::fmt::Debug, A: Copy + std::fmt::Debug> std::fmt::Debug for Builder<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.clone().finish().fmt(f)
     }
 }
 
-impl<C: Copy + std::fmt::Display, E: Copy + std::fmt::Display> std::fmt::Display for Tree<C, E> {
+impl<C: Copy + std::fmt::Debug, A: Copy + std::fmt::Debug> std::fmt::Debug for Tree<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
         for e in self.clone() {
             let indent = INDENT.repeat(level);
             match e.kind {
-                EventKind::Enter(container) => {
-                    write!(f, "{}{}", indent, container)?;
+                EventKind::Enter(c) => {
+                    write!(f, "{}{:?}", indent, c)?;
                     level += 1;
                 }
-                EventKind::Exit(_) => {
+                EventKind::Exit(..) => {
                     level -= 1;
                     continue;
                 }
-                EventKind::Element(element) => {
-                    write!(f, "{}{}", indent, element)?;
-                }
+                EventKind::Atom(a) => write!(f, "{}{:?}", indent, a)?,
             }
             writeln!(f, " ({}:{})", e.span.start(), e.span.end())?;
         }
@@ -243,11 +230,11 @@ mod test {
     #[test]
     fn fmt_linear() {
         let mut tree: super::Builder<u8, u8> = super::Builder::new();
-        tree.elem(1, Span::new(0, 1));
-        tree.elem(2, Span::new(1, 2));
-        tree.elem(3, Span::new(3, 4));
+        tree.atom(1, Span::new(0, 1));
+        tree.atom(2, Span::new(1, 2));
+        tree.atom(3, Span::new(3, 4));
         assert_eq!(
-            tree.to_string(),
+            format!("{:?}", tree),
             concat!(
                 "1 (0:1)\n",
                 "2 (1:2)\n",
@@ -260,24 +247,24 @@ mod test {
     fn fmt_container() {
         let mut tree: super::Builder<u8, u16> = super::Builder::new();
         tree.enter(1, Span::new(0, 1));
-        tree.elem(11, Span::new(0, 1));
-        tree.elem(12, Span::new(0, 1));
+        tree.atom(11, Span::new(0, 1));
+        tree.atom(12, Span::new(0, 1));
         tree.exit();
         tree.enter(2, Span::new(1, 5));
         tree.enter(21, Span::new(2, 5));
         tree.enter(211, Span::new(3, 4));
-        tree.elem(2111, Span::new(3, 4));
+        tree.atom(2111, Span::new(3, 4));
         tree.exit();
         tree.exit();
         tree.enter(22, Span::new(4, 5));
-        tree.elem(221, Span::new(4, 5));
+        tree.atom(221, Span::new(4, 5));
         tree.exit();
         tree.exit();
         tree.enter(3, Span::new(5, 6));
-        tree.elem(31, Span::new(5, 6));
+        tree.atom(31, Span::new(5, 6));
         tree.exit();
         assert_eq!(
-            tree.to_string(),
+            format!("{:?}", tree),
             concat!(
                 "1 (0:1)\n",
                 "  11 (0:1)\n",

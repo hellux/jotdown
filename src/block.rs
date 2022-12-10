@@ -3,6 +3,7 @@ use crate::EOF;
 
 use crate::tree;
 
+use Atom::*;
 use Container::*;
 use Leaf::*;
 
@@ -15,11 +16,29 @@ pub fn parse(src: &str) -> Tree {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
+    /// An atomic block, containing no children elements.
+    Atom(Atom),
+
     /// A leaf block, containing only inline elements.
     Leaf(Leaf),
 
     /// A container block, containing children blocks.
     Container(Container),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Atom {
+    /// Inline content with unparsed inline elements.
+    Inline,
+
+    /// A line with no non-whitespace characters.
+    Blankline,
+
+    /// A list of attributes.
+    Attributes,
+
+    /// A thematic break.
+    ThematicBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,10 +62,6 @@ pub enum Leaf {
     /// Span is language specifier.
     /// Each inline is a line.
     CodeBlock { fence_length: u8, c: u8 },
-
-    /// Span is from first to last character.
-    /// No inlines.
-    ThematicBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,18 +77,6 @@ pub enum Container {
 
     /// Span is first `[^` instance.
     Footnote { indent: u8 },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Atom {
-    /// Inline content with unparsed inline elements.
-    Inline,
-
-    /// A line with no non-whitespace characters.
-    Blankline,
-
-    /// A list of attributes.
-    Attributes,
 }
 
 struct Parser<'s> {
@@ -106,15 +109,8 @@ impl<'s> Parser<'s> {
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
     fn parse_block(&mut self, lines: &mut [Span]) -> usize {
-        let blanklines = lines
-            .iter()
-            .take_while(|sp| sp.of(self.src).trim().is_empty())
-            .map(|sp| self.tree.elem(Atom::Blankline, *sp))
-            .count();
-        let lines = &mut lines[blanklines..];
-
         Block::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
-            blanklines,
+            0,
             |(kind, span, line_count)| {
                 let lines = {
                     let l = lines.len().min(line_count);
@@ -147,7 +143,11 @@ impl<'s> Parser<'s> {
                     lines
                 };
 
-                match &kind {
+                match kind {
+                    Block::Atom(a) => {
+                        assert_ne!(a, Inline);
+                        self.tree.atom(a, span);
+                    }
                     Block::Leaf(l) => {
                         self.tree.enter(kind, span);
 
@@ -170,9 +170,8 @@ impl<'s> Parser<'s> {
                             }
                         }
 
-                        lines
-                            .iter()
-                            .for_each(|line| self.tree.elem(Atom::Inline, *line));
+                        lines.iter().for_each(|line| self.tree.atom(Inline, *line));
+                        self.tree.exit();
                     }
                     Block::Container(c) => {
                         let (skip_chars, skip_lines_suffix) = match &c {
@@ -194,7 +193,7 @@ impl<'s> Parser<'s> {
                                     .take_while(|c| c.is_whitespace())
                                     .count()
                                     + usize::from(skip_chars))
-                                .min(sp.len());
+                                .min(sp.len() - usize::from(sp.of(self.src).ends_with('\n')));
                                 *sp = sp.skip(skip);
                             });
 
@@ -203,10 +202,11 @@ impl<'s> Parser<'s> {
                         while l < line_count_inner {
                             l += self.parse_block(&mut lines[l..line_count_inner]);
                         }
+                        self.tree.exit();
                     }
                 }
-                self.tree.exit();
-                blanklines + line_count
+
+                line_count
             },
         )
     }
@@ -229,11 +229,16 @@ impl Block {
 
     /// Determine what type of block a line can start.
     fn start(line: &str) -> (Self, Span) {
-        let start = line.chars().take_while(|c| c.is_whitespace()).count();
+        let start = line
+            .chars()
+            .take_while(|c| *c != '\n' && c.is_whitespace())
+            .count();
         let line_t = &line[start..];
         let mut chars = line_t.chars();
 
         match chars.next().unwrap_or(EOF) {
+            EOF => Some((Self::Atom(Blankline), Span::empty_at(start))),
+            '\n' => Some((Self::Atom(Blankline), Span::by_len(start, 1))),
             '#' => chars
                 .find(|c| *c != '#')
                 .map_or(true, char::is_whitespace)
@@ -286,7 +291,7 @@ impl Block {
                 )
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => Some((
-                Self::Leaf(ThematicBreak),
+                Self::Atom(ThematicBreak),
                 Span::from_slice(line, line_t.trim()),
             )),
             '-' => chars.next().map_or(true, char::is_whitespace).then(|| {
@@ -350,9 +355,9 @@ impl Block {
     fn continues(self, line: &str) -> bool {
         //let start = Self::start(line); // TODO allow starting new block without blank line
         match self {
+            Self::Atom(..) => false,
             Self::Leaf(Paragraph | Heading { .. } | Table) => !line.trim().is_empty(),
             Self::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
-            Self::Leaf(ThematicBreak) => false,
             Self::Container(Blockquote) => line.trim().starts_with('>'),
             Self::Container(Footnote { indent } | ListItem { indent }) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
@@ -362,7 +367,7 @@ impl Block {
                 let fence = match self {
                     Self::Container(..) => ':',
                     Self::Leaf(CodeBlock { c, .. }) => c as char,
-                    Self::Leaf(..) => unreachable!(),
+                    Self::Leaf(..) | Self::Atom(..) => unreachable!(),
                 };
                 let mut c = line.chars();
                 !((&mut c).take((fence_length).into()).all(|c| c == fence)
@@ -375,6 +380,7 @@ impl Block {
 impl std::fmt::Display for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Block::Atom(a) => std::fmt::Debug::fmt(a, f),
             Block::Leaf(e) => std::fmt::Debug::fmt(e, f),
             Block::Container(c) => std::fmt::Debug::fmt(c, f),
         }
@@ -408,6 +414,7 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
+    use crate::tree::EventKind;
     use crate::tree::EventKind::*;
 
     use super::Atom::*;
@@ -430,7 +437,7 @@ mod test {
         test_parse!(
             "para\n",
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "para"),
+            (EventKind::Atom(Inline), "para"),
             (Exit(Leaf(Paragraph)), ""),
         );
     }
@@ -440,8 +447,8 @@ mod test {
         test_parse!(
             "para0\npara1\n",
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "para0\n"),
-            (Element(Inline), "para1"),
+            (EventKind::Atom(Inline), "para0\n"),
+            (EventKind::Atom(Inline), "para1"),
             (Exit(Leaf(Paragraph)), ""),
         );
     }
@@ -457,39 +464,41 @@ mod test {
                     "15\n", //
                 ),
             (Enter(Leaf(Heading { level: 1 })), "#"),
-            (Element(Inline), "2"),
+            (EventKind::Atom(Inline), "2"),
             (Exit(Leaf(Heading { level: 1 })), "#"),
-            (Element(Blankline), "\n"),
+            (EventKind::Atom(Blankline), "\n"),
             (Enter(Leaf(Heading { level: 1 })), "#"),
-            (Element(Inline), "8\n"),
-            (Element(Inline), "  12\n"),
-            (Element(Inline), "15"),
+            (EventKind::Atom(Inline), "8\n"),
+            (EventKind::Atom(Inline), "  12\n"),
+            (EventKind::Atom(Inline), "15"),
             (Exit(Leaf(Heading { level: 1 })), "#"),
         );
     }
 
     #[test]
     fn parse_blockquote() {
+        /*
         test_parse!(
             "> a\n",
-            (Enter(Container(Blockquote)), ">"),
-            (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "a"),
-            (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Enter, Container(Blockquote), ">"),
+            (Enter, Leaf(Paragraph), ""),
+            (Element, Atom(Inline), "a"),
+            (Exit, Leaf(Paragraph), ""),
+            (Exit, Container(Blockquote), ">"),
         );
         test_parse!(
             "> \n",
-            (Enter(Container(Blockquote)), ">"),
-            (Element(Blankline), " \n"),
-            (Exit(Container(Blockquote)), ">"),
+            (Enter, Container(Blockquote), ">"),
+            (Element, Atom(Blankline), "\n"),
+            (Exit, Container(Blockquote), ">"),
         );
         test_parse!(
             ">",
-            (Enter(Container(Blockquote)), ">"),
-            (Element(Blankline), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Enter, Container(Blockquote), ">"),
+            (Element, Atom(Blankline), ""),
+            (Exit, Container(Blockquote), ">"),
         );
+        */
         test_parse!(
             concat!(
                 "> a\n",
@@ -500,15 +509,15 @@ mod test {
             ),
             (Enter(Container(Blockquote)), ">"),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "a"),
+            (EventKind::Atom(Inline), "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Element(Blankline), ""),
+            (EventKind::Atom(Blankline), "\n"),
             (Enter(Leaf(Heading { level: 2 })), "##"),
-            (Element(Inline), "hl"),
+            (EventKind::Atom(Inline), "hl"),
             (Exit(Leaf(Heading { level: 2 })), "##"),
-            (Element(Blankline), ""),
+            (EventKind::Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "para"),
+            (EventKind::Atom(Inline), "para"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Blockquote)), ">"),
         );
@@ -519,13 +528,13 @@ mod test {
         test_parse!(
             "> \n",
             (Enter(Container(Blockquote)), ">"),
-            (Element(Blankline), "\n"),
+            (EventKind::Atom(Blankline), "\n"),
             (Exit(Container(Blockquote)), ">"),
         );
         test_parse!(
             ">",
             (Enter(Container(Blockquote)), ">"),
-            (Element(Blankline), ""),
+            (EventKind::Atom(Blankline), ""),
             (Exit(Container(Blockquote)), ">"),
         );
     }
@@ -541,7 +550,7 @@ mod test {
                 })),
                 "",
             ),
-            (Element(Inline), "l0\n"),
+            (EventKind::Atom(Inline), "l0\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 3,
@@ -565,7 +574,7 @@ mod test {
                 })),
                 ""
             ),
-            (Element(Inline), "l0\n"),
+            (EventKind::Atom(Inline), "l0\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 3,
@@ -573,9 +582,9 @@ mod test {
                 })),
                 ""
             ),
-            (Element(Blankline), "\n"),
+            (EventKind::Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "para"),
+            (EventKind::Atom(Inline), "para"),
             (Exit(Leaf(Paragraph)), ""),
         );
         test_parse!(
@@ -593,9 +602,9 @@ mod test {
                 })),
                 "lang"
             ),
-            (Element(Inline), "l0\n"),
-            (Element(Inline), "```\n"),
-            (Element(Inline), " l1\n"),
+            (EventKind::Atom(Inline), "l0\n"),
+            (EventKind::Atom(Inline), "```\n"),
+            (EventKind::Atom(Inline), " l1\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 4,
@@ -620,7 +629,7 @@ mod test {
                 })),
                 ""
             ),
-            (Element(Inline), "a\n"),
+            (EventKind::Atom(Inline), "a\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 3,
@@ -635,7 +644,7 @@ mod test {
                 })),
                 ""
             ),
-            (Element(Inline), "bbb\n"),
+            (EventKind::Atom(Inline), "bbb\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 3,
@@ -658,8 +667,8 @@ mod test {
                 })),
                 "",
             ),
-            (Element(Inline), "code\n"),
-            (Element(Inline), "  block\n"),
+            (EventKind::Atom(Inline), "code\n"),
+            (EventKind::Atom(Inline), "  block\n"),
             (
                 Exit(Leaf(CodeBlock {
                     fence_length: 3,
@@ -675,7 +684,7 @@ mod test {
         test_parse!(
             "[tag]: url\n",
             (Enter(Leaf(LinkDefinition)), "tag"),
-            (Element(Inline), "url"),
+            (EventKind::Atom(Inline), "url"),
             (Exit(Leaf(LinkDefinition)), "tag"),
         );
     }
@@ -686,7 +695,7 @@ mod test {
             "[^tag]: description\n",
             (Enter(Container(Footnote { indent: 0 })), "tag"),
             (Enter(Leaf(Paragraph)), ""),
-            (Element(Inline), "description"),
+            (EventKind::Atom(Inline), "description"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Footnote { indent: 0 })), "tag"),
         );
@@ -703,6 +712,12 @@ mod test {
                 $src
             );
         };
+    }
+
+    #[test]
+    fn block_blankline() {
+        test_block!("\n", Block::Atom(Blankline), "\n", 1);
+        test_block!(" \n", Block::Atom(Blankline), "\n", 1);
     }
 
     #[test]
@@ -733,14 +748,14 @@ mod test {
 
     #[test]
     fn block_thematic_break() {
-        test_block!("---\n", Block::Leaf(ThematicBreak), "---", 1);
+        test_block!("---\n", Block::Atom(ThematicBreak), "---", 1);
         test_block!(
             concat!(
                 "   -*- -*-\n",
                 "\n",   //
                 "para", //
             ),
-            Block::Leaf(ThematicBreak),
+            Block::Atom(ThematicBreak),
             "-*- -*-",
             1
         );
