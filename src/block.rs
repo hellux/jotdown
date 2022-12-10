@@ -109,9 +109,7 @@ impl<'s> Parser<'s> {
         let blanklines = lines
             .iter()
             .take_while(|sp| sp.of(self.src).trim().is_empty())
-            .map(|sp| {
-                self.tree.elem(Atom::Blankline, *sp);
-            })
+            .map(|sp| self.tree.elem(Atom::Blankline, *sp))
             .count();
         let lines = &mut lines[blanklines..];
 
