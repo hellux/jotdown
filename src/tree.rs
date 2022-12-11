@@ -34,7 +34,7 @@ impl<'t, C, A> Iterator for Inlines<'t, C, A> {
     }
 }
 
-impl<C: Copy, A: Copy> Tree<C, A> {
+impl<C: Clone, A: Clone> Tree<C, A> {
     fn new(nodes: Vec<Node<C, A>>) -> Self {
         let head = nodes[NodeIndex::root().index()].next;
         Self {
@@ -64,7 +64,7 @@ impl<C: Copy, A: Copy> Tree<C, A> {
     }
 }
 
-impl<C: Copy, A: Copy> Iterator for Tree<C, A> {
+impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
     type Item = Event<C, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,11 +75,11 @@ impl<C: Copy, A: Copy> Iterator for Tree<C, A> {
                 NodeKind::Container(c, child) => {
                     self.branch.push(head);
                     self.head = *child;
-                    EventKind::Enter(*c)
+                    EventKind::Enter(c.clone())
                 }
                 NodeKind::Atom(e) => {
                     self.head = n.next;
-                    EventKind::Atom(*e)
+                    EventKind::Atom(e.clone())
                 }
                 NodeKind::Inline => {
                     self.head = n.next;
@@ -96,7 +96,7 @@ impl<C: Copy, A: Copy> Iterator for Tree<C, A> {
             };
             self.head = *next;
             Some(Event {
-                kind: EventKind::Exit(*cont),
+                kind: EventKind::Exit(cont.clone()),
                 span: *span,
             })
         } else {
@@ -145,7 +145,7 @@ pub struct Builder<C, A> {
     head: Option<NodeIndex>,
 }
 
-impl<C: Copy, A: Copy> Builder<C, A> {
+impl<C: Clone, A: Clone> Builder<C, A> {
     pub(super) fn new() -> Self {
         Builder {
             nodes: vec![Node {
@@ -224,62 +224,42 @@ impl<C: Copy, A: Copy> Builder<C, A> {
     }
 }
 
-impl<C: Copy + std::fmt::Debug, A: Copy + std::fmt::Debug> std::fmt::Debug for Builder<C, A> {
+impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Builder<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.clone().finish().fmt(f)
     }
 }
 
-impl<C: Copy + std::fmt::Debug, A: Copy + std::fmt::Debug> std::fmt::Debug for Tree<C, A> {
+impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Tree<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
-        /*
-                for e in self.clone() {
-                    let indent = INDENT.repeat(level);
-                    match e.kind {
-        <<<<<<< HEAD
-                        EventKind::Enter(c) => {
-                            write!(f, "{}{:?}", indent, c)?;
-        ||||||| parent of 366c1d45 (maybe functional multi-line inline)
-                        EventKind::Enter => {
-                            write!(f, "{}{}", indent, e.elem)?;
-        =======
-                        Event::Enter => {
-                            write!(f, "{}{}", indent, e.elem)?;
-        >>>>>>> 366c1d45 (maybe functional multi-line inline)
-                            level += 1;
-                        }
-        <<<<<<< HEAD
-                        EventKind::Exit(..) => {
-        ||||||| parent of 366c1d45 (maybe functional multi-line inline)
-                        EventKind::Exit => {
-        =======
-                        Event::Exit => {
-        >>>>>>> 366c1d45 (maybe functional multi-line inline)
-                            level -= 1;
-                            continue;
-                        }
-        <<<<<<< HEAD
-                        EventKind::Atom(a) => write!(f, "{}{:?}", indent, a)?,
-        ||||||| parent of 366c1d45 (maybe functional multi-line inline)
-                        EventKind::Element => write!(f, "{}{}", indent, e.elem)?,
-        =======
-                        Event::Element => write!(f, "{}{}", indent, e.elem)?,
-        >>>>>>> 366c1d45 (maybe functional multi-line inline)
-                    }
-                    writeln!(f, " ({}:{})", e.span.start(), e.span.end())?;
+        writeln!(f)?;
+        for e in self.clone() {
+            let indent = INDENT.repeat(level);
+            match e.kind {
+                EventKind::Enter(c) => {
+                    write!(f, "{}{:?}", indent, c)?;
+                    level += 1;
                 }
-                */
+                EventKind::Inline => write!(f, "{}Inline", indent)?,
+                EventKind::Exit(..) => {
+                    level -= 1;
+                    continue;
+                }
+                EventKind::Atom(a) => write!(f, "{}{:?}", indent, a)?,
+            }
+            writeln!(f, " ({}:{})", e.span.start(), e.span.end())?;
+        }
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::block;
     use crate::Span;
 
-    /*
     #[test]
     fn fmt_linear() {
         let mut tree: super::Builder<u8, u8> = super::Builder::new();
@@ -289,9 +269,18 @@ mod test {
         assert_eq!(
             format!("{:?}", tree),
             concat!(
-                "1 (0:1)\n",
-                "2 (1:2)\n",
-                "3 (3:4)\n", //
+                "Heading (0:1)\n",
+                "  0:1\n",
+                "  0:1\n",
+                "Blockquote (1:5)\n",
+                "  Div (2:5)\n",
+                "    Paragraph (3:4)\n",
+                "      3:4\n",
+                "  Blankline (4:5)\n",
+                "  Paragraph (4:5)\n",
+                "    4:5\n",
+                "Heading (5:6)\n",
+                "  5:6\n",
             )
         );
     }
@@ -333,5 +322,4 @@ mod test {
             )
         );
     }
-    */
 }
