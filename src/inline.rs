@@ -59,9 +59,9 @@ pub struct Event {
 }
 
 /// Current parsing state of elements that are not recursive, i.e. may not contain arbitrary inline
-/// elements, can only be one of these at a time.
+/// elements. There can only be one of these at a time, due to the non-recursion.
 #[derive(Debug)]
-enum State {
+enum AtomicState {
     None,
     /// Within a verbatim element, e.g. '$`xxxxx'
     Verbatim {
@@ -82,7 +82,7 @@ enum State {
     ReferenceLinkTag,
 }
 
-impl State {
+impl AtomicState {
     fn verbatim(&self) -> Option<(Container, usize, usize)> {
         if let Self::Verbatim {
             kind,
@@ -98,27 +98,34 @@ impl State {
 }
 
 pub struct Parser<'s> {
-    openers: Vec<(Container, usize)>,
-    events: std::collections::VecDeque<Event>,
-    span: Span,
-
-    lexer: lex::Lexer<'s>,
-
-    state: State,
+    /// The last inline element has been provided, finish current events.
     last: bool,
+    /// Lexer, hosting upcoming source.
+    lexer: lex::Lexer<'s>,
+    /// Span of current event.
+    span: Span,
+    /// State of non-recursive elements.
+    atomic_state: AtomicState,
+    /// Stack with kind and index of _potential_ openers for typesetting containers.
+    typesets: Vec<(Container, usize)>,
+    /// Stack with index of _potential_ span/link openers.
+    spans: Vec<usize>,
+    //attributes: Vec<(Span, usize)>,
+    /// Buffer queue for next events. Events are buffered until no modifications due to future
+    /// characters are needed.
+    events: std::collections::VecDeque<Event>,
 }
 
 impl<'s> Parser<'s> {
     pub fn new() -> Self {
         Self {
-            openers: Vec::new(),
-            events: std::collections::VecDeque::new(),
-            span: Span::new(0, 0),
-
-            lexer: lex::Lexer::new(""),
-
-            state: State::None,
             last: false,
+            lexer: lex::Lexer::new(""),
+            span: Span::new(0, 0),
+            atomic_state: AtomicState::None,
+            typesets: Vec::new(),
+            spans: Vec::new(),
+            events: std::collections::VecDeque::new(),
         }
     }
 
@@ -149,8 +156,10 @@ impl<'s> Parser<'s> {
     fn parse_event(&mut self) -> Option<Event> {
         self.reset_span();
         self.eat().map(|first| {
-            self.parse_verbatim(&first)
-                .or_else(|| self.parse_container(&first))
+            self.atomic(&first)
+                .or_else(|| self.parse_verbatim(&first))
+                .or_else(|| self.parse_span(&first))
+                .or_else(|| self.parse_typeset(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
                     kind: EventKind::Str,
@@ -159,37 +168,22 @@ impl<'s> Parser<'s> {
         })
     }
 
-    fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
-        let atom = match first.kind {
-            lex::Kind::Newline => Softbreak,
-            lex::Kind::Hardbreak => Hardbreak,
-            lex::Kind::Escape => Escape,
-            lex::Kind::Nbsp => Nbsp,
-            lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
-            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
-            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
-            _ => return None,
-        };
-
-        Some(Event {
-            kind: EventKind::Atom(atom),
-            span: self.span,
-        })
-    }
-
-    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
-        self.state
-            .verbatim()
-            .map(|(kind, opener_len, opener_event)| {
-                dbg!(&self.events, opener_event);
+    fn atomic(&mut self, first: &lex::Token) -> Option<Event> {
+        Some(match self.atomic_state {
+            AtomicState::None => return None,
+            AtomicState::Verbatim {
+                kind,
+                opener_len,
+                opener_event,
+            } => {
                 assert_eq!(self.events[opener_event].kind, EventKind::Enter(kind));
                 let kind = if matches!(first.kind, lex::Kind::Seq(lex::Sequence::Backtick))
                     && first.len == opener_len
                 {
-                    self.state = State::None;
+                    self.atomic_state = AtomicState::None;
                     let kind =
                         if matches!(kind, Verbatim) && self.lexer.peek_ahead().starts_with("{=") {
-                            let mut chars = self.lexer.peek_ahead()[2..].chars();
+                            let mut chars = self.lexer.peek_ahead()["{=".len()..].chars();
                             let len = chars
                                 .clone()
                                 .take_while(|c| !c.is_whitespace() && !matches!(c, '{' | '}'))
@@ -215,54 +209,90 @@ impl<'s> Parser<'s> {
                     kind,
                     span: self.span,
                 }
-            })
-            .or_else(|| {
-                match first.kind {
-                    lex::Kind::Seq(lex::Sequence::Dollar) => {
-                        let math_opt = (first.len <= 2)
-                            .then(|| {
-                                if let Some(lex::Token {
-                                    kind: lex::Kind::Seq(lex::Sequence::Backtick),
-                                    len,
-                                }) = self.peek()
-                                {
-                                    Some((
-                                        if first.len == 2 {
-                                            DisplayMath
-                                        } else {
-                                            InlineMath
-                                        },
-                                        *len,
-                                    ))
-                                } else {
-                                    None
-                                }
-                            })
-                            .flatten();
-                        if math_opt.is_some() {
-                            self.eat(); // backticks
-                        }
-                        math_opt
-                    }
-                    lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
-                    _ => None,
-                }
-                .map(|(kind, opener_len)| {
-                    dbg!(&self.events);
-                    self.state = State::Verbatim {
-                        kind,
-                        opener_len,
-                        opener_event: self.events.len(),
-                    };
-                    Event {
-                        kind: EventKind::Enter(kind),
-                        span: self.span,
-                    }
-                })
-            })
+            }
+            AtomicState::Attributes { .. } => todo!(),
+            AtomicState::Url { .. } => todo!(),
+            AtomicState::ReferenceLinkTag => todo!(),
+        })
     }
 
-    fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
+    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
+        match first.kind {
+            lex::Kind::Seq(lex::Sequence::Dollar) => {
+                let math_opt = (first.len <= 2)
+                    .then(|| {
+                        if let Some(lex::Token {
+                            kind: lex::Kind::Seq(lex::Sequence::Backtick),
+                            len,
+                        }) = self.peek()
+                        {
+                            Some((
+                                if first.len == 2 {
+                                    DisplayMath
+                                } else {
+                                    InlineMath
+                                },
+                                *len,
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten();
+                if math_opt.is_some() {
+                    self.eat(); // backticks
+                }
+                math_opt
+            }
+            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
+            _ => None,
+        }
+        .map(|(kind, opener_len)| {
+            self.atomic_state = AtomicState::Verbatim {
+                kind,
+                opener_len,
+                opener_event: self.events.len(),
+            };
+            Event {
+                kind: EventKind::Enter(kind),
+                span: self.span,
+            }
+        })
+    }
+
+    fn parse_span(&mut self, first: &lex::Token) -> Option<Event> {
+        match first.kind {
+            lex::Kind::Open(Delimiter::Bracket) => Some(true),
+            lex::Kind::Close(Delimiter::Bracket) => Some(false),
+            _ => None,
+        }
+        .map(|open| {
+            if open {
+                self.spans.push(self.events.len());
+                // use str for now, replace if closed later
+                Event {
+                    kind: EventKind::Str,
+                    span: self.span,
+                }
+            } else {
+                if self.lexer.peek_ahead().starts_with('[') {
+                    let mut chars = self.lexer.peek_ahead()["[".len()..].chars();
+                    let len = chars
+                        .clone()
+                        .take_while(|c| !c.is_whitespace() && !matches!(c, '[' | ']'))
+                        .count();
+                    match chars.nth(len) {
+                        Some(']') => todo!(),
+                        None => self.atomic_state = AtomicState::ReferenceLinkTag,
+                        _ => todo!(),
+                    }
+                }
+                todo!()
+            }
+        })
+    }
+
+    fn parse_typeset(&mut self, first: &lex::Token) -> Option<Event> {
         enum Dir {
             Open,
             Close,
@@ -276,8 +306,6 @@ impl<'s> Parser<'s> {
             lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
             lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
             lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((Span, Dir::Open)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((Span, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
             lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
             lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
@@ -295,25 +323,43 @@ impl<'s> Parser<'s> {
             _ => None,
         }
         .map(|(cont, dir)| {
-            self.openers
+            self.typesets
                 .iter()
                 .rposition(|(c, _)| *c == cont)
                 .and_then(|o| {
                     matches!(dir, Dir::Close | Dir::Both).then(|| {
-                        let (_, e) = &mut self.openers[o];
+                        let (_, e) = &mut self.typesets[o];
                         self.events[*e].kind = EventKind::Enter(cont);
-                        self.openers.drain(o..);
+                        self.typesets.drain(o..);
                         EventKind::Exit(cont)
                     })
                 })
                 .unwrap_or_else(|| {
-                    self.openers.push((cont, self.events.len()));
+                    self.typesets.push((cont, self.events.len()));
                     // use str for now, replace if closed later
                     EventKind::Str
                 })
         })
         .map(|kind| Event {
             kind,
+            span: self.span,
+        })
+    }
+
+    fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
+        let atom = match first.kind {
+            lex::Kind::Newline => Softbreak,
+            lex::Kind::Hardbreak => Hardbreak,
+            lex::Kind::Escape => Escape,
+            lex::Kind::Nbsp => Nbsp,
+            lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
+            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
+            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
+            _ => return None,
+        };
+
+        Some(Event {
+            kind: EventKind::Atom(atom),
             span: self.span,
         })
     }
@@ -325,8 +371,8 @@ impl<'s> Iterator for Parser<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut ready = true;
         while self.events.is_empty()
-            || !self.openers.is_empty()
-            || !matches!(self.state, State::None)
+            || !self.typesets.is_empty()
+            || !matches!(self.atomic_state, AtomicState::None)
             || self // for merge
                 .events
                 .back()
@@ -334,7 +380,6 @@ impl<'s> Iterator for Parser<'s> {
         {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
-                dbg!(&self.events, &self.state);
             } else {
                 ready = false;
                 break;
@@ -366,8 +411,8 @@ impl<'s> Iterator for Parser<'s> {
                     }
                 })
                 .or_else(|| {
-                    self.state.verbatim().map(|(kind, _, _)| {
-                        self.state = State::None;
+                    self.atomic_state.verbatim().map(|(kind, _, _)| {
+                        self.atomic_state = AtomicState::None;
                         Event {
                             kind: EventKind::Exit(kind),
                             span: self.span,
@@ -490,7 +535,7 @@ mod test {
     }
 
     #[test]
-    fn container_basic() {
+    fn typeset_basic() {
         test_parse!(
             "_abc_",
             (Enter(Emphasis), "_"),
@@ -506,7 +551,7 @@ mod test {
     }
 
     #[test]
-    fn container_nest() {
+    fn typeset_nest() {
         test_parse!(
             "{_{_abc_}_}",
             (Enter(Emphasis), "{_"),
@@ -526,12 +571,12 @@ mod test {
     }
 
     #[test]
-    fn container_unopened() {
+    fn typeset_unopened() {
         test_parse!("*}abc", (Str, "*}abc"));
     }
 
     #[test]
-    fn container_close_parent() {
+    fn typeset_close_parent() {
         test_parse!(
             "{*{_abc*}",
             (Enter(Strong), "{*"),
@@ -541,7 +586,7 @@ mod test {
     }
 
     #[test]
-    fn container_close_block() {
+    fn typeset_close_block() {
         test_parse!("{_abc", (Str, "{_abc"));
         test_parse!("{_{*{_abc", (Str, "{_{*{_abc"));
     }
