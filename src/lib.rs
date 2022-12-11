@@ -502,7 +502,7 @@ mod test {
     #[test]
     fn raw_inline() {
         test_parse!(
-            "`raw\nraw`{=format}",
+            "``raw\nraw``{=format}",
             Start(Paragraph, Attributes::none()),
             Start(RawInline { format: "format" }, Attributes::none()),
             Str("raw\nraw"),
