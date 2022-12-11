@@ -323,7 +323,7 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut need_more = false;
+        let mut ready = true;
         while self.events.is_empty()
             || !self.openers.is_empty()
             || !matches!(self.state, State::None)
@@ -336,12 +336,12 @@ impl<'s> Iterator for Parser<'s> {
                 self.events.push_back(ev);
                 dbg!(&self.events, &self.state);
             } else {
-                need_more = true;
+                ready = false;
                 break;
             }
         }
 
-        if self.last || !need_more {
+        if self.last || ready {
             self.events
                 .pop_front()
                 .map(|e| {
