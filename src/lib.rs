@@ -268,23 +268,23 @@ impl<'s> Event<'s> {
 }
 
 impl<'s> Container<'s> {
-    fn from_block(content: &'s str, block: block::Block) -> Self {
-        match block {
-            block::Block::Atom(a) => todo!(),
-            block::Block::Leaf(l) => match l {
-                block::Leaf::Paragraph => Self::Paragraph,
-                block::Leaf::Heading => Self::Heading {
-                    level: content.len(),
-                },
-                block::Leaf::CodeBlock => Self::CodeBlock { lang: None },
-                _ => todo!(),
+    fn from_leaf_block(content: &str, l: block::Leaf) -> Self {
+        match l {
+            block::Leaf::Paragraph => Self::Paragraph,
+            block::Leaf::Heading => Self::Heading {
+                level: content.len(),
             },
-            block::Block::Container(c) => match c {
-                block::Container::Blockquote => Self::Blockquote,
-                block::Container::Div => Self::Div { class: None },
-                block::Container::Footnote => Self::Footnote { tag: content },
-                block::Container::ListItem => todo!(),
-            },
+            block::Leaf::CodeBlock => Self::CodeBlock { lang: None },
+            _ => todo!(),
+        }
+    }
+
+    fn from_container_block(content: &'s str, c: block::Container) -> Self {
+        match c {
+            block::Container::Blockquote => Self::Blockquote,
+            block::Container::Div => Self::Div { class: None },
+            block::Container::Footnote => Self::Footnote { tag: content },
+            block::Container::ListItem => todo!(),
         }
     }
 }
@@ -312,7 +312,7 @@ impl<'s> Attributes<'s> {
 #[derive(Clone)]
 struct InlineChars<'t, 's> {
     src: &'s str,
-    inlines: tree::Atoms<'t, block::Block, block::Atom>,
+    inlines: tree::Inlines<'t, block::Block, block::Atom>,
 }
 
 impl<'t, 's> Iterator for InlineChars<'t, 's> {
@@ -351,35 +351,17 @@ impl<'s> Iterator for Parser<'s> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(parser) = &mut self.inline_parser {
-            // inside leaf block, with inline content
             if let Some(mut inline) = parser.next() {
                 inline.span = inline.span.translate(self.inline_start);
                 return Some(Event::from_inline(self.src, inline));
             }
             self.inline_parser = None;
-            /*
-            else if let Some(ev) = self.tree.next() {
-                match ev.kind {
-                    tree::EventKind::Atom(a) => {
-                        assert_eq!(a, block::Atom::Inline);
-                        let last_inline = self.tree.atoms().next().is_none();
-                        parser.parse(ev.span.of(self.src), last_inline);
-                    }
-                    tree::EventKind::Exit(c) => {
-                        self.inline_parser = None;
-                        return Some(Event::End(Container::from_block(ev.span.of(self.src), c)));
-                    }
-                    tree::EventKind::Enter(..) => unreachable!(),
-                }
-            }
-            */
         }
 
         for ev in &mut self.tree {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
                 tree::EventKind::Atom(a) => match a {
-                    block::Atom::Inline => panic!("inline outside leaf block"),
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
                     block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
                     block::Atom::Attributes => {
@@ -391,7 +373,7 @@ impl<'s> Iterator for Parser<'s> {
                     if matches!(b, block::Block::Leaf(_)) {
                         let chars = InlineChars {
                             src: self.src,
-                            inlines: self.tree.atoms(),
+                            inlines: self.tree.inlines(),
                         };
                         // TODO solve self-referential reference here without unsafe
                         self.inline_parser =
@@ -402,17 +384,24 @@ impl<'s> Iterator for Parser<'s> {
                         block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
                             self.inline_start += 1; // skip newline
                             Container::CodeBlock {
-                                lang: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
+                                lang: (!ev.span.is_empty()).then(|| content),
                             }
                         }
                         block::Block::Container(block::Container::Div { .. }) => Container::Div {
                             class: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
                         },
-                        b => Container::from_block(content, b),
+                        block::Block::Leaf(l) => Container::from_leaf_block(content, l),
+                        block::Block::Container(c) => Container::from_container_block(content, c),
+                        block::Block::Atom(..) => panic!(),
                     };
                     Event::Start(container, self.block_attributes.take())
                 }
-                tree::EventKind::Exit(c) => Event::End(Container::from_block(content, c)),
+                tree::EventKind::Exit(b) => Event::End(match b {
+                    block::Block::Leaf(l) => Container::from_leaf_block(content, l),
+                    block::Block::Container(c) => Container::from_container_block(content, c),
+                    block::Block::Atom(..) => panic!(),
+                }),
+                tree::EventKind::Inline => panic!(),
             };
             return Some(event);
         }

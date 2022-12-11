@@ -28,9 +28,6 @@ pub enum Block {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Atom {
-    /// Inline content with unparsed inline elements.
-    Inline,
-
     /// A line with no non-whitespace characters.
     Blankline,
 
@@ -143,10 +140,7 @@ impl<'s> TreeParser<'s> {
                 };
 
                 match kind {
-                    Block::Atom(a) => {
-                        assert_ne!(a, Inline);
-                        self.tree.atom(a, span);
-                    }
+                    Block::Atom(a) => self.tree.atom(a, span),
                     Block::Leaf(l) => {
                         self.tree.enter(kind, span);
 
@@ -169,7 +163,7 @@ impl<'s> TreeParser<'s> {
                             }
                         }
 
-                        lines.iter().for_each(|line| self.tree.atom(Inline, *line));
+                        lines.iter().for_each(|line| self.tree.inline(*line));
                         self.tree.exit();
                     }
                     Block::Container(c) => {
@@ -411,6 +405,7 @@ mod test {
     use super::Container::*;
     use super::Leaf::*;
 
+    /*
     macro_rules! test_parse {
             ($src:expr $(,$($event:expr),* $(,)?)?) => {
                 let t = super::TreeParser::new($src).parse();
@@ -731,4 +726,5 @@ mod test {
             1,
         );
     }
+    */
 }

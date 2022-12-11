@@ -109,6 +109,10 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         self.next.as_ref()
     }
 
+    pub fn inner(&self) -> &I {
+        &self.chars
+    }
+
     /*
     pub fn pos(&self) -> usize {
         self.src.len()
