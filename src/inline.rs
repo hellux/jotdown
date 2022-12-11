@@ -66,7 +66,7 @@ pub struct Parser<'s> {
     events: std::collections::VecDeque<Event>,
     span: Span,
 
-    lexer: std::iter::Peekable<lex::Lexer<'s>>,
+    lexer: lex::Lexer<'s>,
 
     verbatim: Option<(Container, usize)>,
     last: bool,
@@ -79,7 +79,7 @@ impl<'s> Parser<'s> {
             events: std::collections::VecDeque::new(),
             span: Span::new(0, 0),
 
-            lexer: lex::Lexer::new("").peekable(),
+            lexer: lex::Lexer::new(""),
 
             verbatim: None,
             last: false,
@@ -87,7 +87,7 @@ impl<'s> Parser<'s> {
     }
 
     pub fn parse(&mut self, src: &'s str, last: bool) {
-        self.lexer = lex::Lexer::new(src).peekable();
+        self.lexer = lex::Lexer::new(src);
         if last {
             assert!(!self.last);
         }

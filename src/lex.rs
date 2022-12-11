@@ -99,26 +99,33 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    fn peek(&mut self) -> char {
+    pub fn peek(&mut self) -> Option<&Token> {
+        if self.next.is_none() {
+            self.next = self.token();
+        }
+        self.next.as_ref()
+    }
+
+    fn peek_char(&mut self) -> char {
         self.chars.clone().next().unwrap_or(EOF)
     }
 
-    fn eat(&mut self) -> Option<char> {
+    fn eat_char(&mut self) -> Option<char> {
         let c = self.chars.next();
         self.len += c.map_or(0, char::len_utf8);
         c
     }
 
     fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
-        while predicate(self.peek()) {
-            self.eat();
+        while predicate(self.peek_char()) {
+            self.eat_char();
         }
     }
 
     fn token(&mut self) -> Option<Token> {
         self.len = 0;
 
-        let first = self.eat()?;
+        let first = self.eat_char()?;
 
         let escape = self.escape;
 
@@ -128,14 +135,14 @@ impl<'s> Lexer<'s> {
                 && matches!(first, '\t' | ' ')
                 && self.chars.clone().find(|c| !matches!(c, ' ' | '\t')) == Some('\n') =>
             {
-                while self.eat() != Some('\n') {}
+                while self.eat_char() != Some('\n') {}
                 Hardbreak
             }
             _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
             '\\' => {
-                let next = self.peek();
+                let next = self.peek_char();
                 if next.is_whitespace() || next.is_ascii_punctuation() {
                     self.escape = true;
                     Escape
@@ -155,7 +162,7 @@ impl<'s> Lexer<'s> {
             '[' => Open(Bracket),
             ']' => Close(Bracket),
             '{' => {
-                let explicit = match self.peek() {
+                let explicit = match self.peek_char() {
                     '*' => Some(Open(BraceAsterisk)),
                     '^' => Some(Open(BraceCaret)),
                     '=' => Some(Open(BraceEqual)),
@@ -166,7 +173,7 @@ impl<'s> Lexer<'s> {
                     _ => None,
                 };
                 if let Some(exp) = explicit {
-                    self.eat();
+                    self.eat_char();
                     exp
                 } else {
                     Open(Brace)
@@ -180,8 +187,8 @@ impl<'s> Lexer<'s> {
             '~' => self.maybe_eat_close_brace(Tilde, BraceTilde),
             '_' => self.maybe_eat_close_brace(Underscore, BraceUnderscore),
             '-' => {
-                if self.peek() == '}' {
-                    self.eat();
+                if self.peek_char() == '}' {
+                    self.eat_char();
                     Close(BraceHyphen)
                 } else {
                     self.eat_seq(Hyphen)
@@ -226,8 +233,8 @@ impl<'s> Lexer<'s> {
     }
 
     fn maybe_eat_close_brace(&mut self, s: Symbol, d: Delimiter) -> Kind {
-        if self.peek() == '}' {
-            self.eat();
+        if self.peek_char() == '}' {
+            self.eat_char();
             Close(d)
         } else {
             Sym(s)
