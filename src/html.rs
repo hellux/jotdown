@@ -42,14 +42,25 @@ pub fn write<'s, I: Iterator<Item = Event<'s>>, W: std::io::Write>(
         .map_err(|_| output.error.unwrap_err())
 }
 
+enum Raw {
+    None,
+    Html,
+    Other,
+}
+
 struct Writer<I, W> {
     events: I,
     out: W,
+    raw: Raw,
 }
 
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
     fn new(events: I, out: W) -> Self {
-        Self { events, out }
+        Self {
+            events,
+            out,
+            raw: Raw::None,
+        }
     }
 
     fn write(&mut self) -> std::fmt::Result {
@@ -79,7 +90,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::Heading { level } => write!(self.out, "<h{}>", level)?,
                         Container::TableCell => self.out.write_str("<td>")?,
                         Container::DescriptionTerm => self.out.write_str("<dt>")?,
-                        Container::RawBlock { .. } => todo!(),
                         Container::CodeBlock { lang } => {
                             if let Some(l) = lang {
                                 write!(self.out, r#"<pre><code class="language-{}">"#, l)?;
@@ -96,7 +106,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         } else {
                             r#"<span class="math inline">\("#
                         })?,
-                        Container::RawInline { .. } => todo!(),
+                        Container::RawBlock { format } | Container::RawInline { format } => {
+                            self.raw = if format == "html" {
+                                Raw::Html
+                            } else {
+                                Raw::Other
+                            }
+                        }
                         Container::Subscript => self.out.write_str("<sub>")?,
                         Container::Superscript => self.out.write_str("<sup>")?,
                         Container::Insert => self.out.write_str("<ins>")?,
@@ -126,14 +142,15 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
-                        Container::RawBlock { .. } => todo!(),
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
                         Container::Span => self.out.write_str("</span>")?,
                         Container::Link(..) => todo!(),
                         Container::Image(..) => todo!(),
                         Container::Verbatim => self.out.write_str("</code>")?,
                         Container::Math { .. } => self.out.write_str("</span>")?,
-                        Container::RawInline { .. } => todo!(),
+                        Container::RawBlock { .. } | Container::RawInline { .. } => {
+                            self.raw = Raw::None
+                        }
                         Container::Subscript => self.out.write_str("</sub>")?,
                         Container::Superscript => self.out.write_str("</sup>")?,
                         Container::Insert => self.out.write_str("</ins>")?,
@@ -145,28 +162,34 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::DoubleQuoted => self.out.write_str("&rdquo;")?,
                     }
                 }
-                Event::Str(mut s) => {
-                    let mut ent = "";
-                    while let Some(i) = s.chars().position(|c| {
-                        if let Some(s) = match c {
-                            '<' => Some("&lt;"),
-                            '>' => Some("&gt;"),
-                            '&' => Some("&amp;"),
-                            '"' => Some("&quot;"),
-                            _ => None,
-                        } {
-                            ent = s;
-                            true
-                        } else {
-                            false
+                Event::Str(mut s) => match self.raw {
+                    Raw::None => {
+                        let mut ent = "";
+                        while let Some(i) = s.chars().position(|c| {
+                            if let Some(s) = match c {
+                                '<' => Some("&lt;"),
+                                '>' => Some("&gt;"),
+                                '&' => Some("&amp;"),
+                                '"' => Some("&quot;"),
+                                _ => None,
+                            } {
+                                ent = s;
+                                true
+                            } else {
+                                false
+                            }
+                        }) {
+                            self.out.write_str(&s[..i])?;
+                            self.out.write_str(ent)?;
+                            s = &s[i + 1..];
                         }
-                    }) {
-                        self.out.write_str(&s[..i])?;
-                        self.out.write_str(ent)?;
-                        s = &s[i + 1..];
+                        self.out.write_str(s)?;
                     }
-                    self.out.write_str(s)?;
-                }
+                    Raw::Html => {
+                        self.out.write_str(s)?;
+                    }
+                    Raw::Other => {}
+                },
 
                 Event::Atom(a) => match a {
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,

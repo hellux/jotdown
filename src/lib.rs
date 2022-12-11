@@ -234,7 +234,7 @@ impl<'s> Event<'s> {
                     inline::Container::Verbatim => Container::Verbatim,
                     inline::Container::InlineMath => Container::Math { display: false },
                     inline::Container::DisplayMath => Container::Math { display: true },
-                    inline::Container::RawFormat => Container::RawInline { format: todo!() },
+                    inline::Container::RawFormat => Container::RawInline { format: content },
                     inline::Container::Subscript => Container::Subscript,
                     inline::Container::Superscript => Container::Superscript,
                     inline::Container::Insert => Container::Insert,
@@ -483,9 +483,20 @@ mod test {
             "`abc\ndef",
             Start(Paragraph, Attributes::none()),
             Start(Verbatim, Attributes::none()),
-            Str("abc\n"),
-            Str("def"),
+            Str("abc\ndef"),
             End(Verbatim),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn raw_inline() {
+        test_parse!(
+            "`raw\nraw`{=format}",
+            Start(Paragraph, Attributes::none()),
+            Start(RawInline { format: "format" }, Attributes::none()),
+            Str("raw\nraw"),
+            End(RawInline { format: "format" }),
             End(Paragraph),
         );
     }

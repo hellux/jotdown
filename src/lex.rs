@@ -83,15 +83,20 @@ impl Sequence {
 
 #[derive(Clone)]
 pub(crate) struct Lexer<'s> {
+    pub src: &'s str,
     chars: std::str::Chars<'s>,
+    /// Next character should be escaped.
     escape: bool,
+    /// Token to be peeked or next'ed.
     next: Option<Token>,
+    /// Length of current token.
     len: usize,
 }
 
 impl<'s> Lexer<'s> {
     pub fn new(src: &'s str) -> Lexer<'s> {
         Lexer {
+            src,
             chars: src.chars(),
             escape: false,
             next: None,
@@ -104,6 +109,16 @@ impl<'s> Lexer<'s> {
             self.next = self.next_token();
         }
         self.next.as_ref()
+    }
+
+    pub fn pos(&self) -> usize {
+        self.src.len()
+            - self.chars.as_str().len()
+            - self.next.as_ref().map(|t| t.len).unwrap_or_default()
+    }
+
+    pub fn peek_ahead(&mut self) -> &'s str {
+        &self.src[self.pos()..]
     }
 
     fn next_token(&mut self) -> Option<Token> {

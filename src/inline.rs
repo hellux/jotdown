@@ -60,12 +60,14 @@ pub struct Event {
 
 /// Current parsing state of elements that are not recursive, i.e. may not contain arbitrary inline
 /// elements, can only be one of these at a time.
+#[derive(Debug)]
 enum State {
     None,
     /// Within a verbatim element, e.g. '$`xxxxx'
     Verbatim {
         kind: Container,
         opener_len: usize,
+        opener_event: usize,
     },
     /// Potentially within an attribute list, e.g. '{a=b '.
     Attributes {
@@ -81,9 +83,14 @@ enum State {
 }
 
 impl State {
-    fn verbatim(&self) -> Option<(Container, usize)> {
-        if let Self::Verbatim { kind, opener_len } = self {
-            Some((*kind, *opener_len))
+    fn verbatim(&self) -> Option<(Container, usize, usize)> {
+        if let Self::Verbatim {
+            kind,
+            opener_len,
+            opener_event,
+        } = self
+        {
+            Some((*kind, *opener_len, *opener_event))
         } else {
             None
         }
@@ -173,16 +180,34 @@ impl<'s> Parser<'s> {
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
         self.state
             .verbatim()
-            .map(|(kind, opener_len)| {
+            .map(|(kind, opener_len, opener_event)| {
+                dbg!(&self.events, opener_event);
+                assert_eq!(self.events[opener_event].kind, EventKind::Enter(kind));
                 let kind = if matches!(first.kind, lex::Kind::Seq(lex::Sequence::Backtick))
                     && first.len == opener_len
                 {
                     self.state = State::None;
-                    if matches!(kind, Container::Span) {
-                        todo!()
-                    } else {
-                        EventKind::Exit(kind)
-                    }
+                    let kind =
+                        if matches!(kind, Verbatim) && self.lexer.peek_ahead().starts_with("{=") {
+                            let mut chars = self.lexer.peek_ahead()[2..].chars();
+                            let len = chars
+                                .clone()
+                                .take_while(|c| !c.is_whitespace() && !matches!(c, '{' | '}'))
+                                .count();
+                            if len > 0 && chars.nth(len) == Some('}') {
+                                self.lexer = lex::Lexer::new(chars.as_str());
+                                let span_format = Span::by_len(self.span.end() + "{=".len(), len);
+                                self.events[opener_event].kind = EventKind::Enter(RawFormat);
+                                self.events[opener_event].span = span_format;
+                                self.span = span_format;
+                                RawFormat
+                            } else {
+                                Verbatim
+                            }
+                        } else {
+                            kind
+                        };
+                    EventKind::Exit(kind)
                 } else {
                     EventKind::Str
                 };
@@ -203,9 +228,9 @@ impl<'s> Parser<'s> {
                                 {
                                     Some((
                                         if first.len == 2 {
-                                            Container::DisplayMath
+                                            DisplayMath
                                         } else {
-                                            Container::InlineMath
+                                            InlineMath
                                         },
                                         *len,
                                     ))
@@ -219,13 +244,16 @@ impl<'s> Parser<'s> {
                         }
                         math_opt
                     }
-                    lex::Kind::Seq(lex::Sequence::Backtick) => {
-                        Some((Container::Verbatim, first.len))
-                    }
+                    lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
                     _ => None,
                 }
                 .map(|(kind, opener_len)| {
-                    self.state = State::Verbatim { kind, opener_len };
+                    dbg!(&self.events);
+                    self.state = State::Verbatim {
+                        kind,
+                        opener_len,
+                        opener_event: self.events.len(),
+                    };
                     Event {
                         kind: EventKind::Enter(kind),
                         span: self.span,
@@ -295,56 +323,60 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let mut need_more = false;
         while self.events.is_empty()
             || !self.openers.is_empty()
-            || self
+            || !matches!(self.state, State::None)
+            || self // for merge
                 .events
                 .back()
                 .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
+                dbg!(&self.events, &self.state);
             } else {
+                need_more = true;
                 break;
             }
         }
 
-        self.events
-            .pop_front()
-            .map(|e| {
-                if matches!(e.kind, EventKind::Str) {
-                    // merge str events
-                    let mut span = e.span;
-                    while self
-                        .events
-                        .front()
-                        .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
-                    {
-                        let ev = self.events.pop_front().unwrap();
-                        assert_eq!(span.end(), ev.span.start());
-                        span = span.union(ev.span);
+        if self.last || !need_more {
+            self.events
+                .pop_front()
+                .map(|e| {
+                    if matches!(e.kind, EventKind::Str) {
+                        // merge str events
+                        let mut span = e.span;
+                        while self
+                            .events
+                            .front()
+                            .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                        {
+                            let ev = self.events.pop_front().unwrap();
+                            assert_eq!(span.end(), ev.span.start());
+                            span = span.union(ev.span);
+                        }
+                        Event {
+                            kind: EventKind::Str,
+                            span,
+                        }
+                    } else {
+                        e
                     }
-                    Event {
-                        kind: EventKind::Str,
-                        span,
-                    }
-                } else {
-                    e
-                }
-            })
-            .or_else(|| {
-                if self.last {
-                    self.state.verbatim().map(|(kind, _)| {
+                })
+                .or_else(|| {
+                    self.state.verbatim().map(|(kind, _, _)| {
                         self.state = State::None;
                         Event {
                             kind: EventKind::Exit(kind),
                             span: self.span,
                         }
                     })
-                } else {
-                    None
-                }
-            })
+                })
+        } else {
+            None
+        }
     }
 }
 
