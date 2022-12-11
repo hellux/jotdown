@@ -101,9 +101,24 @@ impl<'s> Lexer<'s> {
 
     pub fn peek(&mut self) -> Option<&Token> {
         if self.next.is_none() {
-            self.next = self.token();
+            self.next = self.next_token();
         }
         self.next.as_ref()
+    }
+
+    fn next_token(&mut self) -> Option<Token> {
+        let mut current = self.token();
+
+        // concatenate text tokens
+        if let Some(Token { kind: Text, len }) = &mut current {
+            self.next = self.token();
+            while let Some(Token { kind: Text, len: l }) = self.next {
+                *len += l;
+                self.next = self.token();
+            }
+        }
+
+        current
     }
 
     fn peek_char(&mut self) -> char {
@@ -246,20 +261,7 @@ impl<'s> Iterator for Lexer<'s> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next.take().or_else(|| {
-            let mut current = self.token();
-
-            // concatenate text tokens
-            if let Some(Token { kind: Text, len }) = &mut current {
-                self.next = self.token();
-                while let Some(Token { kind: Text, len: l }) = self.next {
-                    *len += l;
-                    self.next = self.token();
-                }
-            }
-
-            current
-        })
+        self.next.take().or_else(|| self.next_token())
     }
 }
 
