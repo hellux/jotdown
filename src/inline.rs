@@ -97,11 +97,11 @@ impl AtomicState {
     }
 }
 
-pub struct Parser<'s> {
+pub struct Parser<I> {
     /// The last inline element has been provided, finish current events.
     last: bool,
     /// Lexer, hosting upcoming source.
-    lexer: lex::Lexer<'s>,
+    lexer: lex::Lexer<I>,
     /// Span of current event.
     span: Span,
     /// State of non-recursive elements.
@@ -116,11 +116,11 @@ pub struct Parser<'s> {
     events: std::collections::VecDeque<Event>,
 }
 
-impl<'s> Parser<'s> {
-    pub fn new() -> Self {
+impl<I: Iterator<Item = char> + Clone> Parser<I> {
+    pub fn new(chars: I) -> Self {
         Self {
-            last: false,
-            lexer: lex::Lexer::new(""),
+            last: true,
+            lexer: lex::Lexer::new(chars),
             span: Span::new(0, 0),
             atomic_state: AtomicState::None,
             typesets: Vec::new(),
@@ -129,13 +129,15 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn parse(&mut self, src: &'s str, last: bool) {
-        self.lexer = lex::Lexer::new(src);
+    /*
+    pub fn parse(&mut self, src: &str, last: bool) {
+        self.lexer = lex::Lexer::new(src.chars());
         if last {
             assert!(!self.last);
         }
         self.last = last;
     }
+    */
 
     fn eat(&mut self) -> Option<lex::Token> {
         let tok = self.lexer.next();
@@ -181,7 +183,8 @@ impl<'s> Parser<'s> {
                     && first.len == opener_len
                 {
                     self.atomic_state = AtomicState::None;
-                    let kind =
+                    let kind = todo!();
+                    /*
                         if matches!(kind, Verbatim) && self.lexer.peek_ahead().starts_with("{=") {
                             let mut chars = self.lexer.peek_ahead()["{=".len()..].chars();
                             let len = chars
@@ -201,6 +204,7 @@ impl<'s> Parser<'s> {
                         } else {
                             kind
                         };
+                    */
                     EventKind::Exit(kind)
                 } else {
                     EventKind::Str
@@ -261,13 +265,12 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_span(&mut self, first: &lex::Token) -> Option<Event> {
-        match first.kind {
+        if let Some(open) = match first.kind {
             lex::Kind::Open(Delimiter::Bracket) => Some(true),
             lex::Kind::Close(Delimiter::Bracket) => Some(false),
             _ => None,
-        }
-        .map(|open| {
-            if open {
+        } {
+            Some(if open {
                 self.spans.push(self.events.len());
                 // use str for now, replace if closed later
                 Event {
@@ -275,21 +278,44 @@ impl<'s> Parser<'s> {
                     span: self.span,
                 }
             } else {
-                if self.lexer.peek_ahead().starts_with('[') {
+                /*
+                let kind = if self.lexer.peek_ahead().starts_with('[') {
                     let mut chars = self.lexer.peek_ahead()["[".len()..].chars();
                     let len = chars
                         .clone()
                         .take_while(|c| !c.is_whitespace() && !matches!(c, '[' | ']'))
                         .count();
                     match chars.nth(len) {
-                        Some(']') => todo!(),
-                        None => self.atomic_state = AtomicState::ReferenceLinkTag,
-                        _ => todo!(),
+                        Some(']') => EventKind::Exit(ReferenceLink),
+                        None => {
+                            self.atomic_state = AtomicState::ReferenceLinkTag;
+                            return None;
+                        }
+                        _ => EventKind::Str,
                     }
-                }
+                } else if self.lexer.peek_ahead().starts_with('(') {
+                    let mut chars = self.lexer.peek_ahead()["[".len()..].chars();
+                    let len = chars
+                        .clone()
+                        .take_while(|c| !c.is_whitespace() && !matches!(c, '[' | ']'))
+                        .count();
+                    match chars.nth(len) {
+                        Some(']') => EventKind::Exit(ReferenceLink),
+                        None => {
+                            self.atomic_state = AtomicState::Url { auto: false };
+                            return None;
+                        }
+                        _ => EventKind::Str,
+                    }
+                } else {
+                    return None;
+                };
+                    */
                 todo!()
-            }
-        })
+            })
+        } else {
+            None
+        }
     }
 
     fn parse_typeset(&mut self, first: &lex::Token) -> Option<Event> {
@@ -365,7 +391,7 @@ impl<'s> Parser<'s> {
     }
 }
 
-impl<'s> Iterator for Parser<'s> {
+impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -437,8 +463,7 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new();
-            p.parse($src, true);
+            let mut p = super::Parser::new($src.chars());
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);

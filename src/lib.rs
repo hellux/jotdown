@@ -304,20 +304,31 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    #[must_use]
-    pub fn valid(src: &str) -> bool {
-        todo!()
-    }
-
     pub fn parse(&mut self, src: &'s str) {
         todo!()
+    }
+}
+
+#[derive(Clone)]
+struct InlineChars<'t, 's> {
+    src: &'s str,
+    inlines: tree::Atoms<'t, block::Block, block::Atom>,
+}
+
+impl<'t, 's> Iterator for InlineChars<'t, 's> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        (&mut self.inlines)
+            .flat_map(|sp| sp.of(self.src).chars())
+            .next()
     }
 }
 
 pub struct Parser<'s> {
     src: &'s str,
     tree: block::Tree,
-    parser: Option<inline::Parser<'s>>,
+    inline_parser: Option<inline::Parser<InlineChars<'s, 's>>>,
     inline_start: usize,
     block_attributes: Attributes<'s>,
 }
@@ -328,7 +339,7 @@ impl<'s> Parser<'s> {
         Self {
             src,
             tree: block::parse(src),
-            parser: None,
+            inline_parser: None,
             inline_start: 0,
             block_attributes: Attributes::none(),
         }
@@ -339,12 +350,15 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(parser) = &mut self.parser {
+        if let Some(parser) = &mut self.inline_parser {
             // inside leaf block, with inline content
             if let Some(mut inline) = parser.next() {
                 inline.span = inline.span.translate(self.inline_start);
                 return Some(Event::from_inline(self.src, inline));
-            } else if let Some(ev) = self.tree.next() {
+            }
+            self.inline_parser = None;
+            /*
+            else if let Some(ev) = self.tree.next() {
                 match ev.kind {
                     tree::EventKind::Atom(a) => {
                         assert_eq!(a, block::Atom::Inline);
@@ -352,12 +366,13 @@ impl<'s> Iterator for Parser<'s> {
                         parser.parse(ev.span.of(self.src), last_inline);
                     }
                     tree::EventKind::Exit(c) => {
-                        self.parser = None;
+                        self.inline_parser = None;
                         return Some(Event::End(Container::from_block(ev.span.of(self.src), c)));
                     }
                     tree::EventKind::Enter(..) => unreachable!(),
                 }
             }
+            */
         }
 
         for ev in &mut self.tree {
@@ -372,12 +387,18 @@ impl<'s> Iterator for Parser<'s> {
                         continue;
                     }
                 },
-                tree::EventKind::Enter(c) => {
-                    if matches!(c, block::Block::Leaf(_)) {
-                        self.parser = Some(inline::Parser::new());
+                tree::EventKind::Enter(b) => {
+                    if matches!(b, block::Block::Leaf(_)) {
+                        let chars = InlineChars {
+                            src: self.src,
+                            inlines: self.tree.atoms(),
+                        };
+                        // TODO solve self-referential reference here without unsafe
+                        self.inline_parser =
+                            unsafe { Some(std::mem::transmute(inline::Parser::new(chars))) };
                         self.inline_start = ev.span.end();
                     }
-                    let container = match c {
+                    let container = match b {
                         block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
                             self.inline_start += 1; // skip newline
                             Container::CodeBlock {

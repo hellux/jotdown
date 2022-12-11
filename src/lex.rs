@@ -82,9 +82,8 @@ impl Sequence {
 }
 
 #[derive(Clone)]
-pub(crate) struct Lexer<'s> {
-    pub src: &'s str,
-    chars: std::str::Chars<'s>,
+pub(crate) struct Lexer<I> {
+    chars: I,
     /// Next character should be escaped.
     escape: bool,
     /// Token to be peeked or next'ed.
@@ -93,11 +92,10 @@ pub(crate) struct Lexer<'s> {
     len: usize,
 }
 
-impl<'s> Lexer<'s> {
-    pub fn new(src: &'s str) -> Lexer<'s> {
+impl<I: Iterator<Item = char> + Clone> Lexer<I> {
+    pub fn new(chars: I) -> Lexer<I> {
         Lexer {
-            src,
-            chars: src.chars(),
+            chars,
             escape: false,
             next: None,
             len: 0,
@@ -111,15 +109,19 @@ impl<'s> Lexer<'s> {
         self.next.as_ref()
     }
 
+    /*
     pub fn pos(&self) -> usize {
         self.src.len()
             - self.chars.as_str().len()
             - self.next.as_ref().map(|t| t.len).unwrap_or_default()
     }
+    */
 
+    /*
     pub fn peek_ahead(&mut self) -> &'s str {
         &self.src[self.pos()..]
     }
+    */
 
     fn next_token(&mut self) -> Option<Token> {
         let mut current = self.token();
@@ -272,7 +274,7 @@ impl<'s> Lexer<'s> {
     }
 }
 
-impl<'s> Iterator for Lexer<'s> {
+impl<I: Iterator<Item = char> + Clone> Iterator for Lexer<I> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -290,7 +292,7 @@ mod test {
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src.chars()).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };

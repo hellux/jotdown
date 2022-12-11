@@ -20,6 +20,19 @@ pub struct Tree<C, A> {
     head: Option<NodeIndex>,
 }
 
+#[derive(Clone)]
+pub struct Atoms<'t, C, A> {
+    iter: std::slice::Iter<'t, Node<C, A>>,
+}
+
+impl<'t, C, A> Iterator for Atoms<'t, C, A> {
+    type Item = Span;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|n| n.span)
+    }
+}
+
 impl<C: Copy, A: Copy> Tree<C, A> {
     fn new(nodes: Vec<Node<C, A>>) -> Self {
         let head = nodes[NodeIndex::root().index()].next;
@@ -30,7 +43,15 @@ impl<C: Copy, A: Copy> Tree<C, A> {
         }
     }
 
-    pub fn atoms(&self) -> impl Iterator<Item = (A, Span)> + '_ {
+    pub fn atoms(&self) -> Atoms<C, A> {
+        let start = self.nodes[self.head.unwrap().index()].next.unwrap().index();
+        let end = start + self.atoms_().count();
+        Atoms {
+            iter: self.nodes[start..end].iter(),
+        }
+    }
+
+    pub fn atoms_(&self) -> impl Iterator<Item = (A, Span)> + '_ {
         let mut head = self.head;
         std::iter::from_fn(move || {
             head.take().map(|h| {
