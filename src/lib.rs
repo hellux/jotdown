@@ -166,7 +166,7 @@ impl<'s> Container<'s> {
 pub enum LinkType {
     Inline,
     Reference,
-    Autolink,
+    AutoLink,
     Email,
 }
 
@@ -262,6 +262,7 @@ impl<'s> Event<'s> {
                 inline::Atom::Escape => Atom::Escape,
             }),
             inline::EventKind::Str => Self::Str(content),
+            inline::EventKind::Attributes => todo!(),
         }
     }
 }

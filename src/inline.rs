@@ -21,7 +21,6 @@ pub enum Atom {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Container {
     Span,
-    Attributes,
     // typesetting
     Subscript,
     Superscript,
@@ -38,6 +37,10 @@ pub enum Container {
     RawFormat,
     InlineMath,
     DisplayMath,
+    // Links
+    ReferenceLink,
+    InlineLink,
+    AutoLink,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -46,6 +49,7 @@ pub enum EventKind {
     Exit(Container),
     Atom(Atom),
     Str,
+    Attributes,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -54,11 +58,36 @@ pub struct Event {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Dir {
-    Open,
-    Close,
-    Both,
+/// Current parsing state of elements that are not recursive, i.e. may not contain arbitrary inline
+/// elements, can only be one of these at a time.
+enum State {
+    None,
+    /// Within a verbatim element, e.g. '$`xxxxx'
+    Verbatim {
+        kind: Container,
+        opener_len: usize,
+    },
+    /// Potentially within an attribute list, e.g. '{a=b '.
+    Attributes {
+        comment: bool,
+    },
+    /// Potentially within an autolink URL or an inline link URL, e.g. '<https://' or
+    /// '[text](https://'.
+    Url {
+        auto: bool,
+    },
+    /// Potentially within a reference link tag, e.g. '[text][tag '
+    ReferenceLinkTag,
+}
+
+impl State {
+    fn verbatim(&self) -> Option<(Container, usize)> {
+        if let Self::Verbatim { kind, opener_len } = self {
+            Some((*kind, *opener_len))
+        } else {
+            None
+        }
+    }
 }
 
 pub struct Parser<'s> {
@@ -68,7 +97,7 @@ pub struct Parser<'s> {
 
     lexer: lex::Lexer<'s>,
 
-    verbatim: Option<(Container, usize)>,
+    state: State,
     last: bool,
 }
 
@@ -81,7 +110,7 @@ impl<'s> Parser<'s> {
 
             lexer: lex::Lexer::new(""),
 
-            verbatim: None,
+            state: State::None,
             last: false,
         }
     }
@@ -142,13 +171,18 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
-        self.verbatim
+        self.state
+            .verbatim()
             .map(|(kind, opener_len)| {
                 let kind = if matches!(first.kind, lex::Kind::Seq(lex::Sequence::Backtick))
                     && first.len == opener_len
                 {
-                    self.verbatim = None;
-                    EventKind::Exit(kind)
+                    self.state = State::None;
+                    if matches!(kind, Container::Span) {
+                        todo!()
+                    } else {
+                        EventKind::Exit(kind)
+                    }
                 } else {
                     EventKind::Str
                 };
@@ -191,7 +225,7 @@ impl<'s> Parser<'s> {
                     _ => None,
                 }
                 .map(|(kind, opener_len)| {
-                    self.verbatim = Some((kind, opener_len));
+                    self.state = State::Verbatim { kind, opener_len };
                     Event {
                         kind: EventKind::Enter(kind),
                         span: self.span,
@@ -201,6 +235,12 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
+        enum Dir {
+            Open,
+            Close,
+            Both,
+        }
+
         match first.kind {
             lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
             lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
@@ -294,9 +334,12 @@ impl<'s> Iterator for Parser<'s> {
             })
             .or_else(|| {
                 if self.last {
-                    self.verbatim.take().map(|(kind, _)| Event {
-                        kind: EventKind::Exit(kind),
-                        span: self.span,
+                    self.state.verbatim().map(|(kind, _)| {
+                        self.state = State::None;
+                        Event {
+                            kind: EventKind::Exit(kind),
+                            span: self.span,
+                        }
                     })
                 } else {
                     None
