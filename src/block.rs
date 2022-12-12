@@ -7,7 +7,14 @@ use Atom::*;
 use Container::*;
 use Leaf::*;
 
-pub type Tree = tree::Tree<Block, Atom>;
+pub type Tree = tree::Tree<Node, Atom>;
+pub type TreeBuilder = tree::Builder<Node, Atom>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Node {
+    Container(Container),
+    Leaf(Leaf),
+}
 
 #[must_use]
 pub fn parse(src: &str) -> Tree {
@@ -79,7 +86,7 @@ pub enum Container {
 /// Parser for block-level tree structure of entire document.
 struct TreeParser<'s> {
     src: &'s str,
-    tree: tree::Builder<Block, Atom>,
+    tree: TreeBuilder,
 }
 
 impl<'s> TreeParser<'s> {
@@ -87,7 +94,7 @@ impl<'s> TreeParser<'s> {
     pub fn new(src: &'s str) -> Self {
         Self {
             src,
-            tree: tree::Builder::new(),
+            tree: TreeBuilder::new(),
         }
     }
 
@@ -142,7 +149,7 @@ impl<'s> TreeParser<'s> {
                 match kind {
                     Block::Atom(a) => self.tree.atom(a, span),
                     Block::Leaf(l) => {
-                        self.tree.enter(kind, span);
+                        self.tree.enter(Node::Leaf(l), span);
 
                         // trim starting whitespace of the block contents
                         lines[0] = lines[0].trim_start(self.src);
@@ -190,7 +197,7 @@ impl<'s> TreeParser<'s> {
                                 *sp = sp.skip(skip);
                             });
 
-                        self.tree.enter(kind, span);
+                        self.tree.enter(Node::Container(c), span);
                         let mut l = 0;
                         while l < line_count_inner {
                             l += self.parse_block(&mut lines[l..line_count_inner]);
@@ -396,16 +403,15 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
-    use crate::tree::EventKind;
     use crate::tree::EventKind::*;
+    use crate::tree::EventKind;
 
     use super::Atom::*;
     use super::Block;
-    use super::Block::*;
     use super::Container::*;
     use super::Leaf::*;
+    use super::Node::*;
 
-    /*
     macro_rules! test_parse {
             ($src:expr $(,$($event:expr),* $(,)?)?) => {
                 let t = super::TreeParser::new($src).parse();
@@ -420,7 +426,7 @@ mod test {
         test_parse!(
             "para\n",
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "para"),
+            (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
         );
     }
@@ -430,8 +436,8 @@ mod test {
         test_parse!(
             "para0\npara1\n",
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "para0\n"),
-            (EventKind::Atom(Inline), "para1"),
+            (Inline, "para0\n"),
+            (Inline, "para1"),
             (Exit(Leaf(Paragraph)), ""),
         );
     }
@@ -440,20 +446,20 @@ mod test {
     fn parse_heading_multi() {
         test_parse!(
             concat!(
-                    "# 2\n",
-                    "\n",
-                    " #   8\n",
-                    "  12\n",
-                    "15\n", //
-                ),
+                            "# 2\n",
+                            "\n",
+                            " #   8\n",
+                            "  12\n",
+                            "15\n", //
+                        ),
             (Enter(Leaf(Heading)), "#"),
-            (EventKind::Atom(Inline), "2"),
+            (Inline, "2"),
             (Exit(Leaf(Heading)), "#"),
-            (EventKind::Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Enter(Leaf(Heading)), "#"),
-            (EventKind::Atom(Inline), "8\n"),
-            (EventKind::Atom(Inline), "  12\n"),
-            (EventKind::Atom(Inline), "15"),
+            (Inline, "8\n"),
+            (Inline, "  12\n"),
+            (Inline, "15"),
             (Exit(Leaf(Heading)), "#"),
         );
     }
@@ -464,20 +470,18 @@ mod test {
             "> a\n",
             (Enter(Container(Blockquote)), ">"),
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "a"),
+            (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Blockquote)), ">"),
         );
         test_parse!(
-            "> \n",
+            "> a\nb\nc\n",
             (Enter(Container(Blockquote)), ">"),
-            (EventKind::Atom(Blankline), "\n"),
-            (Exit(Container(Blockquote)), ">"),
-        );
-        test_parse!(
-            ">",
-            (Enter(Container(Blockquote)), ">"),
-            (EventKind::Atom(Blankline), ""),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a\n"),
+            (Inline, "b\n"),
+            (Inline, "c"),
+            (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Blockquote)), ">"),
         );
         test_parse!(
@@ -490,15 +494,15 @@ mod test {
             ),
             (Enter(Container(Blockquote)), ">"),
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "a"),
+            (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Enter(Leaf(Heading)), "##"),
-            (EventKind::Atom(Inline), "hl"),
+            (Inline, "hl"),
             (Exit(Leaf(Heading)), "##"),
-            (EventKind::Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "para"),
+            (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Blockquote)), ">"),
         );
@@ -525,7 +529,7 @@ mod test {
         test_parse!(
             concat!("```\n", "l0\n"),
             (Enter(Leaf(CodeBlock)), "",),
-            (EventKind::Atom(Inline), "l0\n"),
+            (Inline, "l0\n"),
             (Exit(Leaf(CodeBlock)), "",),
         );
         test_parse!(
@@ -537,11 +541,11 @@ mod test {
                 "para\n", //
             ),
             (Enter(Leaf(CodeBlock)), ""),
-            (EventKind::Atom(Inline), "l0\n"),
+            (Inline, "l0\n"),
             (Exit(Leaf(CodeBlock)), ""),
-            (EventKind::Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "para"),
+            (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
         );
         test_parse!(
@@ -553,9 +557,9 @@ mod test {
                 "````", //
             ),
             (Enter(Leaf(CodeBlock)), "lang"),
-            (EventKind::Atom(Inline), "l0\n"),
-            (EventKind::Atom(Inline), "```\n"),
-            (EventKind::Atom(Inline), " l1\n"),
+            (Inline, "l0\n"),
+            (Inline, "```\n"),
+            (Inline, " l1\n"),
             (Exit(Leaf(CodeBlock)), "lang"),
         );
         test_parse!(
@@ -568,10 +572,10 @@ mod test {
                 "```\n", //
             ),
             (Enter(Leaf(CodeBlock)), ""),
-            (EventKind::Atom(Inline), "a\n"),
+            (Inline, "a\n"),
             (Exit(Leaf(CodeBlock)), ""),
             (Enter(Leaf(CodeBlock)), ""),
-            (EventKind::Atom(Inline), "bbb\n"),
+            (Inline, "bbb\n"),
             (Exit(Leaf(CodeBlock)), ""),
         );
         test_parse!(
@@ -581,10 +585,10 @@ mod test {
                 "  block\n",
                 "~~~\n", //
             ),
-            (Enter(Leaf(CodeBlock)), "",),
-            (EventKind::Atom(Inline), "code\n"),
-            (EventKind::Atom(Inline), "  block\n"),
-            (Exit(Leaf(CodeBlock)), "",),
+            (Enter(Leaf(CodeBlock)), ""),
+            (Inline, "code\n"),
+            (Inline, "  block\n"),
+            (Exit(Leaf(CodeBlock)), ""),
         );
     }
 
@@ -593,7 +597,7 @@ mod test {
         test_parse!(
             "[tag]: url\n",
             (Enter(Leaf(LinkDefinition)), "tag"),
-            (EventKind::Atom(Inline), "url"),
+            (Inline, "url"),
             (Exit(Leaf(LinkDefinition)), "tag"),
         );
     }
@@ -604,7 +608,7 @@ mod test {
             "[^tag]: description\n",
             (Enter(Container(Footnote)), "tag"),
             (Enter(Leaf(Paragraph)), ""),
-            (EventKind::Atom(Inline), "description"),
+            (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Footnote)), "tag"),
         );
@@ -631,7 +635,12 @@ mod test {
 
     #[test]
     fn block_multiline() {
-        test_block!("# heading\n spanning two lines\n", Leaf(Heading), "#", 2);
+        test_block!(
+            "# heading\n spanning two lines\n",
+            Block::Leaf(Heading),
+            "#",
+            2
+        );
     }
 
     #[test]
@@ -675,7 +684,7 @@ mod test {
                 " l1\n",
                 "````", //
             ),
-            Leaf(CodeBlock),
+            Block::Leaf(CodeBlock),
             "lang",
             5,
         );
@@ -688,7 +697,7 @@ mod test {
                 "bbb\n", //
                 "```\n", //
             ),
-            Leaf(CodeBlock),
+            Block::Leaf(CodeBlock),
             "",
             3,
         );
@@ -698,7 +707,7 @@ mod test {
                 "l0\n",
                 "```\n", //
             ),
-            Leaf(Paragraph),
+            Block::Leaf(Paragraph),
             "",
             3,
         );
@@ -706,13 +715,13 @@ mod test {
 
     #[test]
     fn block_link_definition() {
-        test_block!("[tag]: url\n", Leaf(LinkDefinition), "tag", 1);
+        test_block!("[tag]: url\n", Block::Leaf(LinkDefinition), "tag", 1);
         test_block!(
             concat!(
                 "[tag]: uuu\n",
                 " rl\n", //
             ),
-            Leaf(LinkDefinition),
+            Block::Leaf(LinkDefinition),
             "tag",
             2,
         );
@@ -721,10 +730,9 @@ mod test {
                 "[tag]: url\n",
                 "para\n", //
             ),
-            Leaf(LinkDefinition),
+            Block::Leaf(LinkDefinition),
             "tag",
             1,
         );
     }
-    */
 }

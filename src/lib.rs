@@ -8,8 +8,6 @@ mod tree;
 
 use span::Span;
 
-pub struct Block;
-
 const EOF: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
@@ -312,7 +310,7 @@ impl<'s> Attributes<'s> {
 #[derive(Clone)]
 struct InlineChars<'t, 's> {
     src: &'s str,
-    inlines: tree::Inlines<'t, block::Block, block::Atom>,
+    inlines: tree::Inlines<'t, block::Node, block::Atom>,
 }
 
 impl<'t, 's> Iterator for InlineChars<'t, 's> {
@@ -328,7 +326,7 @@ impl<'t, 's> Iterator for InlineChars<'t, 's> {
 pub struct Parser<'s> {
     src: &'s str,
     tree: block::Tree,
-    inline_parser: Option<inline::Parser<InlineChars<'s, 's>>>,
+    inline_parser: Option<inline::Parser<InlineChars<'static, 's>>>,
     inline_start: usize,
     block_attributes: Attributes<'s>,
 }
@@ -369,39 +367,44 @@ impl<'s> Iterator for Parser<'s> {
                         continue;
                     }
                 },
-                tree::EventKind::Enter(b) => {
-                    if matches!(b, block::Block::Leaf(_)) {
+                tree::EventKind::Enter(c) => match c {
+                    block::Node::Leaf(l) => {
+                        let inlines = self.tree.inlines();
                         let chars = InlineChars {
                             src: self.src,
-                            inlines: self.tree.inlines(),
+                            inlines,
                         };
-                        // TODO solve self-referential reference here without unsafe
                         self.inline_parser =
                             unsafe { Some(std::mem::transmute(inline::Parser::new(chars))) };
                         self.inline_start = ev.span.end();
-                    }
-                    let container = match b {
-                        block::Block::Leaf(block::Leaf::CodeBlock { .. }) => {
-                            self.inline_start += 1; // skip newline
-                            Container::CodeBlock {
-                                lang: (!ev.span.is_empty()).then(|| content),
+                        let container = match l {
+                            block::Leaf::CodeBlock { .. } => {
+                                self.inline_start += 1; // skip newline
+                                Container::CodeBlock {
+                                    lang: (!ev.span.is_empty()).then(|| content),
+                                }
                             }
-                        }
-                        block::Block::Container(block::Container::Div { .. }) => Container::Div {
-                            class: (!ev.span.is_empty()).then(|| ev.span.of(self.src)),
-                        },
-                        block::Block::Leaf(l) => Container::from_leaf_block(content, l),
-                        block::Block::Container(c) => Container::from_container_block(content, c),
-                        block::Block::Atom(..) => panic!(),
-                    };
-                    Event::Start(container, self.block_attributes.take())
-                }
-                tree::EventKind::Exit(b) => Event::End(match b {
-                    block::Block::Leaf(l) => Container::from_leaf_block(content, l),
-                    block::Block::Container(c) => Container::from_container_block(content, c),
-                    block::Block::Atom(..) => panic!(),
-                }),
-                tree::EventKind::Inline => panic!(),
+                            _ => Container::from_leaf_block(content, l),
+                        };
+                        Event::Start(container, self.block_attributes.take())
+                    }
+                    block::Node::Container(c) => {
+                        let container = match c {
+                            block::Container::Div { .. } => Container::Div {
+                                class: (!ev.span.is_empty()).then(|| content),
+                            },
+                            _ => Container::from_container_block(content, c),
+                        };
+                        Event::Start(container, self.block_attributes.take())
+                    }
+                },
+                tree::EventKind::Exit(c) => match c {
+                    block::Node::Leaf(l) => Event::End(Container::from_leaf_block(content, l)),
+                    block::Node::Container(c) => {
+                        Event::End(Container::from_container_block(content, c))
+                    }
+                },
+                tree::EventKind::Inline => unreachable!(),
             };
             return Some(event);
         }

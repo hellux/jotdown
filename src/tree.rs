@@ -34,7 +34,7 @@ impl<'t, C, A> Iterator for Inlines<'t, C, A> {
     }
 }
 
-impl<C: Clone, A: Clone> Tree<C, A> {
+impl<C, A> Tree<C, A> {
     fn new(nodes: Vec<Node<C, A>>) -> Self {
         let head = nodes[NodeIndex::root().index()].next;
         Self {
@@ -77,9 +77,9 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
                     self.head = *child;
                     EventKind::Enter(c.clone())
                 }
-                NodeKind::Atom(e) => {
+                NodeKind::Atom(a) => {
                     self.head = n.next;
-                    EventKind::Atom(e.clone())
+                    EventKind::Atom(a.clone())
                 }
                 NodeKind::Inline => {
                     self.head = n.next;
@@ -89,16 +89,12 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
             Some(Event { kind, span: n.span })
         } else if let Some(block_ni) = self.branch.pop() {
             let Node { next, kind, span } = &self.nodes[block_ni.index()];
-            let cont = if let NodeKind::Container(c, _) = kind {
-                c
-            } else {
-                panic!();
+            let kind = match kind {
+                NodeKind::Container(c, _) => EventKind::Exit(c.clone()),
+                _ => panic!(),
             };
             self.head = *next;
-            Some(Event {
-                kind: EventKind::Exit(cont.clone()),
-                span: *span,
-            })
+            Some(Event { kind, span: *span })
         } else {
             None
         }
@@ -123,7 +119,7 @@ impl NodeIndex {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum NodeKind<C, A> {
     Root,
     Container(C, Option<NodeIndex>),
@@ -234,7 +230,7 @@ impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
-        writeln!(f)?;
+        write!(f, "\n")?;
         for e in self.clone() {
             let indent = INDENT.repeat(level);
             match e.kind {
@@ -257,30 +253,43 @@ impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for
 
 #[cfg(test)]
 mod test {
-    use crate::block;
     use crate::Span;
 
     #[test]
-    fn fmt_linear() {
-        let mut tree: super::Builder<u8, u8> = super::Builder::new();
-        tree.atom(1, Span::new(0, 1));
-        tree.atom(2, Span::new(1, 2));
-        tree.atom(3, Span::new(3, 4));
+    fn fmt() {
+        let mut tree = super::Builder::new();
+        tree.enter(1, Span::new(0, 1));
+        tree.atom(11, Span::new(0, 1));
+        tree.atom(12, Span::new(0, 1));
+        tree.exit();
+        tree.enter(2, Span::new(1, 5));
+        tree.enter(21, Span::new(2, 5));
+        tree.enter(211, Span::new(3, 4));
+        tree.atom(2111, Span::new(3, 4));
+        tree.exit();
+        tree.exit();
+        tree.enter(22, Span::new(4, 5));
+        tree.atom(221, Span::new(4, 5));
+        tree.exit();
+        tree.exit();
+        tree.enter(3, Span::new(5, 6));
+        tree.atom(31, Span::new(5, 6));
+        tree.exit();
         assert_eq!(
             format!("{:?}", tree),
             concat!(
-                "Heading (0:1)\n",
-                "  0:1\n",
-                "  0:1\n",
-                "Blockquote (1:5)\n",
-                "  Div (2:5)\n",
-                "    Paragraph (3:4)\n",
-                "      3:4\n",
-                "  Blankline (4:5)\n",
-                "  Paragraph (4:5)\n",
-                "    4:5\n",
-                "Heading (5:6)\n",
-                "  5:6\n",
+                "\n",
+                "1 (0:1)\n",
+                "  11 (0:1)\n",
+                "  12 (0:1)\n",
+                "2 (1:5)\n",
+                "  21 (2:5)\n",
+                "    211 (3:4)\n",
+                "      2111 (3:4)\n",
+                "  22 (4:5)\n",
+                "    221 (4:5)\n",
+                "3 (5:6)\n",
+                "  31 (5:6)\n",
             )
         );
     }
