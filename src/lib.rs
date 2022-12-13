@@ -8,6 +8,8 @@ mod tree;
 
 use span::Span;
 
+type CowStr<'s> = std::borrow::Cow<'s, str>;
+
 const EOF: char = '\0';
 
 #[derive(Debug, PartialEq, Eq)]
@@ -17,7 +19,7 @@ pub enum Event<'s> {
     /// End of a container.
     End(Container<'s>),
     /// A string object, text only.
-    Str(&'s str),
+    Str(CowStr<'s>),
     /// An atomic element.
     Atom(Atom),
 }
@@ -57,9 +59,9 @@ pub enum Container<'s> {
     /// An inline divider element.
     Span,
     /// An inline link with a destination URL.
-    Link(&'s str, LinkType),
+    Link(CowStr<'s>, LinkType),
     /// An inline image.
-    Image(&'s str),
+    Image(CowStr<'s>),
     /// An inline verbatim string.
     Verbatim,
     /// An inline or display math element.
@@ -242,6 +244,9 @@ impl<'s> Event<'s> {
                     inline::Container::Mark => Container::Mark,
                     inline::Container::SingleQuoted => Container::SingleQuoted,
                     inline::Container::DoubleQuoted => Container::DoubleQuoted,
+                    inline::Container::InlineLink => {
+                        Container::Link(content.into(), LinkType::Inline)
+                    }
                     _ => todo!(),
                 };
                 if matches!(inline.kind, inline::EventKind::Enter(_)) {
@@ -259,7 +264,7 @@ impl<'s> Event<'s> {
                 inline::Atom::Hardbreak => Atom::Hardbreak,
                 inline::Atom::Escape => Atom::Escape,
             }),
-            inline::EventKind::Str => Self::Str(content),
+            inline::EventKind::Str => Self::Str(content.into()),
             inline::EventKind::Attributes => todo!(),
         }
     }
@@ -418,10 +423,12 @@ mod test {
     use super::Atom::*;
     use super::Attributes;
     use super::Container::*;
+    use super::CowStr;
     use super::Event::*;
+    use super::LinkType;
 
     macro_rules! test_parse {
-        ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+        ($src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
             let actual = super::Parser::new($src).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
@@ -469,23 +476,23 @@ mod test {
         test_parse!(
             "para",
             Start(Paragraph, Attributes::none()),
-            Str("para"),
+            Str(CowStr::Borrowed("para")),
             End(Paragraph),
         );
         test_parse!(
             "pa     ra",
             Start(Paragraph, Attributes::none()),
-            Str("pa     ra"),
+            Str(CowStr::Borrowed("pa     ra")),
             End(Paragraph),
         );
         test_parse!(
             "para0\n\npara1",
             Start(Paragraph, Attributes::none()),
-            Str("para0"),
+            Str(CowStr::Borrowed("para0")),
             End(Paragraph),
             Atom(Blankline),
             Start(Paragraph, Attributes::none()),
-            Str("para1"),
+            Str(CowStr::Borrowed("para1")),
             End(Paragraph),
         );
     }
@@ -496,7 +503,7 @@ mod test {
             "`abc\ndef",
             Start(Paragraph, Attributes::none()),
             Start(Verbatim, Attributes::none()),
-            Str("abc\ndef"),
+            Str(CowStr::Borrowed("abc\ndef")),
             End(Verbatim),
             End(Paragraph),
         );
@@ -508,8 +515,37 @@ mod test {
             "``raw\nraw``{=format}",
             Start(Paragraph, Attributes::none()),
             Start(RawInline { format: "format" }, Attributes::none()),
-            Str("raw\nraw"),
+            Str(CowStr::Borrowed("raw\nraw")),
             End(RawInline { format: "format" }),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn link_inline() {
+        test_parse!(
+            "[text](url)",
+            Start(Paragraph, Attributes::none()),
+            Start(
+                Link(CowStr::Borrowed("url"), LinkType::Inline),
+                Attributes::none()
+            ),
+            Str(CowStr::Borrowed("text")),
+            End(Link(CowStr::Borrowed("url"), LinkType::Inline)),
+            End(Paragraph),
+        );
+        test_parse!(
+            concat!(
+                "> [text](url\n",
+                "> url)\n", //
+            ),
+            Start(Paragraph, Attributes::none()),
+            Start(
+                Link(CowStr::Borrowed("urlurl"), LinkType::Inline),
+                Attributes::none()
+            ),
+            Str(CowStr::Borrowed("text")),
+            End(Link(CowStr::Borrowed("urlurl"), LinkType::Inline)),
             End(Paragraph),
         );
     }

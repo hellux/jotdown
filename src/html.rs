@@ -162,34 +162,37 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::DoubleQuoted => self.out.write_str("&rdquo;")?,
                     }
                 }
-                Event::Str(mut s) => match self.raw {
-                    Raw::None => {
-                        let mut ent = "";
-                        while let Some(i) = s.chars().position(|c| {
-                            if let Some(s) = match c {
-                                '<' => Some("&lt;"),
-                                '>' => Some("&gt;"),
-                                '&' => Some("&amp;"),
-                                '"' => Some("&quot;"),
-                                _ => None,
-                            } {
-                                ent = s;
-                                true
-                            } else {
-                                false
+                Event::Str(s) => {
+                    let mut s: &str = s.as_ref();
+                    match self.raw {
+                        Raw::None => {
+                            let mut ent = "";
+                            while let Some(i) = s.chars().position(|c| {
+                                if let Some(s) = match c {
+                                    '<' => Some("&lt;"),
+                                    '>' => Some("&gt;"),
+                                    '&' => Some("&amp;"),
+                                    '"' => Some("&quot;"),
+                                    _ => None,
+                                } {
+                                    ent = s;
+                                    true
+                                } else {
+                                    false
+                                }
+                            }) {
+                                self.out.write_str(&s[..i])?;
+                                self.out.write_str(ent)?;
+                                s = &s[i + 1..];
                             }
-                        }) {
-                            self.out.write_str(&s[..i])?;
-                            self.out.write_str(ent)?;
-                            s = &s[i + 1..];
+                            self.out.write_str(s)?;
                         }
-                        self.out.write_str(s)?;
+                        Raw::Html => {
+                            self.out.write_str(s)?;
+                        }
+                        Raw::Other => {}
                     }
-                    Raw::Html => {
-                        self.out.write_str(s)?;
-                    }
-                    Raw::Other => {}
-                },
+                }
 
                 Event::Atom(a) => match a {
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
