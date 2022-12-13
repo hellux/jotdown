@@ -34,12 +34,16 @@ pub enum Container {
     DoubleQuoted,
     // Verbatim
     Verbatim,
+    /// Span is the format.
     RawFormat,
     InlineMath,
     DisplayMath,
-    // Links
+    /// Span is the reference link tag.
     ReferenceLink,
+
+    /// Delimiter spans are the URL.
     InlineLink,
+
     AutoLink,
 }
 
@@ -153,6 +157,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             });
 
             let mut span_inner = Span::empty_at(self.span.end());
+            let mut span_outer = None;
 
             while let Some(t) = self.eat() {
                 if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len
@@ -182,7 +187,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             kind = RawFormat;
                             self.events[opener_event].kind = EventKind::Enter(kind);
                             self.events[opener_event].span = span_format;
-                            self.span = span_format;
+                            self.span = span_format.translate(1); // }
+                            span_outer = Some(span_format);
                         }
                     }
                     break;
@@ -198,63 +204,66 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
             Event {
                 kind: EventKind::Exit(kind),
-                span: self.span,
+                span: span_outer.unwrap_or(self.span),
             }
         })
     }
 
     fn parse_span(&mut self, first: &lex::Token) -> Option<Event> {
-        if let Some(open) = match first.kind {
+        match first.kind {
             lex::Kind::Open(Delimiter::Bracket) => Some(true),
             lex::Kind::Close(Delimiter::Bracket) => Some(false),
             _ => None,
-        } {
-            Some(if open {
+        }
+        .and_then(|open| {
+            if open {
                 self.spans.push(self.events.len());
                 // use str for now, replace if closed later
-                Event {
+                Some(Event {
                     kind: EventKind::Str,
                     span: self.span,
+                })
+            } else if !self.spans.is_empty() {
+                let mut ahead = self.lexer.inner().clone();
+                match ahead.next() {
+                    Some(opener @ ('[' | '(')) => {
+                        let (closer, kind) = match opener {
+                            '[' => (']', ReferenceLink),
+                            '(' => (')', InlineLink),
+                            _ => unreachable!(),
+                        };
+                        let mut end = false;
+                        let len = (&mut ahead)
+                            .take_while(|c| {
+                                if *c == closer {
+                                    end = true;
+                                };
+                                !end && *c != opener
+                            })
+                            .count();
+                        end.then(|| {
+                            let span = Span::by_len(self.span.end() + 1, len);
+                            (kind, span)
+                        })
+                    }
+                    Some('{') => todo!(),
+                    _ => None,
                 }
+                .map(|(kind, span)| {
+                    self.lexer = lex::Lexer::new(ahead);
+                    let opener_event = self.spans.pop().unwrap();
+                    self.events[opener_event].kind = EventKind::Enter(kind);
+                    self.events[opener_event].span = span;
+                    self.span = span.translate(1);
+                    Event {
+                        kind: EventKind::Exit(kind),
+                        span,
+                    }
+                })
             } else {
-                /*
-                let kind = if self.lexer.peek_ahead().starts_with('[') {
-                    let mut chars = self.lexer.peek_ahead()["[".len()..].chars();
-                    let len = chars
-                        .clone()
-                        .take_while(|c| !c.is_whitespace() && !matches!(c, '[' | ']'))
-                        .count();
-                    match chars.nth(len) {
-                        Some(']') => EventKind::Exit(ReferenceLink),
-                        None => {
-                            self.atomic_state = AtomicState::ReferenceLinkTag;
-                            return None;
-                        }
-                        _ => EventKind::Str,
-                    }
-                } else if self.lexer.peek_ahead().starts_with('(') {
-                    let mut chars = self.lexer.peek_ahead()["[".len()..].chars();
-                    let len = chars
-                        .clone()
-                        .take_while(|c| !c.is_whitespace() && !matches!(c, '[' | ']'))
-                        .count();
-                    match chars.nth(len) {
-                        Some(']') => EventKind::Exit(ReferenceLink),
-                        None => {
-                            self.atomic_state = AtomicState::Url { auto: false };
-                            return None;
-                        }
-                        _ => EventKind::Str,
-                    }
-                } else {
-                    return None;
-                };
-                    */
-                todo!()
-            })
-        } else {
-            None
-        }
+                None
+            }
+        })
     }
 
     fn parse_typeset(&mut self, first: &lex::Token) -> Option<Event> {
@@ -336,6 +345,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
             || !self.typesets.is_empty()
+            || !self.spans.is_empty()
             || self // for merge
                 .events
                 .back()
@@ -477,6 +487,82 @@ mod test {
             (Enter(InlineMath), "$```"),
             (Str, "abc"),
             (Exit(InlineMath), "```"),
+        );
+    }
+
+    #[test]
+    fn raw_format() {
+        test_parse!(
+            "`raw`{=format}",
+            (Enter(RawFormat), "format"),
+            (Str, "raw"),
+            (Exit(RawFormat), "format"),
+        );
+        test_parse!(
+            "before `raw`{=format} after",
+            (Str, "before "),
+            (Enter(RawFormat), "format"),
+            (Str, "raw"),
+            (Exit(RawFormat), "format"),
+            (Str, " after"),
+        );
+    }
+
+    #[test]
+    fn raw_attr() {
+        test_parse!(
+            "`raw`{=format #id}",
+            (Enter(Verbatim), "`"),
+            (Str, "raw"),
+            (Exit(Verbatim), "`"),
+            (Str, "{=format #id}"),
+        );
+    }
+
+    #[test]
+    fn span_tag() {
+        test_parse!(
+            "[text][tag]",
+            (Enter(ReferenceLink), "tag"),
+            (Str, "text"),
+            (Exit(ReferenceLink), "tag"),
+        );
+        test_parse!(
+            "before [text][tag] after",
+            (Str, "before "),
+            (Enter(ReferenceLink), "tag"),
+            (Str, "text"),
+            (Exit(ReferenceLink), "tag"),
+            (Str, " after"),
+        );
+        test_parse!(
+            "[[inner][i]][o]",
+            (Enter(ReferenceLink), "o"),
+            (Enter(ReferenceLink), "i"),
+            (Str, "inner"),
+            (Exit(ReferenceLink), "i"),
+            (Exit(ReferenceLink), "o"),
+        );
+    }
+
+    #[test]
+    fn span_url() {
+        test_parse!(
+            "before [text](url) after",
+            (Str, "before "),
+            (Enter(InlineLink), "url"),
+            (Str, "text"),
+            (Exit(InlineLink), "url"),
+            (Str, " after"),
+        );
+        test_parse!(
+            "[outer [inner](i)](o)",
+            (Enter(InlineLink), "o"),
+            (Str, "outer "),
+            (Enter(InlineLink), "i"),
+            (Str, "inner"),
+            (Exit(InlineLink), "i"),
+            (Exit(InlineLink), "o"),
         );
     }
 
