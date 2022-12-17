@@ -113,20 +113,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         &self.chars
     }
 
-    /*
-    pub fn pos(&self) -> usize {
-        self.src.len()
-            - self.chars.as_str().len()
-            - self.next.as_ref().map(|t| t.len).unwrap_or_default()
-    }
-    */
-
-    /*
-    pub fn peek_ahead(&mut self) -> &'s str {
-        &self.src[self.pos()..]
-    }
-    */
-
     fn next_token(&mut self) -> Option<Token> {
         let mut current = self.token();
 
