@@ -52,6 +52,7 @@ struct Writer<I, W> {
     events: I,
     out: W,
     raw: Raw,
+    text_only: bool,
 }
 
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
@@ -60,6 +61,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
             events,
             out,
             raw: Raw::None,
+            text_only: false,
         }
     }
 
@@ -69,6 +71,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                 Event::Start(c, _attrs) => {
                     if c.is_block() {
                         self.out.write_char('\n')?;
+                    }
+                    if self.text_only && !matches!(c, Container::Image(..)) {
+                        continue;
                     }
                     match c {
                         Container::Blockquote => self.out.write_str("<blockquote>")?,
@@ -98,8 +103,11 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                             }
                         }
                         Container::Span => self.out.write_str("<span>")?,
-                        Container::Link(..) => todo!(),
-                        Container::Image(..) => todo!(),
+                        Container::Link(dst, ..) => write!(self.out, r#"<a href="{}">"#, dst)?,
+                        Container::Image(..) => {
+                            self.text_only = true;
+                            self.out.write_str("<img")?;
+                        }
                         Container::Verbatim => self.out.write_str("<code>")?,
                         Container::Math { display } => self.out.write_str(if display {
                             r#"<span class="math display">\["#
@@ -128,6 +136,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                     if c.is_block_container() && !matches!(c, Container::Footnote { .. }) {
                         self.out.write_char('\n')?;
                     }
+                    if self.text_only && !matches!(c, Container::Image(..)) {
+                        continue;
+                    }
                     match c {
                         Container::Blockquote => self.out.write_str("</blockquote>")?,
                         Container::List(..) => todo!(),
@@ -143,13 +154,21 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::TableCell => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
-                        Container::Span => self.out.write_str("</span>")?,
-                        Container::Link(..) => todo!(),
-                        Container::Image(..) => todo!(),
+                        Container::Span | Container::Math { .. } => {
+                            self.out.write_str("</span>")?;
+                        }
+                        Container::Link(..) => self.out.write_str("</a>")?,
+                        Container::Image(src, ..) => {
+                            self.text_only = false;
+                            if src.is_empty() {
+                                self.out.write_str(r#"">"#)?;
+                            } else {
+                                write!(self.out, r#"" src="{}">"#, src)?;
+                            }
+                        }
                         Container::Verbatim => self.out.write_str("</code>")?,
-                        Container::Math { .. } => self.out.write_str("</span>")?,
                         Container::RawBlock { .. } | Container::RawInline { .. } => {
-                            self.raw = Raw::None
+                            self.raw = Raw::None;
                         }
                         Container::Subscript => self.out.write_str("</sub>")?,
                         Container::Superscript => self.out.write_str("</sup>")?,

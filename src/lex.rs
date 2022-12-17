@@ -46,7 +46,7 @@ pub enum Symbol {
     Asterisk,
     Caret,
     Equal,
-    Exclaim,
+    ExclaimBracket,
     Gt,
     Lt,
     Percentage,
@@ -217,7 +217,10 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                 }
             }
 
-            '!' => Sym(Exclaim),
+            '!' if self.peek_char() == '[' => {
+                self.eat_char();
+                Sym(ExclaimBracket)
+            }
             '%' => Sym(Percentage),
             '<' => Sym(Lt),
             '>' => Sym(Gt),
@@ -349,12 +352,12 @@ mod test {
     #[test]
     fn sym() {
         test_lex!(
-            r#"'*^=!><%|+"~_"#,
+            r#"'*^=![><%|+"~_"#,
             Sym(Quote1).l(1),
             Sym(Asterisk).l(1),
             Sym(Caret).l(1),
             Sym(Equal).l(1),
-            Sym(Exclaim).l(1),
+            Sym(ExclaimBracket).l(2),
             Sym(Gt).l(1),
             Sym(Lt).l(1),
             Sym(Percentage).l(1),

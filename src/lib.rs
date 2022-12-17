@@ -60,8 +60,8 @@ pub enum Container<'s> {
     Span,
     /// An inline link with a destination URL.
     Link(CowStr<'s>, LinkType),
-    /// An inline image.
-    Image(CowStr<'s>),
+    /// An inline image with a source URL.
+    Image(CowStr<'s>, SpanLinkType),
     /// An inline verbatim string.
     Verbatim,
     /// An inline or display math element.
@@ -163,9 +163,14 @@ impl<'s> Container<'s> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum LinkType {
+pub enum SpanLinkType {
     Inline,
     Reference,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LinkType {
+    Span(SpanLinkType),
     AutoLink,
     Email,
 }
@@ -321,7 +326,6 @@ impl<'s> Parser<'s> {
 
 impl<'s> Parser<'s> {
     fn inline(&self, inline: inline::Event) -> Event<'s> {
-        //let content = inline.span.of(self.src);
         match inline.kind {
             inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                 let t = match c {
@@ -343,9 +347,13 @@ impl<'s> Parser<'s> {
                     inline::Container::DoubleQuoted => Container::DoubleQuoted,
                     inline::Container::InlineLink => Container::Link(
                         self.inline_str(inline.span).replace('\n', "").into(),
-                        LinkType::Inline,
+                        LinkType::Span(SpanLinkType::Inline),
                     ),
-                    _ => todo!(),
+                    inline::Container::InlineImage => Container::Image(
+                        self.inline_str(inline.span).replace('\n', "").into(),
+                        SpanLinkType::Inline,
+                    ),
+                    _ => todo!("{:?}", c),
                 };
                 if matches!(inline.kind, inline::EventKind::Enter(_)) {
                     Event::Start(t, Attributes::none())
@@ -470,6 +478,7 @@ mod test {
     use super::CowStr;
     use super::Event::*;
     use super::LinkType;
+    use super::SpanLinkType;
 
     macro_rules! test_parse {
         ($src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -616,11 +625,17 @@ mod test {
             "[text](url)",
             Start(Paragraph, Attributes::none()),
             Start(
-                Link(CowStr::Borrowed("url"), LinkType::Inline),
+                Link(
+                    CowStr::Borrowed("url"),
+                    LinkType::Span(SpanLinkType::Inline),
+                ),
                 Attributes::none()
             ),
             Str(CowStr::Borrowed("text")),
-            End(Link(CowStr::Borrowed("url"), LinkType::Inline)),
+            End(Link(
+                CowStr::Borrowed("url"),
+                LinkType::Span(SpanLinkType::Inline)
+            )),
             End(Paragraph),
         );
         test_parse!(
@@ -631,11 +646,17 @@ mod test {
             Start(Blockquote, Attributes::none()),
             Start(Paragraph, Attributes::none()),
             Start(
-                Link(CowStr::Owned("urlurl".to_string()), LinkType::Inline),
+                Link(
+                    CowStr::Owned("urlurl".to_string()),
+                    LinkType::Span(SpanLinkType::Inline)
+                ),
                 Attributes::none()
             ),
             Str(CowStr::Borrowed("text")),
-            End(Link(CowStr::Borrowed("urlurl"), LinkType::Inline)),
+            End(Link(
+                CowStr::Borrowed("urlurl"),
+                LinkType::Span(SpanLinkType::Inline)
+            )),
             End(Paragraph),
             End(Blockquote),
         );

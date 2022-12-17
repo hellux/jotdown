@@ -40,9 +40,12 @@ pub enum Container {
     DisplayMath,
     /// Span is the reference link tag.
     ReferenceLink,
-
-    /// Delimiter spans are the URL.
+    /// Span is the reference link tag.
+    ReferenceImage,
+    /// Span is the URL.
     InlineLink,
+    /// Span is the URL.
+    InlineImage,
 
     AutoLink,
 }
@@ -70,7 +73,7 @@ pub struct Parser<I> {
     /// Stack with kind and index of _potential_ openers for typesetting containers.
     typesets: Vec<(Container, usize)>,
     /// Stack with index of _potential_ span/link openers.
-    spans: Vec<usize>,
+    spans: Vec<(usize, bool)>,
     //attributes: Vec<(Span, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
@@ -211,13 +214,14 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_span(&mut self, first: &lex::Token) -> Option<Event> {
         match first.kind {
-            lex::Kind::Open(Delimiter::Bracket) => Some(true),
-            lex::Kind::Close(Delimiter::Bracket) => Some(false),
+            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((true, true)),
+            lex::Kind::Open(Delimiter::Bracket) => Some((true, false)),
+            lex::Kind::Close(Delimiter::Bracket) => Some((false, false)),
             _ => None,
         }
-        .and_then(|open| {
+        .and_then(|(open, img)| {
             if open {
-                self.spans.push(self.events.len());
+                self.spans.push((self.events.len(), img));
                 // use str for now, replace if closed later
                 Some(Event {
                     kind: EventKind::Str,
@@ -225,10 +229,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
             } else if !self.spans.is_empty() {
                 let mut ahead = self.lexer.inner().clone();
+                let img = self.spans.last().unwrap().1;
                 match ahead.next() {
                     Some(opener @ ('[' | '(')) => {
                         let (closer, kind) = match opener {
+                            '[' if img => (']', ReferenceImage),
                             '[' => (']', ReferenceLink),
+                            '(' if img => (')', InlineImage),
                             '(' => (')', InlineLink),
                             _ => unreachable!(),
                         };
@@ -251,7 +258,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 }
                 .map(|(kind, span)| {
                     self.lexer = lex::Lexer::new(ahead);
-                    let opener_event = self.spans.pop().unwrap();
+                    let (opener_event, _) = self.spans.pop().unwrap();
                     self.events[opener_event].kind = EventKind::Enter(kind);
                     self.events[opener_event].span = span;
                     self.span = span.translate(1);
@@ -526,6 +533,12 @@ mod test {
             (Enter(ReferenceLink), "tag"),
             (Str, "text"),
             (Exit(ReferenceLink), "tag"),
+        );
+        test_parse!(
+            "![text][tag]",
+            (Enter(ReferenceImage), "tag"),
+            (Str, "text"),
+            (Exit(ReferenceImage), "tag"),
         );
         test_parse!(
             "before [text][tag] after",
