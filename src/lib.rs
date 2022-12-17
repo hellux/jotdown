@@ -224,52 +224,6 @@ pub enum Atom {
     Blankline,
 }
 
-impl<'s> Event<'s> {
-    fn from_inline(src: &'s str, inline: inline::Event) -> Self {
-        let content = inline.span.of(src);
-        match inline.kind {
-            inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
-                let t = match c {
-                    inline::Container::Span => Container::Span,
-                    inline::Container::Verbatim => Container::Verbatim,
-                    inline::Container::InlineMath => Container::Math { display: false },
-                    inline::Container::DisplayMath => Container::Math { display: true },
-                    inline::Container::RawFormat => Container::RawInline { format: content },
-                    inline::Container::Subscript => Container::Subscript,
-                    inline::Container::Superscript => Container::Superscript,
-                    inline::Container::Insert => Container::Insert,
-                    inline::Container::Delete => Container::Delete,
-                    inline::Container::Emphasis => Container::Emphasis,
-                    inline::Container::Strong => Container::Strong,
-                    inline::Container::Mark => Container::Mark,
-                    inline::Container::SingleQuoted => Container::SingleQuoted,
-                    inline::Container::DoubleQuoted => Container::DoubleQuoted,
-                    inline::Container::InlineLink => {
-                        Container::Link(content.into(), LinkType::Inline)
-                    }
-                    _ => todo!(),
-                };
-                if matches!(inline.kind, inline::EventKind::Enter(_)) {
-                    Self::Start(t, Attributes::none())
-                } else {
-                    Self::End(t)
-                }
-            }
-            inline::EventKind::Atom(a) => Event::Atom(match a {
-                inline::Atom::Ellipsis => Atom::Ellipsis,
-                inline::Atom::EnDash => Atom::EnDash,
-                inline::Atom::EmDash => Atom::EmDash,
-                inline::Atom::Nbsp => Atom::NonBreakingSpace,
-                inline::Atom::Softbreak => Atom::Softbreak,
-                inline::Atom::Hardbreak => Atom::Hardbreak,
-                inline::Atom::Escape => Atom::Escape,
-            }),
-            inline::EventKind::Str => Self::Str(content.into()),
-            inline::EventKind::Attributes => todo!(),
-        }
-    }
-}
-
 impl<'s> Container<'s> {
     fn from_leaf_block(content: &str, l: block::Leaf) -> Self {
         match l {
@@ -277,7 +231,7 @@ impl<'s> Container<'s> {
             block::Leaf::Heading => Self::Heading {
                 level: content.len(),
             },
-            block::Leaf::CodeBlock => Self::CodeBlock { lang: None },
+            block::Leaf::CodeBlock => panic!(),
             _ => todo!(),
         }
     }
@@ -285,7 +239,7 @@ impl<'s> Container<'s> {
     fn from_container_block(content: &'s str, c: block::Container) -> Self {
         match c {
             block::Container::Blockquote => Self::Blockquote,
-            block::Container::Div => Self::Div { class: None },
+            block::Container::Div => panic!(),
             block::Container::Footnote => Self::Footnote { tag: content },
             block::Container::ListItem => todo!(),
         }
@@ -303,6 +257,7 @@ impl<'s> Attributes<'s> {
         Self(None)
     }
 
+    #[must_use]
     pub fn take(&mut self) -> Self {
         Self(self.0.take())
     }
@@ -313,12 +268,25 @@ impl<'s> Attributes<'s> {
 }
 
 #[derive(Clone)]
-struct InlineChars<'t, 's> {
+struct InlineChars<'s, 't> {
     src: &'s str,
-    inlines: tree::Inlines<'t, block::Node, block::Atom>,
+    inlines: std::slice::Iter<'t, Span>,
+    next: std::str::Chars<'s>,
 }
 
-impl<'t, 's> Iterator for InlineChars<'t, 's> {
+// Implement inlines.flat_map(|sp| sp.of(self.src).chars())
+// Is there a better way to do this?
+impl<'s, 't> InlineChars<'s, 't> {
+    fn new(src: &'s str, inlines: &'t [Span]) -> Self {
+        Self {
+            src,
+            inlines: inlines.iter(),
+            next: "".chars(),
+        }
+    }
+}
+
+impl<'s, 't> Iterator for InlineChars<'s, 't> {
     type Item = char;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -331,7 +299,8 @@ impl<'t, 's> Iterator for InlineChars<'t, 's> {
 pub struct Parser<'s> {
     src: &'s str,
     tree: block::Tree,
-    inline_parser: Option<inline::Parser<InlineChars<'static, 's>>>,
+    inline_spans: Vec<Span>,
+    inline_parser: Option<inline::Parser<InlineChars<'s, 'static>>>,
     inline_start: usize,
     block_attributes: Attributes<'s>,
 }
@@ -342,10 +311,88 @@ impl<'s> Parser<'s> {
         Self {
             src,
             tree: block::parse(src),
+            inline_spans: Vec::new(),
             inline_parser: None,
             inline_start: 0,
             block_attributes: Attributes::none(),
         }
+    }
+}
+
+impl<'s> Parser<'s> {
+    fn inline(&self, inline: inline::Event) -> Event<'s> {
+        //let content = inline.span.of(self.src);
+        match inline.kind {
+            inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
+                let t = match c {
+                    inline::Container::Span => Container::Span,
+                    inline::Container::Verbatim => Container::Verbatim,
+                    inline::Container::InlineMath => Container::Math { display: false },
+                    inline::Container::DisplayMath => Container::Math { display: true },
+                    inline::Container::RawFormat => Container::RawInline {
+                        format: self.inline_str_cont(inline.span),
+                    },
+                    inline::Container::Subscript => Container::Subscript,
+                    inline::Container::Superscript => Container::Superscript,
+                    inline::Container::Insert => Container::Insert,
+                    inline::Container::Delete => Container::Delete,
+                    inline::Container::Emphasis => Container::Emphasis,
+                    inline::Container::Strong => Container::Strong,
+                    inline::Container::Mark => Container::Mark,
+                    inline::Container::SingleQuoted => Container::SingleQuoted,
+                    inline::Container::DoubleQuoted => Container::DoubleQuoted,
+                    inline::Container::InlineLink => Container::Link(
+                        self.inline_str(inline.span).replace('\n', "").into(),
+                        LinkType::Inline,
+                    ),
+                    _ => todo!(),
+                };
+                if matches!(inline.kind, inline::EventKind::Enter(_)) {
+                    Event::Start(t, Attributes::none())
+                } else {
+                    Event::End(t)
+                }
+            }
+            inline::EventKind::Atom(a) => match a {
+                inline::Atom::Ellipsis => Event::Atom(Atom::Ellipsis),
+                inline::Atom::EnDash => Event::Atom(Atom::EnDash),
+                inline::Atom::EmDash => Event::Atom(Atom::EmDash),
+                inline::Atom::Nbsp => Event::Atom(Atom::NonBreakingSpace),
+                inline::Atom::Softbreak => Event::Atom(Atom::Softbreak),
+                inline::Atom::Hardbreak => Event::Atom(Atom::Hardbreak),
+                inline::Atom::Escape => Event::Atom(Atom::Escape),
+            },
+            inline::EventKind::Str => Event::Str(self.inline_str(inline.span)),
+            inline::EventKind::Attributes => todo!(),
+        }
+    }
+
+    fn inline_str_cont(&self, span: Span) -> &'s str {
+        span.translate(self.inline_spans[0].start()).of(self.src)
+    }
+
+    /// Copy string if discontinuous.
+    fn inline_str(&self, span: Span) -> CowStr<'s> {
+        let mut a = 0;
+        let mut s = String::new();
+        for sp in &self.inline_spans {
+            let b = a + sp.len();
+            if span.start() < b {
+                let r = if a <= span.start() {
+                    if span.end() <= b {
+                        // continuous
+                        return CowStr::Borrowed(self.inline_str_cont(span));
+                    }
+                    (span.start() - a)..sp.len()
+                } else {
+                    0..sp.len().min(span.end() - a)
+                };
+                s.push_str(&sp.of(self.src)[r]);
+            }
+            a = b;
+        }
+        assert_eq!(span.len(), s.len());
+        CowStr::Owned(s)
     }
 }
 
@@ -354,9 +401,8 @@ impl<'s> Iterator for Parser<'s> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(parser) = &mut self.inline_parser {
-            if let Some(mut inline) = parser.next() {
-                inline.span = inline.span.translate(self.inline_start);
-                return Some(Event::from_inline(self.src, inline));
+            if let Some(inline) = parser.next() {
+                return Some(self.inline(inline));
             }
             self.inline_parser = None;
         }
@@ -374,13 +420,11 @@ impl<'s> Iterator for Parser<'s> {
                 },
                 tree::EventKind::Enter(c) => match c {
                     block::Node::Leaf(l) => {
-                        let inlines = self.tree.inlines();
-                        let chars = InlineChars {
-                            src: self.src,
-                            inlines,
-                        };
-                        self.inline_parser =
-                            unsafe { Some(std::mem::transmute(inline::Parser::new(chars))) };
+                        self.inline_spans = self.tree.inlines().collect();
+                        let chars = InlineChars::new(self.src, unsafe {
+                            std::mem::transmute(self.inline_spans.as_slice())
+                        });
+                        self.inline_parser = Some(inline::Parser::new(chars));
                         self.inline_start = ev.span.end();
                         let container = match l {
                             block::Leaf::CodeBlock { .. } => {
@@ -472,6 +516,38 @@ mod test {
     }
 
     #[test]
+    fn empty() {
+        test_parse!("");
+    }
+
+    #[test]
+    fn heading() {
+        test_parse!(
+            "#\n",
+            Start(Heading { level: 1 }, Attributes::none()),
+            End(Heading { level: 1 }),
+        );
+        test_parse!(
+            "# abc\ndef\n",
+            Start(Heading { level: 1 }, Attributes::none()),
+            Str(CowStr::Borrowed("abc")),
+            Atom(Softbreak),
+            Str(CowStr::Borrowed("def")),
+            End(Heading { level: 1 }),
+        );
+    }
+
+    #[test]
+    fn blockquote() {
+        test_parse!(
+            ">\n",
+            Start(Blockquote, Attributes::none()),
+            Atom(Blankline),
+            End(Blockquote),
+        );
+    }
+
+    #[test]
     fn para() {
         test_parse!(
             "para",
@@ -507,6 +583,19 @@ mod test {
             End(Verbatim),
             End(Paragraph),
         );
+        test_parse!(
+            concat!(
+                "> `abc\n",
+                "> def\n", //
+            ),
+            Start(Blockquote, Attributes::none()),
+            Start(Paragraph, Attributes::none()),
+            Start(Verbatim, Attributes::none()),
+            Str(CowStr::Owned("abc\ndef".to_string())),
+            End(Verbatim),
+            End(Paragraph),
+            End(Blockquote),
+        );
     }
 
     #[test]
@@ -539,14 +628,16 @@ mod test {
                 "> [text](url\n",
                 "> url)\n", //
             ),
+            Start(Blockquote, Attributes::none()),
             Start(Paragraph, Attributes::none()),
             Start(
-                Link(CowStr::Borrowed("urlurl"), LinkType::Inline),
+                Link(CowStr::Owned("urlurl".to_string()), LinkType::Inline),
                 Attributes::none()
             ),
             Str(CowStr::Borrowed("text")),
             End(Link(CowStr::Borrowed("urlurl"), LinkType::Inline)),
             End(Paragraph),
+            End(Blockquote),
         );
     }
 }
