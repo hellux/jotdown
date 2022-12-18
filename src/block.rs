@@ -1,6 +1,7 @@
 use crate::Span;
 use crate::EOF;
 
+use crate::attr;
 use crate::tree;
 
 use Atom::*;
@@ -70,7 +71,7 @@ pub enum Leaf {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Container {
-    /// Span is first `>` character.
+    /// Span is `>`.
     Blockquote,
 
     /// Span is class specifier.
@@ -79,7 +80,7 @@ pub enum Container {
     /// Span is the list marker.
     ListItem,
 
-    /// Span is first `[^` instance.
+    /// Span is `[^`.
     Footnote,
 }
 
@@ -269,6 +270,8 @@ impl BlockParser {
                     ))
                 }
             }
+            '{' => attr::valid(line_t.chars())
+                .then(|| (Block::Atom(Attributes), Span::by_len(start, line_t.len()))),
             '|' => (&line_t[line_t.len() - 1..] == "|"
                 && &line_t[line_t.len() - 2..line_t.len() - 1] != "\\")
                 .then(|| (Block::Leaf(Table), Span::by_len(start, 1))),
@@ -611,6 +614,17 @@ mod test {
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Footnote)), "tag"),
+        );
+    }
+
+    #[test]
+    fn parse_attr() {
+        test_parse!(
+            "{.some_class}\npara\n",
+            (Atom(Attributes), "{.some_class}\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "para"),
+            (Exit(Leaf(Paragraph)), ""),
         );
     }
 

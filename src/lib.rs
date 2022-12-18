@@ -1,5 +1,6 @@
 pub mod html;
 
+mod attr;
 mod block;
 mod inline;
 mod lex;
@@ -7,6 +8,8 @@ mod span;
 mod tree;
 
 use span::Span;
+
+pub use attr::Attributes;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
@@ -217,11 +220,11 @@ pub enum Atom {
     EmDash,
     /// A thematic break, typically a horizontal rule.
     ThematicBreak,
-    /// A space that may not break a line.
+    /// A space that must not break a line.
     NonBreakingSpace,
-    /// A newline that may or may not break a line in the output format.
+    /// A newline that may or may not break a line in the output.
     Softbreak,
-    /// A newline that must break a line.
+    /// A newline that must break a line in the output.
     Hardbreak,
     /// An escape character, not visible in output.
     Escape,
@@ -248,27 +251,6 @@ impl<'s> Container<'s> {
             block::Container::Footnote => Self::Footnote { tag: content },
             block::Container::ListItem => todo!(),
         }
-    }
-}
-
-// Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
-// indirection instead of always 24 bytes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Attributes<'s>(Option<Box<Vec<(&'s str, &'s str)>>>);
-
-impl<'s> Attributes<'s> {
-    #[must_use]
-    pub fn none() -> Self {
-        Self(None)
-    }
-
-    #[must_use]
-    pub fn take(&mut self) -> Self {
-        Self(self.0.take())
-    }
-
-    pub fn parse(&mut self, src: &'s str) {
-        todo!()
     }
 }
 
@@ -300,10 +282,86 @@ impl<'s, 't> Iterator for InlineChars<'s, 't> {
     }
 }
 
+trait DiscontinuousString<'s> {
+    type Chars: Iterator<Item = char>;
+
+    fn src(&self, span: Span) -> CowStr<'s>;
+
+    fn chars(&self) -> Self::Chars;
+}
+
+impl<'s> DiscontinuousString<'s> for &'s str {
+    type Chars = std::str::Chars<'s>;
+
+    fn src(&self, span: Span) -> CowStr<'s> {
+        span.of(self).into()
+    }
+
+    fn chars(&self) -> Self::Chars {
+        str::chars(self)
+    }
+}
+
+impl<'s> DiscontinuousString<'s> for InlineSpans<'s> {
+    type Chars = InlineChars<'s, 'static>;
+
+    /// Borrow if continuous, copy if discontiunous.
+    fn src(&self, span: Span) -> CowStr<'s> {
+        let mut a = 0;
+        let mut s = String::new();
+        for sp in &self.spans {
+            let b = a + sp.len();
+            if span.start() < b {
+                let r = if a <= span.start() {
+                    if span.end() <= b {
+                        // continuous
+                        return CowStr::Borrowed(
+                            &sp.of(self.src)[span.start() - a..span.end() - a],
+                        );
+                    }
+                    (span.start() - a)..sp.len()
+                } else {
+                    0..sp.len().min(span.end() - a)
+                };
+                s.push_str(&sp.of(self.src)[r]);
+            }
+            a = b;
+        }
+        assert_eq!(span.len(), s.len());
+        CowStr::Owned(s)
+    }
+
+    fn chars(&self) -> Self::Chars {
+        // SAFETY: do not call set_spans while chars is in use
+        unsafe { std::mem::transmute(InlineChars::new(self.src, &self.spans)) }
+    }
+}
+
+#[derive(Default)]
+struct InlineSpans<'s> {
+    src: &'s str,
+    spans: Vec<Span>,
+}
+
+impl<'s> InlineSpans<'s> {
+    fn new(src: &'s str) -> Self {
+        Self {
+            src,
+            spans: Vec::new(),
+        }
+    }
+
+    fn set_spans(&mut self, spans: impl Iterator<Item = Span>) {
+        // avoid allocating new vec if size is sufficient
+        self.spans.clear();
+        self.spans.extend(spans);
+    }
+}
+
 pub struct Parser<'s> {
     src: &'s str,
     tree: block::Tree,
-    inline_spans: Vec<Span>,
+    inlines: InlineSpans<'s>,
     inline_parser: Option<inline::Parser<InlineChars<'s, 'static>>>,
     inline_start: usize,
     block_attributes: Attributes<'s>,
@@ -315,10 +373,10 @@ impl<'s> Parser<'s> {
         Self {
             src,
             tree: block::parse(src),
-            inline_spans: Vec::new(),
+            inlines: InlineSpans::new(src),
             inline_parser: None,
             inline_start: 0,
-            block_attributes: Attributes::none(),
+            block_attributes: Attributes::new(),
         }
     }
 }
@@ -333,7 +391,10 @@ impl<'s> Parser<'s> {
                     inline::Container::InlineMath => Container::Math { display: false },
                     inline::Container::DisplayMath => Container::Math { display: true },
                     inline::Container::RawFormat => Container::RawInline {
-                        format: self.inline_str_cont(inline.span),
+                        format: match self.inlines.src(inline.span) {
+                            CowStr::Owned(_) => panic!(),
+                            CowStr::Borrowed(s) => s,
+                        },
                     },
                     inline::Container::Subscript => Container::Subscript,
                     inline::Container::Superscript => Container::Superscript,
@@ -345,14 +406,14 @@ impl<'s> Parser<'s> {
                     inline::Container::SingleQuoted => Container::SingleQuoted,
                     inline::Container::DoubleQuoted => Container::DoubleQuoted,
                     inline::Container::InlineLink => Container::Link(
-                        match self.inline_str(inline.span) {
+                        match self.inlines.src(inline.span) {
                             CowStr::Owned(s) => s.replace('\n', "").into(),
                             s @ CowStr::Borrowed(_) => s,
                         },
                         LinkType::Span(SpanLinkType::Inline),
                     ),
                     inline::Container::InlineImage => Container::Image(
-                        match self.inline_str(inline.span) {
+                        match self.inlines.src(inline.span) {
                             CowStr::Owned(s) => s.replace('\n', "").into(),
                             s @ CowStr::Borrowed(_) => s,
                         },
@@ -361,7 +422,7 @@ impl<'s> Parser<'s> {
                     _ => todo!("{:?}", c),
                 };
                 if matches!(inline.kind, inline::EventKind::Enter(_)) {
-                    Event::Start(t, Attributes::none())
+                    Event::Start(t, Attributes::new())
                 } else {
                     Event::End(t)
                 }
@@ -375,37 +436,9 @@ impl<'s> Parser<'s> {
                 inline::Atom::Hardbreak => Event::Atom(Atom::Hardbreak),
                 inline::Atom::Escape => Event::Atom(Atom::Escape),
             },
-            inline::EventKind::Str => Event::Str(self.inline_str(inline.span)),
+            inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
             inline::EventKind::Attributes => todo!(),
         }
-    }
-
-    fn inline_str_cont(&self, span: Span) -> &'s str {
-        span.translate(self.inline_spans[0].start()).of(self.src)
-    }
-
-    /// Copy string if discontinuous.
-    fn inline_str(&self, span: Span) -> CowStr<'s> {
-        let mut a = 0;
-        let mut s = String::new();
-        for sp in &self.inline_spans {
-            let b = a + sp.len();
-            if span.start() < b {
-                let r = if a <= span.start() {
-                    if span.end() <= b {
-                        // continuous
-                        return CowStr::Borrowed(self.inline_str_cont(span));
-                    }
-                    (span.start() - a)..sp.len()
-                } else {
-                    0..sp.len().min(span.end() - a)
-                };
-                s.push_str(&sp.of(self.src)[r]);
-            }
-            a = b;
-        }
-        assert_eq!(span.len(), s.len());
-        CowStr::Owned(s)
     }
 }
 
@@ -415,6 +448,7 @@ impl<'s> Iterator for Parser<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(parser) = &mut self.inline_parser {
             if let Some(inline) = parser.next() {
+                // SAFETY: cannot set lifetime 's on self due to trait
                 return Some(self.inline(inline));
             }
             self.inline_parser = None;
@@ -427,17 +461,15 @@ impl<'s> Iterator for Parser<'s> {
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
                     block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
                     block::Atom::Attributes => {
-                        self.block_attributes.parse(content);
+                        self.block_attributes.parse(&content);
+                        dbg!(&self.block_attributes);
                         continue;
                     }
                 },
                 tree::EventKind::Enter(c) => match c {
                     block::Node::Leaf(l) => {
-                        self.inline_spans = self.tree.inlines().collect();
-                        let chars = InlineChars::new(self.src, unsafe {
-                            std::mem::transmute(self.inline_spans.as_slice())
-                        });
-                        self.inline_parser = Some(inline::Parser::new(chars));
+                        self.inlines.set_spans(self.tree.inlines());
+                        self.inline_parser = Some(inline::Parser::new(self.inlines.chars()));
                         self.inline_start = ev.span.end();
                         let container = match l {
                             block::Leaf::CodeBlock { .. } => {
@@ -538,15 +570,15 @@ mod test {
     fn heading() {
         test_parse!(
             "#\n",
-            Start(Heading { level: 1 }, Attributes::none()),
+            Start(Heading { level: 1 }, Attributes::new()),
             End(Heading { level: 1 }),
         );
         test_parse!(
             "# abc\ndef\n",
-            Start(Heading { level: 1 }, Attributes::none()),
-            Str(CowStr::Borrowed("abc")),
+            Start(Heading { level: 1 }, Attributes::new()),
+            Str("abc".into()),
             Atom(Softbreak),
-            Str(CowStr::Borrowed("def")),
+            Str("def".into()),
             End(Heading { level: 1 }),
         );
     }
@@ -555,7 +587,7 @@ mod test {
     fn blockquote() {
         test_parse!(
             ">\n",
-            Start(Blockquote, Attributes::none()),
+            Start(Blockquote, Attributes::new()),
             Atom(Blankline),
             End(Blockquote),
         );
@@ -565,24 +597,24 @@ mod test {
     fn para() {
         test_parse!(
             "para",
-            Start(Paragraph, Attributes::none()),
-            Str(CowStr::Borrowed("para")),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
             End(Paragraph),
         );
         test_parse!(
             "pa     ra",
-            Start(Paragraph, Attributes::none()),
-            Str(CowStr::Borrowed("pa     ra")),
+            Start(Paragraph, Attributes::new()),
+            Str("pa     ra".into()),
             End(Paragraph),
         );
         test_parse!(
             "para0\n\npara1",
-            Start(Paragraph, Attributes::none()),
-            Str(CowStr::Borrowed("para0")),
+            Start(Paragraph, Attributes::new()),
+            Str("para0".into()),
             End(Paragraph),
             Atom(Blankline),
-            Start(Paragraph, Attributes::none()),
-            Str(CowStr::Borrowed("para1")),
+            Start(Paragraph, Attributes::new()),
+            Str("para1".into()),
             End(Paragraph),
         );
     }
@@ -591,9 +623,9 @@ mod test {
     fn verbatim() {
         test_parse!(
             "`abc\ndef",
-            Start(Paragraph, Attributes::none()),
-            Start(Verbatim, Attributes::none()),
-            Str(CowStr::Borrowed("abc\ndef")),
+            Start(Paragraph, Attributes::new()),
+            Start(Verbatim, Attributes::new()),
+            Str("abc\ndef".into()),
             End(Verbatim),
             End(Paragraph),
         );
@@ -602,10 +634,10 @@ mod test {
                 "> `abc\n",
                 "> def\n", //
             ),
-            Start(Blockquote, Attributes::none()),
-            Start(Paragraph, Attributes::none()),
-            Start(Verbatim, Attributes::none()),
-            Str(CowStr::Owned("abc\ndef".to_string())),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Verbatim, Attributes::new()),
+            Str("abc\ndef".into()),
             End(Verbatim),
             End(Paragraph),
             End(Blockquote),
@@ -616,9 +648,9 @@ mod test {
     fn raw_inline() {
         test_parse!(
             "``raw\nraw``{=format}",
-            Start(Paragraph, Attributes::none()),
-            Start(RawInline { format: "format" }, Attributes::none()),
-            Str(CowStr::Borrowed("raw\nraw")),
+            Start(Paragraph, Attributes::new()),
+            Start(RawInline { format: "format" }, Attributes::new()),
+            Str("raw\nraw".into()),
             End(RawInline { format: "format" }),
             End(Paragraph),
         );
@@ -628,19 +660,13 @@ mod test {
     fn link_inline() {
         test_parse!(
             "[text](url)",
-            Start(Paragraph, Attributes::none()),
+            Start(Paragraph, Attributes::new()),
             Start(
-                Link(
-                    CowStr::Borrowed("url"),
-                    LinkType::Span(SpanLinkType::Inline),
-                ),
-                Attributes::none()
+                Link("url".into(), LinkType::Span(SpanLinkType::Inline)),
+                Attributes::new()
             ),
-            Str(CowStr::Borrowed("text")),
-            End(Link(
-                CowStr::Borrowed("url"),
-                LinkType::Span(SpanLinkType::Inline)
-            )),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Inline))),
             End(Paragraph),
         );
         test_parse!(
@@ -648,22 +674,26 @@ mod test {
                 "> [text](url\n",
                 "> url)\n", //
             ),
-            Start(Blockquote, Attributes::none()),
-            Start(Paragraph, Attributes::none()),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
             Start(
-                Link(
-                    CowStr::Owned("urlurl".to_string()),
-                    LinkType::Span(SpanLinkType::Inline)
-                ),
-                Attributes::none()
+                Link("urlurl".into(), LinkType::Span(SpanLinkType::Inline)),
+                Attributes::new()
             ),
-            Str(CowStr::Borrowed("text")),
-            End(Link(
-                CowStr::Borrowed("urlurl"),
-                LinkType::Span(SpanLinkType::Inline)
-            )),
+            Str("text".into()),
+            End(Link("urlurl".into(), LinkType::Span(SpanLinkType::Inline))),
             End(Paragraph),
             End(Blockquote),
+        );
+    }
+
+    #[test]
+    fn attr_block() {
+        test_parse!(
+            "{.some_class}\npara\n",
+            Start(Paragraph, [("class", "some_class")].into_iter().collect()),
+            Str("para".into()),
+            End(Paragraph),
         );
     }
 }
