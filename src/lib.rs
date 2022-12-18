@@ -60,7 +60,7 @@ pub enum Container<'s> {
     Span,
     /// An inline link with a destination URL.
     Link(CowStr<'s>, LinkType),
-    /// An inline image with a source URL.
+    /// An inline image with a source URL. Inner Str objects compose the alternative text.
     Image(CowStr<'s>, SpanLinkType),
     /// An inline verbatim string.
     Verbatim,
@@ -251,8 +251,8 @@ impl<'s> Container<'s> {
     }
 }
 
-// Attributes are rare, better to pay 8 bytes always and sometimes an extra indirection instead of
-// always 24 bytes.
+// Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
+// indirection instead of always 24 bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attributes<'s>(Option<Box<Vec<(&'s str, &'s str)>>>);
 
@@ -280,7 +280,6 @@ struct InlineChars<'s, 't> {
 }
 
 // Implement inlines.flat_map(|sp| sp.of(self.src).chars())
-// Is there a better way to do this?
 impl<'s, 't> InlineChars<'s, 't> {
     fn new(src: &'s str, inlines: &'t [Span]) -> Self {
         Self {
@@ -346,11 +345,17 @@ impl<'s> Parser<'s> {
                     inline::Container::SingleQuoted => Container::SingleQuoted,
                     inline::Container::DoubleQuoted => Container::DoubleQuoted,
                     inline::Container::InlineLink => Container::Link(
-                        self.inline_str(inline.span).replace('\n', "").into(),
+                        match self.inline_str(inline.span) {
+                            CowStr::Owned(s) => s.replace('\n', "").into(),
+                            s @ CowStr::Borrowed(_) => s,
+                        },
                         LinkType::Span(SpanLinkType::Inline),
                     ),
                     inline::Container::InlineImage => Container::Image(
-                        self.inline_str(inline.span).replace('\n', "").into(),
+                        match self.inline_str(inline.span) {
+                            CowStr::Owned(s) => s.replace('\n', "").into(),
+                            s @ CowStr::Borrowed(_) => s,
+                        },
                         SpanLinkType::Inline,
                     ),
                     _ => todo!("{:?}", c),
