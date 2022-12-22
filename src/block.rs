@@ -270,7 +270,7 @@ impl BlockParser {
                     ))
                 }
             }
-            '{' => attr::valid(line_t.chars())
+            '{' => (attr::valid(line_t.chars()) == line_t.trim_end().len())
                 .then(|| (Block::Atom(Attributes), Span::by_len(start, line_t.len()))),
             '|' => (&line_t[line_t.len() - 1..] == "|"
                 && &line_t[line_t.len() - 2..line_t.len() - 1] != "\\")

@@ -4,8 +4,13 @@ use crate::Span;
 
 use State::*;
 
-pub fn valid<I: Iterator<Item = char>>(chars: I) -> bool {
-    !Parser::new(chars).any(|e| matches!(e, Element::Invalid))
+pub fn valid<I: Iterator<Item = char>>(chars: I) -> usize {
+    let mut p = Parser::new(chars);
+    if p.any(|e| matches!(e, Element::Invalid)) {
+        0
+    } else {
+        p.pos
+    }
 }
 
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
@@ -178,20 +183,17 @@ impl<I: Iterator<Item = char>> Parser<I> {
                         ValueQuoted
                     }
                 }
-                Done => {
-                    if c.is_whitespace() {
-                        Done
-                    } else {
-                        Invalid
-                    }
-                }
-                Invalid => panic!(),
+                Invalid | Done => panic!(),
             }
         })
     }
 
     fn step(&mut self) -> (State, Span) {
         let start = self.pos.saturating_sub(1);
+
+        if self.state == Done {
+            return (Done, Span::empty_at(start));
+        }
 
         while let Some(state_next) = self.step_char() {
             if self.state != state_next {
@@ -204,7 +206,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
 
         (
             if self.state == Done { Done } else { Invalid },
-            Span::new(start, self.pos),
+            Span::new(start, self.pos - 1),
         )
     }
 }
@@ -324,5 +326,14 @@ mod test {
             ("class", "some_class"),
             ("id", "some_id"),
         );
+    }
+
+    #[test]
+    fn valid() {
+        let src0 = "{.class %comment%}";
+        assert_eq!(super::valid(src0.chars()), src0.len());
+
+        let src1 = format!("{} trailing", src0);
+        assert_eq!(super::valid(src1.chars()), src0.len());
     }
 }

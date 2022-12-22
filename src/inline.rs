@@ -1,3 +1,4 @@
+use crate::attr;
 use crate::lex;
 use crate::Span;
 
@@ -71,10 +72,7 @@ pub struct Parser<I> {
     /// Span of current event.
     span: Span,
     /// Stack with kind and index of _potential_ openers for typesetting containers.
-    typesets: Vec<(Container, usize)>,
-    /// Stack with index of _potential_ span/link openers.
-    spans: Vec<(usize, bool)>,
-    //attributes: Vec<(Span, usize)>,
+    openers: Vec<(Delim, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
     events: std::collections::VecDeque<Event>,
@@ -85,8 +83,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         Self {
             lexer: lex::Lexer::new(chars),
             span: Span::new(0, 0),
-            typesets: Vec::new(),
-            spans: Vec::new(),
+            openers: Vec::new(),
             events: std::collections::VecDeque::new(),
         }
     }
@@ -111,8 +108,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.reset_span();
         self.eat().map(|first| {
             self.parse_verbatim(&first)
-                .or_else(|| self.parse_span(&first))
-                .or_else(|| self.parse_typeset(&first))
+                .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
                     kind: EventKind::Str,
@@ -212,118 +208,114 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         })
     }
 
-    fn parse_span(&mut self, first: &lex::Token) -> Option<Event> {
-        match first.kind {
-            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((true, true)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((true, false)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((false, false)),
-            _ => None,
-        }
-        .and_then(|(open, img)| {
-            if open {
-                self.spans.push((self.events.len(), img));
-                // use str for now, replace if closed later
-                Some(Event {
-                    kind: EventKind::Str,
-                    span: self.span,
-                })
-            } else if !self.spans.is_empty() {
-                let mut ahead = self.lexer.inner().clone();
-                let img = self.spans.last().unwrap().1;
-                match ahead.next() {
-                    Some(opener @ ('[' | '(')) => {
-                        let (closer, kind) = match opener {
-                            '[' if img => (']', ReferenceImage),
-                            '[' => (']', ReferenceLink),
-                            '(' if img => (')', InlineImage),
-                            '(' => (')', InlineLink),
-                            _ => unreachable!(),
-                        };
-                        let mut end = false;
-                        let len = (&mut ahead)
-                            .take_while(|c| {
-                                if *c == closer {
-                                    end = true;
-                                };
-                                !end && *c != opener
-                            })
-                            .count();
-                        end.then(|| {
-                            let span = Span::by_len(self.span.end() + 1, len);
-                            (kind, span)
-                        })
-                    }
-                    Some('{') => todo!(),
-                    _ => None,
-                }
-                .map(|(kind, span)| {
-                    self.lexer = lex::Lexer::new(ahead);
-                    let (opener_event, _) = self.spans.pop().unwrap();
-                    self.events[opener_event].kind = EventKind::Enter(kind);
-                    self.events[opener_event].span = span;
-                    self.span = span.translate(1);
-                    Event {
-                        kind: EventKind::Exit(kind),
-                        span,
-                    }
-                })
-            } else {
-                None
-            }
-        })
-    }
-
-    fn parse_typeset(&mut self, first: &lex::Token) -> Option<Event> {
+    fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
         enum Dir {
             Open,
             Close,
             Both,
         }
 
+        use Directionality::{Bi, Uni};
+        use SpanType::{General, Image};
+
         match first.kind {
-            lex::Kind::Sym(Symbol::Asterisk) => Some((Strong, Dir::Both)),
-            lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis, Dir::Both)),
-            lex::Kind::Sym(Symbol::Caret) => Some((Superscript, Dir::Both)),
-            lex::Kind::Sym(Symbol::Tilde) => Some((Subscript, Dir::Both)),
-            lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Dir::Both)),
-            lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Dir::Both)),
-            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Dir::Close)),
-            lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Dir::Open)),
-            lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis, Dir::Close)),
+            lex::Kind::Sym(Symbol::Asterisk) => Some((Delim::Strong(Bi), Dir::Both)),
+            lex::Kind::Sym(Symbol::Underscore) => Some((Delim::Emphasis(Bi), Dir::Both)),
+            lex::Kind::Sym(Symbol::Caret) => Some((Delim::Superscript(Bi), Dir::Both)),
+            lex::Kind::Sym(Symbol::Tilde) => Some((Delim::Subscript(Bi), Dir::Both)),
+            lex::Kind::Sym(Symbol::Quote1) => Some((Delim::SingleQuoted, Dir::Both)),
+            lex::Kind::Sym(Symbol::Quote2) => Some((Delim::DoubleQuoted, Dir::Both)),
+            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((Delim::Span(Image), Dir::Open)),
+            lex::Kind::Open(Delimiter::Bracket) => Some((Delim::Span(General), Dir::Open)),
+            lex::Kind::Close(Delimiter::Bracket) => Some((Delim::Span(General), Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Delim::Strong(Uni), Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Delim::Strong(Uni), Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Delim::Emphasis(Uni), Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceUnderscore) => {
+                Some((Delim::Emphasis(Uni), Dir::Close))
+            }
+            lex::Kind::Open(Delimiter::BraceCaret) => Some((Delim::Superscript(Uni), Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceCaret) => Some((Delim::Superscript(Uni), Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceTilde) => Some((Delim::Subscript(Uni), Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceTilde) => Some((Delim::Subscript(Uni), Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some((Delim::Mark, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceEqual) => Some((Delim::Mark, Dir::Close)),
+            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delim::Delete, Dir::Open)),
+            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delim::Delete, Dir::Close)),
+            lex::Kind::Open(Delimiter::BracePlus) => Some((Delim::Insert, Dir::Open)),
+            lex::Kind::Close(Delimiter::BracePlus) => Some((Delim::Insert, Dir::Close)),
             _ => None,
         }
-        .map(|(cont, dir)| {
-            self.typesets
+        .map(|(delim, dir)| {
+            self.openers
                 .iter()
-                .rposition(|(c, _)| *c == cont)
+                .rposition(|(d, _)| d.matches(delim))
                 .and_then(|o| {
-                    matches!(dir, Dir::Close | Dir::Both).then(|| {
-                        let (_, e) = &mut self.typesets[o];
-                        self.events[*e].kind = EventKind::Enter(cont);
-                        self.typesets.drain(o..);
-                        EventKind::Exit(cont)
-                    })
+                    let (d, e) = self.openers[o];
+                    if matches!(dir, Dir::Close | Dir::Both) {
+                        let e = match Container::try_from(d) {
+                            Ok(cont) => {
+                                self.events[e].kind = EventKind::Enter(cont);
+                                Some(Event {
+                                    kind: EventKind::Exit(cont),
+                                    span: self.span,
+                                })
+                            }
+                            Err(ty) => self.post_span(ty, e),
+                        };
+                        self.openers.drain(o..);
+                        e
+                    } else {
+                        None
+                    }
                 })
                 .unwrap_or_else(|| {
-                    self.typesets.push((cont, self.events.len()));
+                    self.openers.push((delim, self.events.len()));
                     // use str for now, replace if closed later
-                    EventKind::Str
+                    Event {
+                        kind: EventKind::Str,
+                        span: self.span,
+                    }
                 })
         })
-        .map(|kind| Event {
-            kind,
-            span: self.span,
+    }
+
+    fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<Event> {
+        let mut ahead = self.lexer.inner().clone();
+        match ahead.next() {
+            Some(opener @ ('[' | '(')) => {
+                let (closer, kind) = match opener {
+                    '[' if ty == SpanType::Image => (']', ReferenceImage),
+                    '[' => (']', ReferenceLink),
+                    '(' if ty == SpanType::Image => (')', InlineImage),
+                    '(' => (')', InlineLink),
+                    _ => unreachable!(),
+                };
+                let mut end = false;
+                let len = (&mut ahead)
+                    .take_while(|c| {
+                        if *c == closer {
+                            end = true;
+                        };
+                        !end && *c != opener
+                    })
+                    .count();
+                end.then(|| {
+                    let span = Span::by_len(self.span.end() + 1, len);
+                    (kind, span)
+                })
+            }
+            _ => None,
+        }
+        .map(|(kind, span)| {
+            self.lexer = lex::Lexer::new(ahead);
+            self.events[opener_event].kind = EventKind::Enter(kind);
+            self.events[opener_event].span = span;
+            self.span = span.translate(1);
+            Event {
+                kind: EventKind::Exit(kind),
+                span,
+            }
         })
     }
 
@@ -346,13 +338,74 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Directionality {
+    Uni,
+    Bi,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpanType {
+    Image,
+    General,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Delim {
+    Span(SpanType),
+    Strong(Directionality),
+    Emphasis(Directionality),
+    Superscript(Directionality),
+    Subscript(Directionality),
+    SingleQuoted,
+    DoubleQuoted,
+    Mark,
+    Delete,
+    Insert,
+}
+
+impl Delim {
+    fn matches(self, other: Delim) -> bool {
+        match self {
+            Self::Span(..) => matches!(other, Self::Span(..)),
+            Self::Strong(..) => matches!(other, Self::Strong(..)),
+            Self::Emphasis(..) => matches!(other, Self::Emphasis(..)),
+            Self::Superscript(..) => matches!(other, Self::Superscript(..)),
+            Self::Subscript(..) => matches!(other, Self::Subscript(..)),
+            Self::SingleQuoted => matches!(other, Self::SingleQuoted),
+            Self::DoubleQuoted => matches!(other, Self::DoubleQuoted),
+            Self::Mark => matches!(other, Self::Mark),
+            Self::Delete => matches!(other, Self::Delete),
+            Self::Insert => matches!(other, Self::Insert),
+        }
+    }
+}
+
+impl TryFrom<Delim> for Container {
+    type Error = SpanType;
+
+    fn try_from(d: Delim) -> Result<Self, Self::Error> {
+        match d {
+            Delim::Span(ty) => Err(ty),
+            Delim::Strong(..) => Ok(Self::Strong),
+            Delim::Emphasis(..) => Ok(Self::Emphasis),
+            Delim::Superscript(..) => Ok(Self::Superscript),
+            Delim::Subscript(..) => Ok(Self::Subscript),
+            Delim::SingleQuoted => Ok(Self::SingleQuoted),
+            Delim::DoubleQuoted => Ok(Self::DoubleQuoted),
+            Delim::Mark => Ok(Self::Mark),
+            Delim::Delete => Ok(Self::Delete),
+            Delim::Insert => Ok(Self::Insert),
+        }
+    }
+}
+
 impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
-            || !self.typesets.is_empty()
-            || !self.spans.is_empty()
+            || !self.openers.is_empty()
             || self // for merge
                 .events
                 .back()
