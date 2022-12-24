@@ -11,7 +11,7 @@ pub(crate) struct Token {
     pub len: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Text,
     Newline,

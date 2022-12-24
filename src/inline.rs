@@ -48,7 +48,7 @@ pub enum Container {
     /// Span is the URL.
     InlineImage,
 
-    AutoLink,
+    Autolink,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -108,6 +108,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.reset_span();
         self.eat().map(|first| {
             self.parse_verbatim(&first)
+                .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
@@ -208,45 +209,46 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         })
     }
 
+    fn parse_autolink(&mut self, first: &lex::Token) -> Option<Event> {
+        if first.kind == lex::Kind::Sym(Symbol::Lt) {
+            let mut ahead = self.lexer.inner().clone();
+            let mut end = false;
+            let mut is_url = false;
+            let len = (&mut ahead)
+                .take_while(|c| {
+                    if *c == '>' {
+                        end = true;
+                    };
+                    if matches!(*c, ':' | '@') {
+                        is_url = true;
+                    }
+                    !end && !c.is_whitespace()
+                })
+                .count();
+            (end && is_url).then(|| {
+                self.lexer = lex::Lexer::new(ahead);
+                self.events.push_back(Event {
+                    kind: EventKind::Enter(Autolink),
+                    span: self.span,
+                });
+                self.span = Span::by_len(self.span.end(), len);
+                self.events.push_back(Event {
+                    kind: EventKind::Str,
+                    span: self.span,
+                });
+                self.span = Span::by_len(self.span.end(), 1);
+                Event {
+                    kind: EventKind::Exit(Autolink),
+                    span: self.span,
+                }
+            })
+        } else {
+            None
+        }
+    }
+
     fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
-        enum Dir {
-            Open,
-            Close,
-            Both,
-        }
-
-        use Directionality::{Bi, Uni};
-        use SpanType::{General, Image};
-
-        match first.kind {
-            lex::Kind::Sym(Symbol::Asterisk) => Some((Delim::Strong(Bi), Dir::Both)),
-            lex::Kind::Sym(Symbol::Underscore) => Some((Delim::Emphasis(Bi), Dir::Both)),
-            lex::Kind::Sym(Symbol::Caret) => Some((Delim::Superscript(Bi), Dir::Both)),
-            lex::Kind::Sym(Symbol::Tilde) => Some((Delim::Subscript(Bi), Dir::Both)),
-            lex::Kind::Sym(Symbol::Quote1) => Some((Delim::SingleQuoted, Dir::Both)),
-            lex::Kind::Sym(Symbol::Quote2) => Some((Delim::DoubleQuoted, Dir::Both)),
-            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((Delim::Span(Image), Dir::Open)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((Delim::Span(General), Dir::Open)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((Delim::Span(General), Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Delim::Strong(Uni), Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Delim::Strong(Uni), Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Delim::Emphasis(Uni), Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceUnderscore) => {
-                Some((Delim::Emphasis(Uni), Dir::Close))
-            }
-            lex::Kind::Open(Delimiter::BraceCaret) => Some((Delim::Superscript(Uni), Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceCaret) => Some((Delim::Superscript(Uni), Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceTilde) => Some((Delim::Subscript(Uni), Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceTilde) => Some((Delim::Subscript(Uni), Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceEqual) => Some((Delim::Mark, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceEqual) => Some((Delim::Mark, Dir::Close)),
-            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delim::Delete, Dir::Open)),
-            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delim::Delete, Dir::Close)),
-            lex::Kind::Open(Delimiter::BracePlus) => Some((Delim::Insert, Dir::Open)),
-            lex::Kind::Close(Delimiter::BracePlus) => Some((Delim::Insert, Dir::Close)),
-            _ => None,
-        }
-        .map(|(delim, dir)| {
+        Delim::from_token(first.kind).map(|(delim, dir)| {
             self.openers
                 .iter()
                 .rposition(|(d, _)| d.matches(delim))
@@ -284,11 +286,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         let mut ahead = self.lexer.inner().clone();
         match ahead.next() {
             Some(opener @ ('[' | '(')) => {
+                let img = ty == SpanType::Image;
                 let (closer, kind) = match opener {
-                    '[' if ty == SpanType::Image => (']', ReferenceImage),
-                    '[' => (']', ReferenceLink),
-                    '(' if ty == SpanType::Image => (')', InlineImage),
-                    '(' => (')', InlineLink),
+                    '[' => (']', if img { ReferenceImage } else { ReferenceLink }),
+                    '(' => (')', if img { InlineImage } else { InlineLink }),
                     _ => unreachable!(),
                 };
                 let mut end = false;
@@ -364,6 +365,12 @@ enum Delim {
     Insert,
 }
 
+enum Dir {
+    Open,
+    Close,
+    Both,
+}
+
 impl Delim {
     fn matches(self, other: Delim) -> bool {
         match self {
@@ -377,6 +384,40 @@ impl Delim {
             Self::Mark => matches!(other, Self::Mark),
             Self::Delete => matches!(other, Self::Delete),
             Self::Insert => matches!(other, Self::Insert),
+        }
+    }
+
+    fn from_token(kind: lex::Kind) -> Option<(Self, Dir)> {
+        use Delim::*;
+        use Dir::{Both, Close, Open};
+        use Directionality::{Bi, Uni};
+        use SpanType::{General, Image};
+
+        match kind {
+            lex::Kind::Sym(Symbol::Asterisk) => Some((Strong(Bi), Both)),
+            lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis(Bi), Both)),
+            lex::Kind::Sym(Symbol::Caret) => Some((Superscript(Bi), Both)),
+            lex::Kind::Sym(Symbol::Tilde) => Some((Subscript(Bi), Both)),
+            lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Both)),
+            lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Both)),
+            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((Span(Image), Open)),
+            lex::Kind::Open(Delimiter::Bracket) => Some((Span(General), Open)),
+            lex::Kind::Close(Delimiter::Bracket) => Some((Span(General), Close)),
+            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong(Uni), Open)),
+            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong(Uni), Close)),
+            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Open)),
+            lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Close)),
+            lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript(Uni), Open)),
+            lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript(Uni), Close)),
+            lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript(Uni), Open)),
+            lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript(Uni), Close)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Open)),
+            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Close)),
+            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Open)),
+            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Close)),
+            lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Open)),
+            lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Close)),
+            _ => None,
         }
     }
 }
@@ -630,6 +671,32 @@ mod test {
             (Exit(InlineLink), "i"),
             (Exit(InlineLink), "o"),
         );
+    }
+
+    #[test]
+    fn autolink() {
+        test_parse!(
+            "<https://example.com>",
+            (Enter(Autolink), "<"),
+            (Str, "https://example.com"),
+            (Exit(Autolink), ">")
+        );
+        test_parse!(
+            "<a@b.c>",
+            (Enter(Autolink), "<"),
+            (Str, "a@b.c"),
+            (Exit(Autolink), ">"),
+        );
+        test_parse!(
+            "<http://a.b><http://c.d>",
+            (Enter(Autolink), "<"),
+            (Str, "http://a.b"),
+            (Exit(Autolink), ">"),
+            (Enter(Autolink), "<"),
+            (Str, "http://c.d"),
+            (Exit(Autolink), ">")
+        );
+        test_parse!("<not-a-url>", (Str, "<not-a-url>"));
     }
 
     #[test]
