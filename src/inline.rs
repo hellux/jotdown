@@ -22,7 +22,6 @@ pub enum Atom {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Container {
     Span,
-    // typesetting
     Subscript,
     Superscript,
     Insert,
@@ -71,7 +70,7 @@ pub struct Parser<I> {
     lexer: lex::Lexer<I>,
     /// Span of current event.
     span: Span,
-    /// Stack with kind and index of _potential_ openers for typesetting containers.
+    /// Stack with kind and index of _potential_ openers for containers.
     openers: Vec<(Delim, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
@@ -251,7 +250,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         Delim::from_token(first.kind).map(|(delim, dir)| {
             self.openers
                 .iter()
-                .rposition(|(d, _)| d.matches(delim))
+                .rposition(|(d, _)| {
+                    *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
+                })
                 .and_then(|o| {
                     let (d, e) = self.openers[o];
                     if matches!(dir, Dir::Close | Dir::Both) {
@@ -295,10 +296,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 let mut end = false;
                 let len = (&mut ahead)
                     .take_while(|c| {
+                        if *c == opener {
+                            return false;
+                        }
                         if *c == closer {
                             end = true;
                         };
-                        !end && *c != opener
+                        !end
                     })
                     .count();
                 end.then(|| {
@@ -351,7 +355,7 @@ enum SpanType {
     General,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Delim {
     Span(SpanType),
     Strong(Directionality),
@@ -372,21 +376,6 @@ enum Dir {
 }
 
 impl Delim {
-    fn matches(self, other: Delim) -> bool {
-        match self {
-            Self::Span(..) => matches!(other, Self::Span(..)),
-            Self::Strong(..) => matches!(other, Self::Strong(..)),
-            Self::Emphasis(..) => matches!(other, Self::Emphasis(..)),
-            Self::Superscript(..) => matches!(other, Self::Superscript(..)),
-            Self::Subscript(..) => matches!(other, Self::Subscript(..)),
-            Self::SingleQuoted => matches!(other, Self::SingleQuoted),
-            Self::DoubleQuoted => matches!(other, Self::DoubleQuoted),
-            Self::Mark => matches!(other, Self::Mark),
-            Self::Delete => matches!(other, Self::Delete),
-            Self::Insert => matches!(other, Self::Insert),
-        }
-    }
-
     fn from_token(kind: lex::Kind) -> Option<(Self, Dir)> {
         use Delim::*;
         use Dir::{Both, Close, Open};
