@@ -183,7 +183,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                         ValueQuoted
                     }
                 }
-                Invalid | Done => panic!(),
+                Invalid | Done => panic!("{:?}", self.state),
             }
         })
     }
@@ -193,6 +193,10 @@ impl<I: Iterator<Item = char>> Parser<I> {
 
         if self.state == Done {
             return (Done, Span::empty_at(start));
+        }
+
+        if self.state == Invalid {
+            return (Invalid, Span::empty_at(start));
         }
 
         while let Some(state_next) = self.step_char() {
@@ -206,7 +210,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
 
         (
             if self.state == Done { Done } else { Invalid },
-            Span::new(start, self.pos - 1),
+            Span::new(start, self.pos.saturating_sub(1)),
         )
     }
 }
@@ -216,7 +220,7 @@ fn is_name_start(c: char) -> bool {
 }
 
 fn is_name(c: char) -> bool {
-    is_name_start(c) || c.is_ascii_digit() || matches!(c, '-' | '.')
+    is_name_start(c) || c.is_ascii_digit() || matches!(c, '-')
 }
 
 enum Element {
@@ -329,11 +333,24 @@ mod test {
     }
 
     #[test]
-    fn valid() {
-        let src0 = "{.class %comment%}";
-        assert_eq!(super::valid(src0.chars()), src0.len());
+    fn valid_full() {
+        let src = "{.class %comment%}";
+        assert_eq!(super::valid(src.chars()), src.len());
+    }
 
-        let src1 = format!("{} trailing", src0);
-        assert_eq!(super::valid(src1.chars()), src0.len());
+    #[test]
+    fn valid_trailing() {
+        let src = "{.class}";
+        assert_eq!(
+            super::valid(src.chars().chain("{.ignore}".chars())),
+            src.len()
+        );
+    }
+
+    #[test]
+    fn valid_invalid() {
+        assert_eq!(super::valid("{.class invalid}".chars()), 0);
+        assert_eq!(super::valid("abc".chars()), 0);
+        assert_eq!(super::valid("{.abc.}".chars()), 0);
     }
 }
