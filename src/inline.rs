@@ -57,6 +57,7 @@ pub enum EventKind {
     Atom(Atom),
     Str,
     Attributes,
+    AttributesDummy,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -254,26 +255,46 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
                 })
                 .and_then(|o| {
-                    let (d, e) = self.openers[o];
                     if matches!(dir, Dir::Close | Dir::Both) {
-                        let e = match Container::try_from(d) {
+                        let (d, e) = self.openers[o];
+                        let e_attr = e;
+                        let e_opener = e + 1;
+                        let event = match Container::try_from(d) {
                             Ok(cont) => {
-                                self.events[e].kind = EventKind::Enter(cont);
+                                self.events[e_opener].kind = EventKind::Enter(cont);
                                 Some(Event {
                                     kind: EventKind::Exit(cont),
                                     span: self.span,
                                 })
                             }
-                            Err(ty) => self.post_span(ty, e),
+                            Err(ty) => self.post_span(ty, e_opener),
                         };
                         self.openers.drain(o..);
-                        e
+                        let mut ahead = self.lexer.inner().clone();
+                        let attr_len = attr::valid(&mut ahead);
+                        dbg!(self.span);
+                        dbg!(attr_len);
+                        if attr_len > 0 {
+                            self.lexer = lex::Lexer::new(ahead);
+                            let span = Span::by_len(self.span.end(), attr_len);
+                            self.events[e_attr] = Event {
+                                kind: EventKind::Attributes,
+                                span,
+                            }
+                        }
+                        event
                     } else {
                         None
                     }
                 })
                 .unwrap_or_else(|| {
                     self.openers.push((delim, self.events.len()));
+                    // push dummy attributes in case attributes are encountered after closing
+                    // delimiter
+                    self.events.push_back(Event {
+                        kind: EventKind::AttributesDummy,
+                        span: Span::empty_at(self.span.start()),
+                    });
                     // use str for now, replace if closed later
                     Event {
                         kind: EventKind::Str,
@@ -448,25 +469,25 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
             }
         }
 
-        self.events.pop_front().map(|e| {
-            if matches!(e.kind, EventKind::Str) {
-                // merge str events
-                let mut span = e.span;
-                while self
-                    .events
-                    .front()
-                    .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
-                {
-                    let ev = self.events.pop_front().unwrap();
-                    assert_eq!(span.end(), ev.span.start());
-                    span = span.union(ev.span);
+        self.events.pop_front().and_then(|e| {
+            match e.kind {
+                EventKind::Str => {
+                    // merge str events
+                    let mut span = e.span;
+                    while self.events.front().map_or(false, |e| {
+                        matches!(e.kind, EventKind::Str | EventKind::AttributesDummy)
+                    }) {
+                        let ev = self.events.pop_front().unwrap();
+                        assert_eq!(span.end(), ev.span.start());
+                        span = span.union(ev.span);
+                    }
+                    Some(Event {
+                        kind: EventKind::Str,
+                        span,
+                    })
                 }
-                Event {
-                    kind: EventKind::Str,
-                    span,
-                }
-            } else {
-                e
+                EventKind::AttributesDummy => self.next(),
+                _ => Some(e),
             }
         })
     }
@@ -743,5 +764,16 @@ mod test {
     fn typeset_close_block() {
         test_parse!("{_abc", (Str, "{_abc"));
         test_parse!("{_{*{_abc", (Str, "{_{*{_abc"));
+    }
+
+    #[test]
+    fn container_attr() {
+        test_parse!(
+            "_abc def_{.attr}",
+            (Attributes, "{.attr}"),
+            (Enter(Emphasis), "_"),
+            (Str, "abc def"),
+            (Exit(Emphasis), "_"),
+        );
     }
 }

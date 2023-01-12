@@ -438,6 +438,7 @@ impl<'s> Parser<'s> {
             },
             inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
             inline::EventKind::Attributes => todo!(),
+            inline::EventKind::AttributesDummy => panic!(),
         }
     }
 }
