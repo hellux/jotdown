@@ -352,7 +352,6 @@ impl<'s> InlineSpans<'s> {
     }
 
     fn set_spans(&mut self, spans: impl Iterator<Item = Span>) {
-        // avoid allocating new vec if size is sufficient
         self.spans.clear();
         self.spans.extend(spans);
     }
@@ -449,7 +448,6 @@ impl<'s> Iterator for Parser<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(parser) = &mut self.inline_parser {
             if let Some(inline) = parser.next() {
-                // SAFETY: cannot set lifetime 's on self due to trait
                 return Some(self.inline(inline));
             }
             self.inline_parser = None;
@@ -463,7 +461,6 @@ impl<'s> Iterator for Parser<'s> {
                     block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
                     block::Atom::Attributes => {
                         self.block_attributes.parse(&content);
-                        dbg!(&self.block_attributes);
                         continue;
                     }
                 },

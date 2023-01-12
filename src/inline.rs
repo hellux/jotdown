@@ -710,7 +710,7 @@ mod test {
     }
 
     #[test]
-    fn typeset_basic() {
+    fn container_basic() {
         test_parse!(
             "_abc_",
             (Enter(Emphasis), "_"),
@@ -726,7 +726,7 @@ mod test {
     }
 
     #[test]
-    fn typeset_nest() {
+    fn container_nest() {
         test_parse!(
             "{_{_abc_}_}",
             (Enter(Emphasis), "{_"),
@@ -746,12 +746,12 @@ mod test {
     }
 
     #[test]
-    fn typeset_unopened() {
+    fn container_unopened() {
         test_parse!("*}abc", (Str, "*}abc"));
     }
 
     #[test]
-    fn typeset_close_parent() {
+    fn container_close_parent() {
         test_parse!(
             "{*{_abc*}",
             (Enter(Strong), "{*"),
@@ -761,7 +761,7 @@ mod test {
     }
 
     #[test]
-    fn typeset_close_block() {
+    fn container_close_block() {
         test_parse!("{_abc", (Str, "{_abc"));
         test_parse!("{_{*{_abc", (Str, "{_{*{_abc"));
     }
