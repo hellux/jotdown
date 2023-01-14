@@ -117,7 +117,6 @@ impl<I: Iterator<Item = char>> Parser<I> {
             match self.state {
                 Start => match c {
                     '{' => Whitespace,
-                    c if c.is_whitespace() => Start,
                     _ => Invalid,
                 },
                 Whitespace => match c {
@@ -349,6 +348,7 @@ mod test {
 
     #[test]
     fn valid_invalid() {
+        assert_eq!(super::valid(" {.valid}".chars()), 0);
         assert_eq!(super::valid("{.class invalid}".chars()), 0);
         assert_eq!(super::valid("abc".chars()), 0);
         assert_eq!(super::valid("{.abc.}".chars()), 0);
