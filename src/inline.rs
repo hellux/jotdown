@@ -271,15 +271,15 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         };
                         self.openers.drain(o..);
                         let mut ahead = self.lexer.inner().clone();
-                        let attr_len = attr::valid(&mut ahead);
-                        dbg!(self.span);
-                        dbg!(attr_len);
+                        let mut attr_len = attr::valid(&mut ahead);
                         if attr_len > 0 {
-                            self.lexer = lex::Lexer::new(ahead);
-                            let span = Span::by_len(self.span.end(), attr_len);
-                            self.events[e_attr] = Event {
-                                kind: EventKind::Attributes,
-                                span,
+                            self.events[e_attr].span = Span::empty_at(self.span.end());
+                            self.events[e_attr].kind = EventKind::Attributes;
+                            while attr_len > 0 {
+                                self.lexer = lex::Lexer::new(ahead.clone());
+                                self.span = self.events[e_attr].span.extend(attr_len);
+                                self.events[e_attr].span = self.span;
+                                attr_len = attr::valid(&mut ahead);
                             }
                         }
                         event
@@ -774,6 +774,18 @@ mod test {
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
+        );
+    }
+
+    #[test]
+    fn container_attr_multiple() {
+        test_parse!(
+            "_abc def_{.a}{.b}{.c} {.d}",
+            (Attributes, "{.a}{.b}{.c}"),
+            (Enter(Emphasis), "_"),
+            (Str, "abc def"),
+            (Exit(Emphasis), "_"),
+            (Str, " {.d}"),
         );
     }
 }
