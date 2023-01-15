@@ -260,7 +260,6 @@ pub struct Parser<'s> {
     tree: block::Tree,
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
-    inline_start: usize,
 }
 
 impl<'s> Parser<'s> {
@@ -271,7 +270,6 @@ impl<'s> Parser<'s> {
             tree: block::parse(src),
             inlines: span::InlineSpans::new(src),
             inline_parser: None,
-            inline_start: 0,
         }
     }
 }
@@ -375,14 +373,10 @@ impl<'s> Parser<'s> {
                     block::Node::Leaf(l) => {
                         self.inlines.set_spans(self.tree.inlines());
                         self.inline_parser = Some(inline::Parser::new(self.inlines.chars()));
-                        self.inline_start = ev.span.end();
                         let container = match l {
-                            block::Leaf::CodeBlock { .. } => {
-                                self.inline_start += 1; // skip newline
-                                Container::CodeBlock {
-                                    lang: (!ev.span.is_empty()).then(|| content),
-                                }
-                            }
+                            block::Leaf::CodeBlock { .. } => Container::CodeBlock {
+                                lang: (!ev.span.is_empty()).then(|| content),
+                            },
                             _ => Container::from_leaf_block(content, l),
                         };
                         Event::Start(container, attributes)
