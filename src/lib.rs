@@ -7,6 +7,7 @@ mod lex;
 mod span;
 mod tree;
 
+use span::DiscontinuousString;
 use span::Span;
 
 pub use attr::Attributes;
@@ -254,201 +255,11 @@ impl<'s> Container<'s> {
     }
 }
 
-#[derive(Clone)]
-struct InlineChars<'s, I> {
-    src: &'s str,
-    inlines: I,
-    next: std::str::Chars<'s>,
-}
-
-// Implement inlines.flat_map(|sp| sp.of(self.src).chars())
-impl<'s, I: Iterator<Item = Span>> InlineChars<'s, I> {
-    fn new(src: &'s str, inlines: I) -> Self {
-        Self {
-            src,
-            inlines,
-            next: "".chars(),
-        }
-    }
-}
-
-impl<'s, I: Iterator<Item = Span>> Iterator for InlineChars<'s, I> {
-    type Item = char;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        (&mut self.inlines)
-            .flat_map(|sp| sp.of(self.src).chars())
-            .next()
-    }
-}
-
-trait DiscontinuousString<'s> {
-    type Chars: Iterator<Item = char>;
-
-    fn src(&self, span: Span) -> CowStr<'s>;
-
-    fn chars(&self) -> Self::Chars;
-}
-
-impl<'s> DiscontinuousString<'s> for &'s str {
-    type Chars = std::str::Chars<'s>;
-
-    fn src(&self, span: Span) -> CowStr<'s> {
-        span.of(self).into()
-    }
-
-    fn chars(&self) -> Self::Chars {
-        str::chars(self)
-    }
-}
-
-impl<'s> DiscontinuousString<'s> for InlineSpans<'s> {
-    type Chars = InlineCharsIter<'s>;
-
-    fn src(&self, span: Span) -> CowStr<'s> {
-        Self::borrow_or_copy(self.src, self.spans.iter().copied(), span)
-    }
-
-    fn chars(&self) -> Self::Chars {
-        // SAFETY: do not call set_spans while chars is in use
-        unsafe { std::mem::transmute(InlineChars::new(self.src, self.spans.iter().copied())) }
-    }
-}
-
-impl<'s, 'i> DiscontinuousString<'s> for InlineSpansSlice<'s, 'i> {
-    type Chars = InlineChars<'s, InlineSpansSliceIter<'i>>;
-
-    /// Borrow if continuous, copy if discontiunous.
-    fn src(&self, span: Span) -> CowStr<'s> {
-        InlineSpans::borrow_or_copy(self.src, self.spans(), span)
-    }
-
-    fn chars(&self) -> Self::Chars {
-        InlineChars::new(self.src, self.spans())
-    }
-}
-
-#[derive(Default, Debug)]
-struct InlineSpans<'s> {
-    src: &'s str,
-    spans: Vec<Span>,
-}
-
-impl<'s> InlineSpans<'s> {
-    fn new(src: &'s str) -> Self {
-        Self {
-            src,
-            spans: Vec::new(),
-        }
-    }
-
-    fn set_spans(&mut self, spans: impl Iterator<Item = Span>) {
-        self.spans.clear();
-        self.spans.extend(spans);
-    }
-
-    fn slice<'i>(&'i self, span: Span) -> InlineSpansSlice<'s, 'i> {
-        let mut first = 0;
-        let mut last = 0;
-        let mut first_skip = 0;
-        let mut last_len = 0;
-
-        let mut a = 0;
-        for (i, sp) in self.spans.iter().enumerate() {
-            let b = a + sp.len();
-            if span.start() < b {
-                if a <= span.start() {
-                    first = i;
-                    first_skip = span.start() - a;
-                    if span.end() <= b {
-                        // continuous
-                        last = i;
-                        last_len = span.len();
-                        break;
-                    }
-                } else {
-                    last = i;
-                    last_len = sp.len().min(span.end() - a);
-                    break;
-                };
-            }
-            a = b;
-        }
-
-        assert_ne!(last_len, 0);
-
-        InlineSpansSlice {
-            src: self.src,
-            first_skip,
-            last_len,
-            spans: &self.spans[first..=last],
-        }
-    }
-
-    /// Borrow if continuous, copy if discontiunous.
-    fn borrow_or_copy<I: Iterator<Item = Span>>(src: &str, spans: I, span: Span) -> CowStr {
-        let mut a = 0;
-        let mut s = String::new();
-        for sp in spans {
-            let b = a + sp.len();
-            if span.start() < b {
-                let r = if a <= span.start() {
-                    if span.end() <= b {
-                        // continuous
-                        return CowStr::Borrowed(&sp.of(src)[span.start() - a..span.end() - a]);
-                    }
-                    (span.start() - a)..sp.len()
-                } else {
-                    0..sp.len().min(span.end() - a)
-                };
-                s.push_str(&sp.of(src)[r]);
-            }
-            a = b;
-        }
-        assert_eq!(span.len(), s.len());
-        CowStr::Owned(s)
-    }
-}
-
-struct InlineSpansSlice<'s, 'i> {
-    src: &'s str,
-    first_skip: usize,
-    last_len: usize,
-    spans: &'i [Span],
-}
-
-type InlineSpansSliceIter<'i> = std::iter::Chain<
-    std::iter::Chain<std::iter::Once<Span>, std::iter::Copied<std::slice::Iter<'i, Span>>>,
-    std::iter::Once<Span>,
->;
-
-impl<'s, 'i> InlineSpansSlice<'s, 'i> {
-    fn spans(&self) -> InlineSpansSliceIter<'i> {
-        let (span_start, r_middle, span_end) = if self.spans.len() == 1 {
-            (
-                Span::by_len(self.spans[0].start() + self.first_skip, self.last_len),
-                0..0,
-                Span::by_len(self.spans[self.spans.len() - 1].start(), 0),
-            )
-        } else {
-            (
-                Span::new(self.spans[0].start() + self.first_skip, self.spans[0].end()),
-                1..self.spans.len().saturating_sub(2),
-                Span::by_len(self.spans[self.spans.len() - 1].start(), self.last_len),
-            )
-        };
-        std::iter::once(span_start)
-            .chain(self.spans[r_middle].iter().copied())
-            .chain(std::iter::once(span_end))
-    }
-}
-type InlineCharsIter<'s> = InlineChars<'s, std::iter::Copied<std::slice::Iter<'static, Span>>>;
-
 pub struct Parser<'s> {
     src: &'s str,
     tree: block::Tree,
-    inlines: InlineSpans<'s>,
-    inline_parser: Option<inline::Parser<InlineCharsIter<'s>>>,
+    inlines: span::InlineSpans<'s>,
+    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
     inline_start: usize,
 }
 
@@ -458,7 +269,7 @@ impl<'s> Parser<'s> {
         Self {
             src,
             tree: block::parse(src),
-            inlines: InlineSpans::new(src),
+            inlines: span::InlineSpans::new(src),
             inline_parser: None,
             inline_start: 0,
         }
