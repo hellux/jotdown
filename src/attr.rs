@@ -4,6 +4,12 @@ use crate::Span;
 
 use State::*;
 
+pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> {
+    let mut a = Attributes::new();
+    a.parse(chars);
+    a
+}
+
 pub fn valid<I: Iterator<Item = char>>(chars: I) -> usize {
     let mut p = Parser::new(chars);
     if p.any(|e| matches!(e, Element::Invalid)) {
@@ -29,7 +35,7 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: &S) -> bool {
+    pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
         for elem in Parser::new(input.chars()) {
             match elem {
                 Element::Class(c) => self.add("class", input.src(c)),
@@ -275,7 +281,7 @@ mod test {
         ($src:expr $(,$($av:expr),* $(,)?)?) => {
             #[allow(unused)]
             let mut attr =super::Attributes::new();
-            attr.parse(&$src);
+            attr.parse($src);
             let actual = attr.iter().collect::<Vec<_>>();
             let expected = &[$($($av),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);

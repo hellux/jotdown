@@ -7,9 +7,6 @@ fn main() {
         .expect("failed to read utf-8 file");
 
     let p = jotdown::Parser::new(&src);
-    println!("{:#?}", p.collect::<Vec<_>>());
-
-    let p = jotdown::Parser::new(&src);
     let mut out = std::io::BufWriter::new(std::io::stdout());
     jotdown::html::write(&mut out, p).unwrap();
 }
