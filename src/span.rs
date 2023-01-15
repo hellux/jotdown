@@ -26,6 +26,10 @@ impl Span {
         Self::new(start, self.end())
     }
 
+    pub fn with_end(self, end: usize) -> Self {
+        Self::new(self.start(), end)
+    }
+
     pub fn with_len(self, len: usize) -> Self {
         Self::by_len(self.start(), len)
     }

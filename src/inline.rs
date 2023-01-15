@@ -159,6 +159,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             let mut span_inner = Span::empty_at(self.span.end());
             let mut span_outer = None;
 
+            let mut non_whitespace_first = None;
+            let mut non_whitespace_last = None;
+
             while let Some(t) = self.eat() {
                 if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len
                 {
@@ -193,8 +196,21 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     }
                     break;
                 }
+                if !matches!(t.kind, lex::Kind::Whitespace) {
+                    if non_whitespace_first.is_none() {
+                        non_whitespace_first = Some((t.kind, span_inner.end()));
+                    }
+                    non_whitespace_last = Some((t.kind, span_inner.end() + t.len));
+                }
                 span_inner = span_inner.extend(t.len);
                 self.reset_span();
+            }
+
+            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_first {
+                span_inner = span_inner.with_start(pos);
+            }
+            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_last {
+                span_inner = span_inner.with_end(pos);
             }
 
             self.events.push_back(Event {
@@ -568,6 +584,32 @@ mod test {
             (Str, "abc"),
             (Enter(Verbatim), "`"),
             (Str, "def"),
+            (Exit(Verbatim), "`"),
+        );
+    }
+
+    #[test]
+    fn verbatim_whitespace() {
+        test_parse!(
+            "`  `",
+            (Enter(Verbatim), "`"),
+            (Str, "  "),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            "` abc `",
+            (Enter(Verbatim), "`"),
+            (Str, " abc "),
+            (Exit(Verbatim), "`"),
+        );
+    }
+
+    #[test]
+    fn verbatim_trim() {
+        test_parse!(
+            "` ``abc`` `",
+            (Enter(Verbatim), "`"),
+            (Str, "``abc``"),
             (Exit(Verbatim), "`"),
         );
     }
