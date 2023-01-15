@@ -495,9 +495,6 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
 
 #[cfg(test)]
 mod test {
-    use crate::Span;
-
-    use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
     use super::Verbatim;

@@ -262,7 +262,7 @@ struct InlineChars<'s, I> {
 }
 
 // Implement inlines.flat_map(|sp| sp.of(self.src).chars())
-impl<'s, 't, I: Iterator<Item = Span>> InlineChars<'s, I> {
+impl<'s, I: Iterator<Item = Span>> InlineChars<'s, I> {
     fn new(src: &'s str, inlines: I) -> Self {
         Self {
             src,
@@ -272,7 +272,7 @@ impl<'s, 't, I: Iterator<Item = Span>> InlineChars<'s, I> {
     }
 }
 
-impl<'s, 't, I: Iterator<Item = Span>> Iterator for InlineChars<'s, I> {
+impl<'s, I: Iterator<Item = Span>> Iterator for InlineChars<'s, I> {
     type Item = char;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -306,28 +306,7 @@ impl<'s> DiscontinuousString<'s> for InlineSpans<'s> {
     type Chars = InlineCharsIter<'s>;
 
     fn src(&self, span: Span) -> CowStr<'s> {
-        let mut a = 0;
-        let mut s = String::new();
-        for sp in &self.spans {
-            let b = a + sp.len();
-            if span.start() < b {
-                let r = if a <= span.start() {
-                    if span.end() <= b {
-                        // continuous
-                        return CowStr::Borrowed(
-                            &sp.of(self.src)[span.start() - a..span.end() - a],
-                        );
-                    }
-                    (span.start() - a)..sp.len()
-                } else {
-                    0..sp.len().min(span.end() - a)
-                };
-                s.push_str(&sp.of(self.src)[r]);
-            }
-            a = b;
-        }
-        assert_eq!(span.len(), s.len());
-        CowStr::Owned(s)
+        Self::borrow_or_copy(self.src, self.spans.iter().copied(), span)
     }
 
     fn chars(&self) -> Self::Chars {
@@ -337,66 +316,15 @@ impl<'s> DiscontinuousString<'s> for InlineSpans<'s> {
 }
 
 impl<'s, 'i> DiscontinuousString<'s> for InlineSpansSlice<'s, 'i> {
-    type Chars = InlineChars<
-        's,
-        std::iter::Chain<
-            std::iter::Chain<std::iter::Once<Span>, std::iter::Copied<std::slice::Iter<'i, Span>>>,
-            std::iter::Once<Span>,
-        >,
-    >;
+    type Chars = InlineChars<'s, InlineSpansSliceIter<'i>>;
 
     /// Borrow if continuous, copy if discontiunous.
     fn src(&self, span: Span) -> CowStr<'s> {
-        let mut a = 0;
-        let mut s = String::new();
-        for (i, mut sp) in self.spans.iter().copied().enumerate() {
-            if i == 0 {
-                sp = sp.skip(self.first_skip);
-            }
-            if i == self.spans.len() - 1 {
-                sp = Span::by_len(sp.start(), self.last_len);
-            }
-            let b = a + sp.len();
-            if span.start() < b {
-                let r = if a <= span.start() {
-                    if span.end() <= b {
-                        // continuous
-                        return CowStr::Borrowed(
-                            &sp.of(self.src)[span.start() - a..span.end() - a],
-                        );
-                    }
-                    (span.start() - a)..sp.len()
-                } else {
-                    0..sp.len().min(span.end() - a)
-                };
-                s.push_str(&sp.of(self.src)[r]);
-            }
-            a = b;
-        }
-        assert_eq!(span.len(), s.len());
-        CowStr::Owned(s)
+        InlineSpans::borrow_or_copy(self.src, self.spans(), span)
     }
 
     fn chars(&self) -> Self::Chars {
-        let (span_start, r_middle, span_end) = if self.spans.len() == 1 {
-            (
-                Span::by_len(self.spans[0].start() + self.first_skip, self.last_len),
-                0..0,
-                Span::by_len(self.spans[self.spans.len() - 1].start(), 0),
-            )
-        } else {
-            (
-                Span::new(self.spans[0].start() + self.first_skip, self.spans[0].end()),
-                1..self.spans.len().saturating_sub(2),
-                Span::by_len(self.spans[self.spans.len() - 1].start(), self.last_len),
-            )
-        };
-        InlineChars::new(
-            self.src,
-            std::iter::once(span_start)
-                .chain(self.spans[r_middle].iter().copied())
-                .chain(std::iter::once(span_end)),
-        )
+        InlineChars::new(self.src, self.spans())
     }
 }
 
@@ -456,6 +384,30 @@ impl<'s> InlineSpans<'s> {
             spans: &self.spans[first..=last],
         }
     }
+
+    /// Borrow if continuous, copy if discontiunous.
+    fn borrow_or_copy<I: Iterator<Item = Span>>(src: &str, spans: I, span: Span) -> CowStr {
+        let mut a = 0;
+        let mut s = String::new();
+        for sp in spans {
+            let b = a + sp.len();
+            if span.start() < b {
+                let r = if a <= span.start() {
+                    if span.end() <= b {
+                        // continuous
+                        return CowStr::Borrowed(&sp.of(src)[span.start() - a..span.end() - a]);
+                    }
+                    (span.start() - a)..sp.len()
+                } else {
+                    0..sp.len().min(span.end() - a)
+                };
+                s.push_str(&sp.of(src)[r]);
+            }
+            a = b;
+        }
+        assert_eq!(span.len(), s.len());
+        CowStr::Owned(s)
+    }
 }
 
 struct InlineSpansSlice<'s, 'i> {
@@ -465,6 +417,31 @@ struct InlineSpansSlice<'s, 'i> {
     spans: &'i [Span],
 }
 
+type InlineSpansSliceIter<'i> = std::iter::Chain<
+    std::iter::Chain<std::iter::Once<Span>, std::iter::Copied<std::slice::Iter<'i, Span>>>,
+    std::iter::Once<Span>,
+>;
+
+impl<'s, 'i> InlineSpansSlice<'s, 'i> {
+    fn spans(&self) -> InlineSpansSliceIter<'i> {
+        let (span_start, r_middle, span_end) = if self.spans.len() == 1 {
+            (
+                Span::by_len(self.spans[0].start() + self.first_skip, self.last_len),
+                0..0,
+                Span::by_len(self.spans[self.spans.len() - 1].start(), 0),
+            )
+        } else {
+            (
+                Span::new(self.spans[0].start() + self.first_skip, self.spans[0].end()),
+                1..self.spans.len().saturating_sub(2),
+                Span::by_len(self.spans[self.spans.len() - 1].start(), self.last_len),
+            )
+        };
+        std::iter::once(span_start)
+            .chain(self.spans[r_middle].iter().copied())
+            .chain(std::iter::once(span_end))
+    }
+}
 type InlineCharsIter<'s> = InlineChars<'s, std::iter::Copied<std::slice::Iter<'static, Span>>>;
 
 pub struct Parser<'s> {
@@ -636,7 +613,6 @@ mod test {
     use super::Atom::*;
     use super::Attributes;
     use super::Container::*;
-    use super::CowStr;
     use super::Event::*;
     use super::LinkType;
     use super::SpanLinkType;
