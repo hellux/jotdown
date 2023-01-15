@@ -68,68 +68,107 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
     fn write(&mut self) -> std::fmt::Result {
         for e in &mut self.events {
             match e {
-                Event::Start(c, _attrs) => {
+                Event::Start(c, attrs) => {
                     if c.is_block() {
                         self.out.write_char('\n')?;
                     }
                     if self.text_only && !matches!(c, Container::Image(..)) {
                         continue;
                     }
-                    match c {
-                        Container::Blockquote => self.out.write_str("<blockquote>")?,
+                    match &c {
+                        Container::Blockquote => self.out.write_str("<blockquote")?,
                         Container::List(..) => todo!(),
-                        Container::ListItem => self.out.write_str("<li>")?,
-                        Container::DescriptionList => self.out.write_str("<dl>")?,
-                        Container::DescriptionDetails => self.out.write_str("<dd>")?,
+                        Container::ListItem => self.out.write_str("<li")?,
+                        Container::DescriptionList => self.out.write_str("<dl")?,
+                        Container::DescriptionDetails => self.out.write_str("<dd")?,
                         Container::Footnote { .. } => todo!(),
-                        Container::Table => self.out.write_str("<table>")?,
-                        Container::TableRow => self.out.write_str("<tr>")?,
-                        Container::Div { class } => {
-                            if let Some(c) = class {
-                                write!(self.out, r#"<div class="{}">"#, c)?;
-                            } else {
-                                self.out.write_str("<div>")?;
-                            }
-                        }
-                        Container::Paragraph => self.out.write_str("<p>")?,
-                        Container::Heading { level } => write!(self.out, "<h{}>", level)?,
-                        Container::TableCell => self.out.write_str("<td>")?,
-                        Container::DescriptionTerm => self.out.write_str("<dt>")?,
-                        Container::CodeBlock { lang } => {
-                            if let Some(l) = lang {
-                                write!(self.out, r#"<pre><code class="language-{}">"#, l)?;
-                            } else {
-                                self.out.write_str("<pre><code>")?;
-                            }
-                        }
-                        Container::Span => self.out.write_str("<span>")?,
-                        Container::Link(dst, ..) => write!(self.out, r#"<a href="{}">"#, dst)?,
+                        Container::Table => self.out.write_str("<table")?,
+                        Container::TableRow => self.out.write_str("<tr")?,
+                        Container::Div { .. } => self.out.write_str("<div")?,
+                        Container::Paragraph => self.out.write_str("<p")?,
+                        Container::Heading { level } => write!(self.out, "<h{}", level)?,
+                        Container::TableCell => self.out.write_str("<td")?,
+                        Container::DescriptionTerm => self.out.write_str("<dt")?,
+                        Container::CodeBlock { .. } => self.out.write_str("<pre")?,
+                        Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
+                        Container::Link(dst, ..) => write!(self.out, r#"<a href="{}""#, dst)?,
                         Container::Image(..) => {
                             self.text_only = true;
                             self.out.write_str("<img")?;
                         }
-                        Container::Verbatim => self.out.write_str("<code>")?,
-                        Container::Math { display } => self.out.write_str(if display {
-                            r#"<span class="math display">\["#
-                        } else {
-                            r#"<span class="math inline">\("#
-                        })?,
+                        Container::Verbatim => self.out.write_str("<code")?,
                         Container::RawBlock { format } | Container::RawInline { format } => {
-                            self.raw = if format == "html" {
+                            self.raw = if format == &"html" {
                                 Raw::Html
                             } else {
                                 Raw::Other
-                            }
+                            };
+                            continue;
                         }
-                        Container::Subscript => self.out.write_str("<sub>")?,
-                        Container::Superscript => self.out.write_str("<sup>")?,
-                        Container::Insert => self.out.write_str("<ins>")?,
-                        Container::Delete => self.out.write_str("<del>")?,
-                        Container::Strong => self.out.write_str("<strong>")?,
-                        Container::Emphasis => self.out.write_str("<em>")?,
-                        Container::Mark => self.out.write_str("<mark>")?,
+                        Container::Subscript => self.out.write_str("<sub")?,
+                        Container::Superscript => self.out.write_str("<sup")?,
+                        Container::Insert => self.out.write_str("<ins")?,
+                        Container::Delete => self.out.write_str("<del")?,
+                        Container::Strong => self.out.write_str("<strong")?,
+                        Container::Emphasis => self.out.write_str("<em")?,
+                        Container::Mark => self.out.write_str("<mark")?,
                         Container::SingleQuoted => self.out.write_str("&lsquo;")?,
                         Container::DoubleQuoted => self.out.write_str("&ldquo;")?,
+                    }
+
+                    if attrs.iter().any(|(a, _)| a == "class")
+                        || matches!(
+                            c,
+                            Container::Div { class: Some(_) } | Container::Math { .. }
+                        )
+                    {
+                        self.out.write_str(r#" class=""#)?;
+                        let mut classes = attrs
+                            .iter()
+                            .filter(|(a, _)| a == &"class")
+                            .map(|(_, cls)| cls);
+                        let has_attr = if let Container::Math { display } = c {
+                            self.out.write_str(if display {
+                                "math display"
+                            } else {
+                                "math inline"
+                            })?;
+                            true
+                        } else if let Some(cls) = classes.next() {
+                            self.out.write_str(cls)?;
+                            for cls in classes {
+                                self.out.write_char(' ')?;
+                                self.out.write_str(cls)?;
+                            }
+                            true
+                        } else {
+                            false
+                        };
+                        if let Container::Div { class: Some(cls) } = c {
+                            if has_attr {
+                                self.out.write_char(' ')?;
+                            }
+                            self.out.write_str(cls)?;
+                        }
+                        self.out.write_char('"')?;
+                    }
+
+                    match c {
+                        Container::CodeBlock { lang } => {
+                            if let Some(l) = lang {
+                                write!(self.out, r#"><code class="language-{}">"#, l)?;
+                            } else {
+                                self.out.write_str("><code>")?;
+                            }
+                        }
+                        Container::Image(..) => {
+                            self.out.write_str(r#" alt=""#)?;
+                        }
+                        Container::Math { display } => {
+                            self.out
+                                .write_str(if display { r#">\["# } else { r#">\("# })?;
+                        }
+                        _ => self.out.write_char('>')?,
                     }
                 }
                 Event::End(c) => {
@@ -154,9 +193,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::TableCell => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
-                        Container::Span | Container::Math { .. } => {
-                            self.out.write_str("</span>")?;
-                        }
+                        Container::Span => self.out.write_str("</span>")?,
                         Container::Link(..) => self.out.write_str("</a>")?,
                         Container::Image(src, ..) => {
                             self.text_only = false;
@@ -167,6 +204,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                             }
                         }
                         Container::Verbatim => self.out.write_str("</code>")?,
+                        Container::Math { display } => {
+                            self.out.write_str(if display {
+                                r#"\]</span>"#
+                            } else {
+                                r#"\)</span>"#
+                            })?;
+                        }
                         Container::RawBlock { .. } | Container::RawInline { .. } => {
                             self.raw = Raw::None;
                         }
