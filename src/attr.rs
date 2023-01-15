@@ -59,10 +59,27 @@ impl<'s> Attributes<'s> {
         };
 
         let attrs = self.0.as_mut().unwrap();
-        attrs.push((attr, val));
+        if let Some(i) = attrs.iter().position(|(a, _)| *a == attr) {
+            let prev = &mut attrs[i].1;
+            if attr == "class" {
+                *prev = format!("{} {}", prev, val).into();
+            } else {
+                *prev = val;
+            }
+        } else {
+            attrs.push((attr, val));
+        }
     }
 
-    #[cfg(test)]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        if let Some(v) = &self.0 {
+            v.is_empty()
+        } else {
+            true
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&'s str, &str)> + '_ {
         self.0
             .iter()
