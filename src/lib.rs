@@ -234,13 +234,21 @@ pub enum Atom {
 }
 
 impl<'s> Container<'s> {
-    fn from_leaf_block(content: &str, l: block::Leaf) -> Self {
+    fn from_leaf_block(content: &'s str, l: block::Leaf) -> Self {
         match l {
             block::Leaf::Paragraph => Self::Paragraph,
             block::Leaf::Heading => Self::Heading {
                 level: content.len(),
             },
-            block::Leaf::CodeBlock => panic!(),
+            block::Leaf::CodeBlock => {
+                if let Some(format) = content.strip_prefix('=') {
+                    Self::RawBlock { format }
+                } else {
+                    Self::CodeBlock {
+                        lang: (!content.is_empty()).then(|| content),
+                    }
+                }
+            }
             _ => todo!(),
         }
     }
@@ -373,12 +381,7 @@ impl<'s> Parser<'s> {
                     block::Node::Leaf(l) => {
                         self.inlines.set_spans(self.tree.inlines());
                         self.inline_parser = Some(inline::Parser::new(self.inlines.chars()));
-                        let container = match l {
-                            block::Leaf::CodeBlock { .. } => Container::CodeBlock {
-                                lang: (!ev.span.is_empty()).then(|| content),
-                            },
-                            _ => Container::from_leaf_block(content, l),
-                        };
+                        let container = Container::from_leaf_block(content, l);
                         Event::Start(container, attributes)
                     }
                     block::Node::Container(c) => {
@@ -558,6 +561,17 @@ mod test {
             Str("raw\nraw".into()),
             End(RawInline { format: "format" }),
             End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn raw_block() {
+        test_parse!(
+            "``` =html\n<table>\n```",
+            Start(RawBlock { format: "html" }, Attributes::new()),
+            Str("<table>".into()),
+            Atom(Softbreak),
+            End(RawBlock { format: "html" }),
         );
     }
 
