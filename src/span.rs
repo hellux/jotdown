@@ -141,6 +141,7 @@ impl<'s, I: Iterator<Item = Span>> Iterator for InlineChars<'s, I> {
 
 pub type InlineCharsIter<'s> = InlineChars<'s, std::iter::Copied<std::slice::Iter<'static, Span>>>;
 
+/// Discontinuous slices of a [`&str`].
 #[derive(Default, Debug)]
 pub struct InlineSpans<'s> {
     src: &'s str,
@@ -268,7 +269,6 @@ impl<'s, 'i> InlineSpansSlice<'s, 'i> {
 impl<'s, 'i> DiscontinuousString<'s> for InlineSpansSlice<'s, 'i> {
     type Chars = InlineChars<'s, InlineSpansSliceIter<'i>>;
 
-    /// Borrow if continuous, copy if discontiunous.
     fn src(&self, span: Span) -> CowStr<'s> {
         InlineSpans::borrow_or_copy(self.src, self.spans(), span)
     }
