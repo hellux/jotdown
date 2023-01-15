@@ -56,6 +56,7 @@ pub enum EventKind {
     Exit(Container),
     Atom(Atom),
     Str,
+    Whitespace,
     Attributes,
     AttributesDummy,
 }
@@ -108,11 +109,16 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.reset_span();
         self.eat().map(|first| {
             self.parse_verbatim(&first)
+                .or_else(|| self.parse_attributes(&first))
                 .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
-                    kind: EventKind::Str,
+                    kind: if first.kind == lex::Kind::Whitespace {
+                        EventKind::Whitespace
+                    } else {
+                        EventKind::Str
+                    },
                     span: self.span,
                 })
         })
@@ -223,6 +229,58 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 span: span_outer.unwrap_or(self.span),
             }
         })
+    }
+
+    fn parse_attributes(&mut self, first: &lex::Token) -> Option<Event> {
+        if first.kind == lex::Kind::Open(Delimiter::Brace)
+            && self
+                .events
+                .back()
+                .map_or(false, |e| e.kind == EventKind::Str)
+        {
+            let mut ahead = self.lexer.inner().clone();
+            let mut attr_len = attr::valid(std::iter::once('{').chain(&mut ahead)) - 1;
+            if attr_len > 0 {
+                while attr_len > 0 {
+                    self.lexer = lex::Lexer::new(ahead.clone());
+                    self.span = self.span.extend(attr_len);
+                    attr_len = attr::valid(&mut ahead);
+                }
+
+                let i = self
+                    .events
+                    .iter()
+                    .rposition(|e| e.kind != EventKind::Str)
+                    .map_or(0, |i| i + 1);
+                let span_str = Span::new(
+                    self.events[i].span.start(),
+                    self.events[self.events.len() - 1].span.end(),
+                );
+                self.events.drain(i..);
+
+                self.events.push_back(Event {
+                    kind: EventKind::Attributes,
+                    span: self.span,
+                });
+                self.events.push_back(Event {
+                    kind: EventKind::Enter(Container::Span),
+                    span: Span::empty_at(span_str.start()),
+                });
+                self.events.push_back(Event {
+                    kind: EventKind::Str,
+                    span: span_str,
+                });
+
+                Some(Event {
+                    kind: EventKind::Exit(Container::Span),
+                    span: Span::empty_at(span_str.end()),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     fn parse_autolink(&mut self, first: &lex::Token) -> Option<Event> {
@@ -482,10 +540,12 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
             || !self.openers.is_empty()
-            || self // for merge
+            || self // for merge or attributes
                 .events
                 .back()
-                .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                .map_or(false, |ev| {
+                    matches!(ev.kind, EventKind::Str | EventKind::Whitespace)
+                })
         {
             if let Some(ev) = self.parse_event() {
                 self.events.push_back(ev);
@@ -496,11 +556,14 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
 
         self.events.pop_front().and_then(|e| {
             match e.kind {
-                EventKind::Str => {
+                EventKind::Str | EventKind::Whitespace => {
                     // merge str events
                     let mut span = e.span;
                     while self.events.front().map_or(false, |e| {
-                        matches!(e.kind, EventKind::Str | EventKind::AttributesDummy)
+                        matches!(
+                            e.kind,
+                            EventKind::Str | EventKind::Whitespace | EventKind::AttributesDummy
+                        )
                     }) {
                         let ev = self.events.pop_front().unwrap();
                         assert_eq!(span.end(), ev.span.start());
@@ -862,6 +925,19 @@ mod test {
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
             (Str, " {.d}"),
+        );
+    }
+
+    #[test]
+    fn attr() {
+        test_parse!(
+            "some word{.a}{.b} with attrs",
+            (Str, "some "),
+            (Attributes, "{.a}{.b}"),
+            (Enter(Span), ""),
+            (Str, "word"),
+            (Exit(Span), ""),
+            (Str, " with attrs"),
         );
     }
 }

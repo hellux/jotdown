@@ -357,7 +357,9 @@ impl<'s> Parser<'s> {
                     inline::Atom::Escape => Event::Atom(Atom::Escape),
                 },
                 inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
-                inline::EventKind::Attributes | inline::EventKind::AttributesDummy => {
+                inline::EventKind::Whitespace
+                | inline::EventKind::Attributes
+                | inline::EventKind::AttributesDummy => {
                     panic!("{:?}", inline)
                 }
             })
