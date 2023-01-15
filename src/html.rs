@@ -116,6 +116,10 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::DoubleQuoted => self.out.write_str("&ldquo;")?,
                     }
 
+                    if matches!(c, Container::SingleQuoted | Container::DoubleQuoted) {
+                        continue; // TODO add span to allow attributes?
+                    }
+
                     if attrs.iter().any(|(a, _)| a == "class")
                         || matches!(
                             c,
