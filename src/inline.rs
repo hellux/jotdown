@@ -259,7 +259,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         let (d, e) = self.openers[o];
                         let e_attr = e;
                         let e_opener = e + 1;
-                        let event = match Container::try_from(d) {
+                        let mut event = match Container::try_from(d) {
                             Ok(cont) => {
                                 self.events[e_opener].kind = EventKind::Enter(cont);
                                 Some(Event {
@@ -273,6 +273,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         let mut ahead = self.lexer.inner().clone();
                         let mut attr_len = attr::valid(&mut ahead);
                         if attr_len > 0 {
+                            let span_closer = self.span;
                             self.events[e_attr].span = Span::empty_at(self.span.end());
                             self.events[e_attr].kind = EventKind::Attributes;
                             while attr_len > 0 {
@@ -280,6 +281,14 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 self.span = self.events[e_attr].span.extend(attr_len);
                                 self.events[e_attr].span = self.span;
                                 attr_len = attr::valid(&mut ahead);
+                            }
+
+                            if event.is_none() {
+                                self.events[e_opener].kind = EventKind::Enter(Container::Span);
+                                event = Some(Event {
+                                    kind: EventKind::Exit(Container::Span),
+                                    span: span_closer,
+                                });
                             }
                         }
                         event
@@ -677,6 +686,34 @@ mod test {
             (Str, "inner"),
             (Exit(InlineLink), "i"),
             (Exit(InlineLink), "o"),
+        );
+    }
+
+    #[test]
+    fn span_url_empty() {
+        test_parse!(
+            "before [text]() after",
+            (Str, "before "),
+            (Enter(InlineLink), ""),
+            (Str, "text"),
+            (Exit(InlineLink), ""),
+            (Str, " after"),
+        );
+    }
+
+    #[test]
+    fn span() {
+        test_parse!("[abc]", (Str, "[abc]"));
+    }
+
+    #[test]
+    fn span_attr() {
+        test_parse!(
+            "[abc]{.def}",
+            (Attributes, "{.def}"),
+            (Enter(Span), "["),
+            (Str, "abc"),
+            (Exit(Span), "]"),
         );
     }
 
