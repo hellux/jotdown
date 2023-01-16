@@ -344,7 +344,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         let (d, e) = self.openers[o];
                         let e_attr = e;
                         let e_opener = e + 1;
-                        let mut event = match Container::try_from(d) {
+                        let inner_span =
+                            Span::new(self.events[e_opener].span.end(), self.span.start());
+                        let mut event_closer = match Container::try_from(d) {
                             Ok(cont) => {
                                 self.events[e_opener].kind = EventKind::Enter(cont);
                                 Some(Event {
@@ -355,6 +357,21 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             Err(ty) => self.post_span(ty, e_opener),
                         };
                         self.openers.drain(o..);
+
+                        if let Some(event_closer) = &mut event_closer {
+                            if event_closer.span.is_empty() {
+                                assert!(matches!(
+                                    event_closer.kind,
+                                    EventKind::Exit(
+                                        Container::ReferenceLink | Container::ReferenceImage
+                                    )
+                                ));
+                                assert_eq!(self.events[e_opener].span, event_closer.span);
+                                event_closer.span = inner_span;
+                                self.events[e_opener].span = inner_span;
+                            }
+                        }
+
                         let mut ahead = self.lexer.inner().clone();
                         let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
                         if attr_len > 0 {
@@ -376,11 +393,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 };
                             }
 
-                            if event.is_none() {
+                            if event_closer.is_none() {
                                 if has_attr {
                                     self.events[e_opener].kind = EventKind::Enter(Container::Span);
                                 }
-                                event = Some(Event {
+                                event_closer = Some(Event {
                                     kind: if has_attr {
                                         EventKind::Exit(Container::Span)
                                     } else {
@@ -390,7 +407,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 });
                             }
                         }
-                        event
+                        event_closer
                     } else {
                         None
                     }
@@ -794,6 +811,36 @@ mod test {
             (Str, "inner"),
             (Exit(ReferenceLink), "i"),
             (Exit(ReferenceLink), "o"),
+        );
+    }
+
+    #[test]
+    fn span_tag_empty() {
+        test_parse!(
+            "[text][]",
+            (Enter(ReferenceLink), "text"),
+            (Str, "text"),
+            (Exit(ReferenceLink), "text"),
+        );
+        test_parse!(
+            "![text][]",
+            (Enter(ReferenceImage), "text"),
+            (Str, "text"),
+            (Exit(ReferenceImage), "text"),
+        );
+    }
+
+    #[test]
+    fn span_tag_empty_nested() {
+        // TODO strip non str from tag?
+        test_parse!(
+            "[some _text_][]",
+            (Enter(ReferenceLink), "some _text_"),
+            (Str, "some "),
+            (Enter(Emphasis), "_"),
+            (Str, "text"),
+            (Exit(Emphasis), "_"),
+            (Exit(ReferenceLink), "some _text_"),
         );
     }
 
