@@ -91,7 +91,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::DescriptionTerm => self.out.write_str("<dt")?,
                         Container::CodeBlock { .. } => self.out.write_str("<pre")?,
                         Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
-                        Container::Link(dst, ..) => write!(self.out, r#"<a href="{}""#, dst)?,
+                        Container::Link(dst, ..) => {
+                            if dst.is_empty() {
+                                self.out.write_str("<a")?;
+                            } else {
+                                write!(self.out, r#"<a href="{}""#, dst)?;
+                            }
+                        }
                         Container::Image(..) => {
                             self.text_only = true;
                             self.out.write_str("<img")?;
