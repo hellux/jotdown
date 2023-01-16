@@ -930,6 +930,13 @@ mod test {
     #[test]
     fn attr() {
         test_parse!(
+            "word{a=b}",
+            (Attributes, "{a=b}"),
+            (Enter(Span), ""),
+            (Str, "word"),
+            (Exit(Span), ""),
+        );
+        test_parse!(
             "some word{.a}{.b} with attrs",
             (Str, "some "),
             (Attributes, "{.a}{.b}"),
