@@ -239,41 +239,52 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .map_or(false, |e| e.kind == EventKind::Str)
         {
             let mut ahead = self.lexer.inner().clone();
-            let mut attr_len = attr::valid(std::iter::once('{').chain(&mut ahead)).0 - 1;
+            let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
+            attr_len -= 1; // rm {
             if attr_len > 0 {
                 while attr_len > 0 {
-                    self.lexer = lex::Lexer::new(ahead.clone());
                     self.span = self.span.extend(attr_len);
-                    attr_len = attr::valid(&mut ahead).0;
+                    self.lexer = lex::Lexer::new(ahead.clone());
+
+                    let (l, non_empty) = attr::valid(&mut ahead);
+                    attr_len = l;
+                    has_attr |= non_empty;
                 }
 
-                let i = self
-                    .events
-                    .iter()
-                    .rposition(|e| e.kind != EventKind::Str)
-                    .map_or(0, |i| i + 1);
-                let span_str = Span::new(
-                    self.events[i].span.start(),
-                    self.events[self.events.len() - 1].span.end(),
-                );
-                self.events.drain(i..);
+                Some(if has_attr {
+                    let i = self
+                        .events
+                        .iter()
+                        .rposition(|e| e.kind != EventKind::Str)
+                        .map_or(0, |i| i + 1);
+                    let span_str = Span::new(
+                        self.events[i].span.start(),
+                        self.events[self.events.len() - 1].span.end(),
+                    );
+                    self.events.drain(i..);
 
-                self.events.push_back(Event {
-                    kind: EventKind::Attributes,
-                    span: self.span,
-                });
-                self.events.push_back(Event {
-                    kind: EventKind::Enter(Container::Span),
-                    span: Span::empty_at(span_str.start()),
-                });
-                self.events.push_back(Event {
-                    kind: EventKind::Str,
-                    span: span_str,
-                });
+                    self.events.push_back(Event {
+                        kind: EventKind::Attributes,
+                        span: self.span,
+                    });
+                    self.events.push_back(Event {
+                        kind: EventKind::Enter(Container::Span),
+                        span: Span::empty_at(span_str.start()),
+                    });
+                    self.events.push_back(Event {
+                        kind: EventKind::Str,
+                        span: span_str,
+                    });
 
-                Some(Event {
-                    kind: EventKind::Exit(Container::Span),
-                    span: Span::empty_at(span_str.end()),
+                    Event {
+                        kind: EventKind::Exit(Container::Span),
+                        span: Span::empty_at(span_str.end()),
+                    }
+                } else {
+                    Event {
+                        kind: EventKind::Placeholder,
+                        span: Span::empty_at(self.span.start()),
+                    }
                 })
             } else {
                 None
@@ -345,22 +356,36 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         };
                         self.openers.drain(o..);
                         let mut ahead = self.lexer.inner().clone();
-                        let mut attr_len = attr::valid(&mut ahead).0;
+                        let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
                         if attr_len > 0 {
                             let span_closer = self.span;
-                            self.events[e_attr].span = Span::empty_at(self.span.end());
-                            self.events[e_attr].kind = EventKind::Attributes;
+                            self.span = Span::empty_at(self.span.end());
                             while attr_len > 0 {
+                                self.span = self.span.extend(attr_len);
                                 self.lexer = lex::Lexer::new(ahead.clone());
-                                self.span = self.events[e_attr].span.extend(attr_len);
-                                self.events[e_attr].span = self.span;
-                                attr_len = attr::valid(&mut ahead).0;
+
+                                let (l, non_empty) = attr::valid(&mut ahead);
+                                has_attr |= non_empty;
+                                attr_len = l;
+                            }
+
+                            if has_attr {
+                                self.events[e_attr] = Event {
+                                    kind: EventKind::Attributes,
+                                    span: self.span,
+                                };
                             }
 
                             if event.is_none() {
-                                self.events[e_opener].kind = EventKind::Enter(Container::Span);
+                                if has_attr {
+                                    self.events[e_opener].kind = EventKind::Enter(Container::Span);
+                                }
                                 event = Some(Event {
-                                    kind: EventKind::Exit(Container::Span),
+                                    kind: if has_attr {
+                                        EventKind::Exit(Container::Span)
+                                    } else {
+                                        EventKind::Str
+                                    },
                                     span: span_closer,
                                 });
                             }
@@ -916,6 +941,23 @@ mod test {
     }
 
     #[test]
+    fn container_attr_empty() {
+        test_parse!(
+            "_abc def_{}",
+            (Enter(Emphasis), "_"),
+            (Str, "abc def"),
+            (Exit(Emphasis), "_"),
+        );
+        test_parse!(
+            "_abc def_{ % comment % } ghi",
+            (Enter(Emphasis), "_"),
+            (Str, "abc def"),
+            (Exit(Emphasis), "_"),
+            (Str, " ghi"),
+        );
+    }
+
+    #[test]
     fn container_attr_multiple() {
         test_parse!(
             "_abc def_{.a}{.b}{.c} {.d}",
@@ -945,5 +987,11 @@ mod test {
             (Exit(Span), ""),
             (Str, " with attrs"),
         );
+    }
+
+    #[test]
+    fn attr_empty() {
+        test_parse!("word{}", (Str, "word"));
+        test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
     }
 }
