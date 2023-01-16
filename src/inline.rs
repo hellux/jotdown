@@ -239,12 +239,12 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .map_or(false, |e| e.kind == EventKind::Str)
         {
             let mut ahead = self.lexer.inner().clone();
-            let mut attr_len = attr::valid(std::iter::once('{').chain(&mut ahead)) - 1;
+            let mut attr_len = attr::valid(std::iter::once('{').chain(&mut ahead)).0 - 1;
             if attr_len > 0 {
                 while attr_len > 0 {
                     self.lexer = lex::Lexer::new(ahead.clone());
                     self.span = self.span.extend(attr_len);
-                    attr_len = attr::valid(&mut ahead);
+                    attr_len = attr::valid(&mut ahead).0;
                 }
 
                 let i = self
@@ -345,7 +345,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         };
                         self.openers.drain(o..);
                         let mut ahead = self.lexer.inner().clone();
-                        let mut attr_len = attr::valid(&mut ahead);
+                        let mut attr_len = attr::valid(&mut ahead).0;
                         if attr_len > 0 {
                             let span_closer = self.span;
                             self.events[e_attr].span = Span::empty_at(self.span.end());
@@ -354,7 +354,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 self.lexer = lex::Lexer::new(ahead.clone());
                                 self.span = self.events[e_attr].span.extend(attr_len);
                                 self.events[e_attr].span = self.span;
-                                attr_len = attr::valid(&mut ahead);
+                                attr_len = attr::valid(&mut ahead).0;
                             }
 
                             if event.is_none() {
