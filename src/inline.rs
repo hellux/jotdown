@@ -58,7 +58,7 @@ pub enum EventKind {
     Str,
     Whitespace,
     Attributes,
-    AttributesDummy,
+    Placeholder,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -372,10 +372,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
                 .unwrap_or_else(|| {
                     self.openers.push((delim, self.events.len()));
-                    // push dummy attributes in case attributes are encountered after closing
-                    // delimiter
+                    // push dummy event in case attributes are encountered after closing delimiter
                     self.events.push_back(Event {
-                        kind: EventKind::AttributesDummy,
+                        kind: EventKind::Placeholder,
                         span: Span::empty_at(self.span.start()),
                     });
                     // use str for now, replace if closed later
@@ -562,7 +561,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
                     while self.events.front().map_or(false, |e| {
                         matches!(
                             e.kind,
-                            EventKind::Str | EventKind::Whitespace | EventKind::AttributesDummy
+                            EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
                         )
                     }) {
                         let ev = self.events.pop_front().unwrap();
@@ -574,7 +573,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
                         span,
                     })
                 }
-                EventKind::AttributesDummy => self.next(),
+                EventKind::Placeholder => self.next(),
                 _ => Some(e),
             }
         })

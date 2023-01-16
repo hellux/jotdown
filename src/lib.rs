@@ -359,7 +359,7 @@ impl<'s> Parser<'s> {
                 inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
                 inline::EventKind::Whitespace
                 | inline::EventKind::Attributes
-                | inline::EventKind::AttributesDummy => {
+                | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
             })
