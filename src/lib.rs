@@ -387,15 +387,15 @@ impl<'s> Parser<'s> {
                         Event::End(t)
                     }
                 }
-                inline::EventKind::Atom(a) => match a {
-                    inline::Atom::Ellipsis => Event::Atom(Atom::Ellipsis),
-                    inline::Atom::EnDash => Event::Atom(Atom::EnDash),
-                    inline::Atom::EmDash => Event::Atom(Atom::EmDash),
-                    inline::Atom::Nbsp => Event::Atom(Atom::NonBreakingSpace),
-                    inline::Atom::Softbreak => Event::Atom(Atom::Softbreak),
-                    inline::Atom::Hardbreak => Event::Atom(Atom::Hardbreak),
-                    inline::Atom::Escape => Event::Atom(Atom::Escape),
-                },
+                inline::EventKind::Atom(a) => Event::Atom(match a {
+                    inline::Atom::Ellipsis => Atom::Ellipsis,
+                    inline::Atom::EnDash => Atom::EnDash,
+                    inline::Atom::EmDash => Atom::EmDash,
+                    inline::Atom::Nbsp => Atom::NonBreakingSpace,
+                    inline::Atom::Softbreak => Atom::Softbreak,
+                    inline::Atom::Hardbreak => Atom::Hardbreak,
+                    inline::Atom::Escape => Atom::Escape,
+                }),
                 inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
                 inline::EventKind::Whitespace
                 | inline::EventKind::Attributes
