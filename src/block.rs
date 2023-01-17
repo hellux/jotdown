@@ -730,6 +730,10 @@ mod test {
     #[test]
     fn block_link_definition() {
         test_block!("[tag]: url\n", Block::Leaf(LinkDefinition), "tag", 1);
+    }
+
+    #[test]
+    fn block_link_definition_multiline() {
         test_block!(
             concat!(
                 "[tag]: uuu\n",

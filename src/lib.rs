@@ -285,7 +285,7 @@ impl<'s> Parser<'s> {
                 {
                     let tag = e.span.of(src);
                     // TODO borrow url string if single inline
-                    let url = tree.inlines().map(|sp| sp.of(src)).collect();
+                    let url = tree.inlines().map(|sp| sp.of(src).trim()).collect();
                     defs.insert(tag, url);
                 }
             }
@@ -686,6 +686,44 @@ mod test {
             ),
             Str("text".into()),
             End(Image("url".into(), SpanLinkType::Reference)),
+            End(Paragraph),
+            Atom(Blankline),
+        );
+    }
+
+    #[test]
+    fn link_reference_multiline() {
+        test_parse!(
+            concat!(
+                "[text][tag]\n",
+                "\n",
+                "[tag]: u\n",
+                " rl\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            Atom(Blankline),
+        );
+        test_parse!(
+            concat!(
+                "[text][tag]\n",
+                "\n",
+                "[tag]:\n",
+                " url\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Atom(Blankline),
         );
