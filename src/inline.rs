@@ -67,7 +67,7 @@ pub struct Event {
     pub span: Span,
 }
 
-pub struct Parser<I> {
+pub struct Parser<I: Iterator + Clone> {
     /// Lexer, hosting upcoming source.
     lexer: lex::Lexer<I>,
     /// Span of current event.
@@ -177,9 +177,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             Some(lex::Kind::Open(Delimiter::BraceEqual))
                         )
                     {
-                        let mut ahead = self.lexer.inner().clone();
+                        let mut ahead = self.lexer.chars();
                         let mut end = false;
                         let len = (&mut ahead)
+                            .skip(2) // {=
                             .take_while(|c| {
                                 if *c == '{' {
                                     return false;
@@ -191,8 +192,16 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             })
                             .count();
                         if len > 0 && end {
+                            let tok = self.eat();
+                            debug_assert_eq!(
+                                tok,
+                                Some(lex::Token {
+                                    kind: lex::Kind::Open(Delimiter::BraceEqual),
+                                    len: 2,
+                                })
+                            );
                             self.lexer = lex::Lexer::new(ahead);
-                            let span_format = Span::by_len(self.span.end() + "{=".len(), len);
+                            let span_format = Span::by_len(self.span.end(), len);
                             kind = RawFormat;
                             self.events[opener_event].kind = EventKind::Enter(kind);
                             self.events[opener_event].span = span_format;
@@ -238,7 +247,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .back()
                 .map_or(false, |e| e.kind == EventKind::Str)
         {
-            let mut ahead = self.lexer.inner().clone();
+            let mut ahead = self.lexer.chars();
             let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
             attr_len -= 1; // rm {
             if attr_len > 0 {
@@ -296,7 +305,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_autolink(&mut self, first: &lex::Token) -> Option<Event> {
         if first.kind == lex::Kind::Sym(Symbol::Lt) {
-            let mut ahead = self.lexer.inner().clone();
+            let mut ahead = self.lexer.chars();
             let mut end = false;
             let mut is_url = false;
             let len = (&mut ahead)
@@ -372,7 +381,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             }
                         }
 
-                        let mut ahead = self.lexer.inner().clone();
+                        let mut ahead = self.lexer.chars();
                         let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
                         if attr_len > 0 {
                             let span_closer = self.span;
@@ -429,7 +438,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<Event> {
-        let mut ahead = self.lexer.inner().clone();
+        let mut ahead = self.lexer.chars();
         match ahead.next() {
             Some(opener @ ('[' | '(')) => {
                 let img = ty == SpanType::Image;

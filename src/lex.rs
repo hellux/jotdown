@@ -82,8 +82,9 @@ impl Sequence {
 }
 
 #[derive(Clone)]
-pub(crate) struct Lexer<I> {
+pub(crate) struct Lexer<I: Iterator + Clone> {
     chars: I,
+    chars_non_peeked: I,
     /// Next character should be escaped.
     escape: bool,
     /// Token to be peeked or next'ed.
@@ -95,26 +96,30 @@ pub(crate) struct Lexer<I> {
 impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     pub fn new(chars: I) -> Lexer<I> {
         Lexer {
-            chars,
+            chars: chars.clone(),
+            chars_non_peeked: chars,
             escape: false,
             next: None,
             len: 0,
         }
     }
 
+    /// NOTE: Peeked [`Kind::Text`] tokens are only one char long, they may be longer when
+    /// consumed.
     pub fn peek(&mut self) -> Option<&Token> {
         if self.next.is_none() {
-            self.next = self.next_token();
+            self.next = self.token();
         }
         self.next.as_ref()
     }
 
-    pub fn inner(&self) -> &I {
-        &self.chars
+    pub fn chars(&self) -> I {
+        self.chars_non_peeked.clone()
     }
 
     fn next_token(&mut self) -> Option<Token> {
         let mut current = self.token();
+        self.chars_non_peeked = self.chars.clone();
 
         // concatenate text tokens
         if let Some(Token { kind: Text, len }) = &mut current {
@@ -145,6 +150,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 
     fn token(&mut self) -> Option<Token> {
+        self.chars_non_peeked = self.chars.clone();
         self.len = 0;
 
         let first = self.eat_char()?;
@@ -271,7 +277,13 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Lexer<I> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next.take().or_else(|| self.next_token())
+        self.next
+            .take()
+            .map(|x| {
+                self.chars_non_peeked = self.chars.clone();
+                x
+            })
+            .or_else(|| self.next_token())
     }
 }
 
