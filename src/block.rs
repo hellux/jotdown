@@ -80,7 +80,7 @@ pub enum Container {
     /// Span is the list marker.
     ListItem,
 
-    /// Span is `[^`.
+    /// Span is footnote tag.
     Footnote,
 }
 
