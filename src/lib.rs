@@ -265,10 +265,12 @@ impl<'s> Container<'s> {
 
 pub struct Parser<'s> {
     src: &'s str,
-    tree: block::Tree,
+    tree: tree::Branch<block::Node, block::Atom>,
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
     link_definitions: std::collections::HashMap<&'s str, String>,
+
+    _tree_data: block::Tree,
 }
 
 impl<'s> Parser<'s> {
@@ -277,27 +279,30 @@ impl<'s> Parser<'s> {
         let tree = block::parse(src);
 
         let link_definitions = {
-            let mut tree = tree.clone(); // TODO avoid clone
+            let mut branch = tree.root();
             let mut defs = std::collections::HashMap::new();
-            while let Some(e) = tree.next() {
+            while let Some(e) = branch.next() {
                 if let tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) =
                     e.kind
                 {
                     let tag = e.span.of(src);
                     // TODO borrow url string if single inline
-                    let url = tree.inlines().map(|sp| sp.of(src).trim()).collect();
+                    let url = branch.take_inlines().map(|sp| sp.of(src).trim()).collect();
                     defs.insert(tag, url);
                 }
             }
             defs
         };
 
+        let branch = tree.root();
+
         Self {
             src,
-            tree,
+            tree: branch,
             inlines: span::InlineSpans::new(src),
             inline_parser: None,
             link_definitions,
+            _tree_data: tree,
         }
     }
 }
@@ -423,12 +428,12 @@ impl<'s> Parser<'s> {
                     if matches!(c, block::Node::Leaf(block::Leaf::LinkDefinition)) =>
                 {
                     // ignore link definitions
-                    self.tree.inlines().last();
+                    self.tree.take_inlines().last();
                     continue;
                 }
                 tree::EventKind::Enter(c) => match c {
                     block::Node::Leaf(l) => {
-                        self.inlines.set_spans(self.tree.inlines());
+                        self.inlines.set_spans(self.tree.take_inlines());
                         self.inline_parser = Some(inline::Parser::new(self.inlines.chars()));
                         let container = Container::from_leaf_block(content, l);
                         Event::Start(container, attributes)

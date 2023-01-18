@@ -14,12 +14,7 @@ pub struct Event<C, A> {
     pub span: Span,
 }
 
-#[derive(Clone)]
-pub struct Tree<C, A> {
-    nodes: Vec<Node<C, A>>,
-    branch: Vec<NodeIndex>,
-    head: Option<NodeIndex>,
-}
+pub struct Tree<C, A>(Box<[Node<C, A>]>);
 
 #[derive(Clone)]
 pub struct Inlines<'t, C, A> {
@@ -35,28 +30,34 @@ impl<'t, C, A> Iterator for Inlines<'t, C, A> {
 }
 
 impl<C, A> Tree<C, A> {
-    fn new(nodes: Vec<Node<C, A>>) -> Self {
-        let head = nodes[NodeIndex::root().index()].next;
-        Self {
+    pub fn root(&self) -> Branch<C, A> {
+        let head = self.0[NodeIndex::root().index()].next;
+        // SAFETY: tree must outlive the branch
+        let nodes = unsafe { std::mem::transmute::<&[Node<C, A>], &'static [Node<C, A>]>(&self.0) };
+        Branch {
             nodes,
             branch: Vec::new(),
             head,
         }
     }
+}
 
-    pub fn inlines(&self) -> Inlines<C, A> {
-        let start = self.nodes[self.head.unwrap().index()].next.unwrap().index();
-        let end = start + self.spans().count();
-        Inlines {
-            iter: self.nodes[start..end].iter(),
-        }
-    }
+#[derive(Clone)]
+pub struct Branch<C: 'static, A: 'static> {
+    nodes: &'static [Node<C, A>],
+    branch: Vec<NodeIndex>,
+    head: Option<NodeIndex>,
+}
 
-    pub fn spans(&self) -> impl Iterator<Item = Span> + '_ {
-        let mut head = self.head;
+impl<C, A> Branch<C, A> {
+    /// Retrieve all inlines until the end of the current container. Panics if any upcoming node is
+    /// not an inline node.
+    pub fn take_inlines(&mut self) -> impl Iterator<Item = Span> + '_ {
+        let mut head = self.head.take();
         std::iter::from_fn(move || {
             head.take().map(|h| {
                 let n = &self.nodes[h.index()];
+                assert!(matches!(n.kind, NodeKind::Inline));
                 head = n.next;
                 n.span
             })
@@ -64,7 +65,7 @@ impl<C, A> Tree<C, A> {
     }
 }
 
-impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
+impl<C: Clone, A: Clone> Iterator for Branch<C, A> {
     type Item = Event<C, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -188,7 +189,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
-        Tree::new(self.nodes)
+        Tree(self.nodes.into_boxed_slice())
     }
 
     fn add_node(&mut self, node: Node<C, A>) {
@@ -220,13 +221,15 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 }
 
-impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Builder<C, A> {
+impl<C: std::fmt::Debug + Clone + 'static, A: std::fmt::Debug + Clone + 'static> std::fmt::Debug
+    for Builder<C, A>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.clone().finish().fmt(f)
+        self.clone().finish().root().fmt(f)
     }
 }
 
-impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Tree<C, A> {
+impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Branch<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
