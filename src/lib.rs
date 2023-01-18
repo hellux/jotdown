@@ -25,7 +25,7 @@ pub enum Event<'s> {
     /// A string object, text only.
     Str(CowStr<'s>),
     /// An atomic element.
-    Atom(Atom),
+    Atom(Atom<'s>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub enum Container<'s> {
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
-    Footnote { tag: &'s str },
+    Footnote { tag: &'s str, number: usize },
     /// A table element.
     Table,
     /// A row element of a table.
@@ -212,7 +212,9 @@ pub enum OrderedListStyle {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Atom {
+pub enum Atom<'s> {
+    /// A footnote reference.
+    FootnoteReference(&'s str, usize),
     /// A horizontal ellipsis, i.e. a set of three periods.
     Ellipsis,
     /// An en dash.
@@ -257,7 +259,7 @@ impl<'s> Container<'s> {
         match c {
             block::Container::Blockquote => Self::Blockquote,
             block::Container::Div => panic!(),
-            block::Container::Footnote => Self::Footnote { tag: content },
+            block::Container::Footnote => panic!(),
             block::Container::ListItem => todo!(),
         }
     }
@@ -272,6 +274,14 @@ pub struct Parser<'s> {
     tree: block::Branch,
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+    /// Footnote references in the order they were encountered, without duplicates.
+    footnote_references: Vec<&'s str>,
+    /// Cache of footnotes to emit at the end.
+    footnotes: std::collections::HashMap<&'s str, block::Branch>,
+    /// Next or current footnote being parsed and emitted.
+    footnote_index: usize,
+    /// Currently within a footnote.
+    footnote_active: bool,
 }
 
 impl<'s> Parser<'s> {
@@ -305,6 +315,10 @@ impl<'s> Parser<'s> {
             _tree_data: tree,
             link_definitions,
             tree: branch,
+            footnote_references: Vec::new(),
+            footnotes: std::collections::HashMap::new(),
+            footnote_index: 0,
+            footnote_active: false,
             inlines: span::InlineSpans::new(src),
             inline_parser: None,
         }
@@ -389,6 +403,30 @@ impl<'s> Parser<'s> {
                     }
                 }
                 inline::EventKind::Atom(a) => Event::Atom(match a {
+                    inline::Atom::FootnoteReference => {
+                        let tag = match self.inlines.src(inline.span) {
+                            CowStr::Borrowed(s) => s,
+                            CowStr::Owned(..) => panic!(),
+                        };
+                        let number = self
+                            .footnote_references
+                            .iter()
+                            .position(|t| *t == tag)
+                            .map_or_else(
+                                || {
+                                    self.footnote_references.push(tag);
+                                    self.footnote_references.len()
+                                },
+                                |i| i + 1,
+                            );
+                        Atom::FootnoteReference(
+                            match self.inlines.src(inline.span) {
+                                CowStr::Borrowed(s) => s,
+                                CowStr::Owned(..) => panic!(),
+                            },
+                            number,
+                        )
+                    }
                     inline::Atom::Ellipsis => Atom::Ellipsis,
                     inline::Atom::EnDash => Atom::EnDash,
                     inline::Atom::EmDash => Atom::EmDash,
@@ -439,6 +477,10 @@ impl<'s> Parser<'s> {
                             block::Container::Div { .. } => Container::Div {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
+                            block::Container::Footnote => {
+                                self.footnotes.insert(content, self.tree.take_branch());
+                                continue;
+                            }
                             _ => Container::from_container_block(content, c),
                         };
                         Event::Start(container, attributes)
@@ -456,13 +498,43 @@ impl<'s> Parser<'s> {
         }
         None
     }
+
+    fn footnote(&mut self) -> Option<Event<'s>> {
+        if self.footnote_active {
+            let tag = self.footnote_references.get(self.footnote_index).unwrap();
+            self.footnote_index += 1;
+            self.footnote_active = false;
+            Some(Event::End(Container::Footnote {
+                tag,
+                number: self.footnote_index,
+            }))
+        } else if let Some(tag) = self.footnote_references.get(self.footnote_index) {
+            self.tree = self
+                .footnotes
+                .remove(tag)
+                .unwrap_or_else(block::Branch::empty);
+            self.footnote_active = true;
+
+            Some(Event::Start(
+                Container::Footnote {
+                    tag,
+                    number: self.footnote_index + 1,
+                },
+                Attributes::new(),
+            ))
+        } else {
+            None
+        }
+    }
 }
 
 impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inline().or_else(|| self.block())
+        self.inline()
+            .or_else(|| self.block())
+            .or_else(|| self.footnote())
     }
 }
 
@@ -727,6 +799,144 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Atom(Blankline),
+        );
+    }
+
+    #[test]
+    fn footnote_references() {
+        test_parse!(
+            "[^a][^b][^c]",
+            Start(Paragraph, Attributes::new()),
+            Atom(FootnoteReference("a", 1)),
+            Atom(FootnoteReference("b", 2)),
+            Atom(FootnoteReference("c", 3)),
+            End(Paragraph),
+            Start(
+                Footnote {
+                    tag: "a",
+                    number: 1
+                },
+                Attributes::new()
+            ),
+            End(Footnote {
+                tag: "a",
+                number: 1
+            }),
+            Start(
+                Footnote {
+                    tag: "b",
+                    number: 2
+                },
+                Attributes::new()
+            ),
+            End(Footnote {
+                tag: "b",
+                number: 2
+            }),
+            Start(
+                Footnote {
+                    tag: "c",
+                    number: 3
+                },
+                Attributes::new()
+            ),
+            End(Footnote {
+                tag: "c",
+                number: 3
+            }),
+        );
+    }
+
+    #[test]
+    fn footnote() {
+        test_parse!(
+            "[^a]\n\n[^a]: a\n",
+            Start(Paragraph, Attributes::new()),
+            Atom(FootnoteReference("a", 1)),
+            End(Paragraph),
+            Atom(Blankline),
+            Start(
+                Footnote {
+                    tag: "a",
+                    number: 1
+                },
+                Attributes::new()
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("a".into()),
+            End(Paragraph),
+            End(Footnote {
+                tag: "a",
+                number: 1
+            }),
+        );
+    }
+
+    #[test]
+    fn footnote_multiblock() {
+        test_parse!(
+            concat!(
+                "[^a]\n",
+                "\n",
+                "[^a]: abc\n",
+                "\n",
+                " def", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Atom(FootnoteReference("a", 1)),
+            End(Paragraph),
+            Atom(Blankline),
+            Start(
+                Footnote {
+                    tag: "a",
+                    number: 1
+                },
+                Attributes::new()
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("abc".into()),
+            End(Paragraph),
+            Atom(Blankline),
+            Start(Paragraph, Attributes::new()),
+            Str("def".into()),
+            End(Paragraph),
+            End(Footnote {
+                tag: "a",
+                number: 1
+            }),
+        );
+    }
+
+    #[test]
+    fn footnote_post() {
+        test_parse!(
+            concat!(
+                "[^a]\n",
+                "\n",
+                "[^a]: note\n",
+                "para\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Atom(FootnoteReference("a", 1)),
+            End(Paragraph),
+            Atom(Blankline),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
+            Start(
+                Footnote {
+                    tag: "a",
+                    number: 1
+                },
+                Attributes::new()
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("note".into()),
+            End(Paragraph),
+            End(Footnote {
+                tag: "a",
+                number: 1
+            }),
         );
     }
 

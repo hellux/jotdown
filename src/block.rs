@@ -619,6 +619,32 @@ mod test {
     }
 
     #[test]
+    fn parse_footnote_post() {
+        test_parse!(
+            concat!(
+                "[^a]\n",
+                "\n",
+                "[^a]: note\n",
+                "\n",
+                "para\n", //
+            ),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "[^a]"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Enter(Container(Footnote)), "a"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "note"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(Footnote)), "a"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "para"),
+            (Exit(Leaf(Paragraph)), ""),
+        );
+    }
+
+    #[test]
     fn parse_attr() {
         test_parse!(
             "{.some_class}\npara\n",
@@ -752,6 +778,44 @@ mod test {
             Block::Leaf(LinkDefinition),
             "tag",
             1,
+        );
+    }
+
+    #[test]
+    fn block_footnote_empty() {
+        test_block!("[^tag]:\n", Block::Container(Footnote), "tag", 1);
+    }
+
+    #[test]
+    fn block_footnote_single() {
+        test_block!("[^tag]: a\n", Block::Container(Footnote), "tag", 1);
+    }
+
+    #[test]
+    fn block_footnote_multiline() {
+        test_block!(
+            concat!(
+                "[^tag]: a\n",
+                " b\n", //
+            ),
+            Block::Container(Footnote),
+            "tag",
+            2,
+        );
+    }
+
+    #[test]
+    fn block_footnote_multiline_post() {
+        test_block!(
+            concat!(
+                "[^tag]: a\n",
+                " b\n",
+                "\n",
+                "para\n", //
+            ),
+            Block::Container(Footnote),
+            "tag",
+            3,
         );
     }
 }

@@ -10,6 +10,7 @@ use Container::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
+    FootnoteReference,
     Softbreak,
     Hardbreak,
     Escape,
@@ -111,6 +112,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             self.parse_verbatim(&first)
                 .or_else(|| self.parse_attributes(&first))
                 .or_else(|| self.parse_autolink(&first))
+                .or_else(|| self.parse_footnote_reference(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
@@ -335,6 +337,52 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     kind: EventKind::Exit(Autolink),
                     span: self.span,
                 }
+            })
+        } else {
+            None
+        }
+    }
+
+    fn parse_footnote_reference(&mut self, first: &lex::Token) -> Option<Event> {
+        if first.kind == lex::Kind::Open(Delimiter::Bracket)
+            && matches!(
+                self.peek(),
+                Some(lex::Token {
+                    kind: lex::Kind::Sym(Symbol::Caret),
+                    ..
+                })
+            )
+        {
+            let tok = self.eat();
+            debug_assert_eq!(
+                tok,
+                Some(lex::Token {
+                    kind: lex::Kind::Sym(Symbol::Caret),
+                    len: 1,
+                })
+            );
+            let mut ahead = self.lexer.chars();
+            let mut end = false;
+            let len = (&mut ahead)
+                .take_while(|c| {
+                    if *c == '[' {
+                        return false;
+                    }
+                    if *c == ']' {
+                        end = true;
+                    };
+                    !end && *c != '\n'
+                })
+                .count();
+            end.then(|| {
+                self.lexer = lex::Lexer::new(ahead);
+                self.span = Span::by_len(self.span.end(), len);
+                let ev = Event {
+                    kind: EventKind::Atom(FootnoteReference),
+                    span: self.span,
+                };
+                self.span = Span::by_len(self.span.end(), 1);
+                ev
             })
         } else {
             None
@@ -633,6 +681,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
 
 #[cfg(test)]
 mod test {
+    use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
     use super::Verbatim;
@@ -926,6 +975,16 @@ mod test {
             (Exit(Autolink), ">")
         );
         test_parse!("<not-a-url>", (Str, "<not-a-url>"));
+    }
+
+    #[test]
+    fn footnote_reference() {
+        test_parse!(
+            "text[^footnote]. more text",
+            (Str, "text"),
+            (Atom(FootnoteReference), "footnote"),
+            (Str, ". more text"),
+        );
     }
 
     #[test]

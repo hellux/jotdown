@@ -50,6 +50,14 @@ pub struct Branch<C: 'static, A: 'static> {
 }
 
 impl<C, A> Branch<C, A> {
+    pub fn empty() -> Self {
+        Self {
+            nodes: &[],
+            branch: Vec::new(),
+            head: None,
+        }
+    }
+
     /// Count number of direct children nodes.
     pub fn count_children(&self) -> usize {
         let mut head = self.head;
@@ -62,8 +70,6 @@ impl<C, A> Branch<C, A> {
         count
     }
 
-    /// Split off the remaining part of the current branch. The returned [`Branch`] will continue on
-    /// the branch, this [`Branch`] will skip over the current branch.
     pub fn take_branch(&mut self) -> Self {
         let head = self.head.take();
         self.head = self.branch.pop();

@@ -48,25 +48,31 @@ enum Raw {
     Other,
 }
 
-struct Writer<I, W> {
-    events: I,
+struct Writer<I: Iterator, W> {
+    events: std::iter::Peekable<I>,
     out: W,
     raw: Raw,
     text_only: bool,
+    encountered_footnote: bool,
+    footnote_number: Option<std::num::NonZeroUsize>,
+    footnote_backlink_written: bool,
 }
 
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
     fn new(events: I, out: W) -> Self {
         Self {
-            events,
+            events: events.peekable(),
             out,
             raw: Raw::None,
             text_only: false,
+            encountered_footnote: false,
+            footnote_number: None,
+            footnote_backlink_written: false,
         }
     }
 
     fn write(&mut self) -> std::fmt::Result {
-        for e in &mut self.events {
+        while let Some(e) = self.events.next() {
             match e {
                 Event::Start(c, attrs) => {
                     if c.is_block() {
@@ -81,7 +87,18 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::ListItem => self.out.write_str("<li")?,
                         Container::DescriptionList => self.out.write_str("<dl")?,
                         Container::DescriptionDetails => self.out.write_str("<dd")?,
-                        Container::Footnote { .. } => todo!(),
+                        Container::Footnote { number, .. } => {
+                            assert!(self.footnote_number.is_none());
+                            self.footnote_number = Some((*number).try_into().unwrap());
+                            if !self.encountered_footnote {
+                                self.encountered_footnote = true;
+                                self.out
+                                    .write_str("<section role=\"doc-endnotes\">\n<hr>\n<ol>\n")?;
+                            }
+                            write!(self.out, "<li id=\"fn{}\">", number)?;
+                            self.footnote_backlink_written = false;
+                            continue;
+                        }
                         Container::Table => self.out.write_str("<table")?,
                         Container::TableRow => self.out.write_str("<tr")?,
                         Container::Div { .. } => self.out.write_str("<div")?,
@@ -194,11 +211,36 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                         Container::ListItem => self.out.write_str("</li>")?,
                         Container::DescriptionList => self.out.write_str("</dl>")?,
                         Container::DescriptionDetails => self.out.write_str("</dd>")?,
-                        Container::Footnote { .. } => todo!(),
+                        Container::Footnote { number, .. } => {
+                            if !self.footnote_backlink_written {
+                                write!(
+                                    self.out,
+                                    "\n<p><a href=\"#fnref{}\" role=\"doc-backlink\">↩︎︎</a></p>",
+                                    number,
+                                )?;
+                            }
+                            self.out.write_str("\n</li>")?;
+                            self.footnote_number = None;
+                        }
                         Container::Table => self.out.write_str("</table>")?,
                         Container::TableRow => self.out.write_str("</tr>")?,
                         Container::Div { .. } => self.out.write_str("</div>")?,
-                        Container::Paragraph => self.out.write_str("</p>")?,
+                        Container::Paragraph => {
+                            if let Some(num) = self.footnote_number {
+                                if matches!(
+                                    self.events.peek(),
+                                    Some(Event::End(Container::Footnote { .. }))
+                                ) {
+                                    write!(
+                                        self.out,
+                                        r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a>"##,
+                                        num
+                                    )?;
+                                    self.footnote_backlink_written = true;
+                                }
+                            }
+                            self.out.write_str("</p>")?;
+                        }
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
@@ -268,6 +310,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                 }
 
                 Event::Atom(a) => match a {
+                    Atom::FootnoteReference(_tag, number) => {
+                        write!(
+                            self.out,
+                            r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
+                            number, number, number
+                        )?;
+                    }
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
                     Atom::EnDash => self.out.write_str("&ndash;")?,
                     Atom::EmDash => self.out.write_str("&mdash;")?,
@@ -279,6 +328,10 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                 },
             }
         }
+        if self.encountered_footnote {
+            self.out.write_str("\n</ol>\n</section>")?;
+        }
+        self.out.write_char('\n')?;
         Ok(())
     }
 }
