@@ -62,6 +62,22 @@ impl<C, A> Branch<C, A> {
         count
     }
 
+    /// Split off the remaining part of the current branch. The returned [`Branch`] will continue on
+    /// the branch, this [`Branch`] will skip over the current branch.
+    pub fn take_branch(&mut self) -> Self {
+        let head = self.head.take();
+        self.head = self.branch.pop();
+        if let Some(h) = self.head {
+            let n = &self.nodes[h.index()];
+            self.head = n.next;
+        }
+        Self {
+            nodes: self.nodes,
+            branch: Vec::new(),
+            head,
+        }
+    }
+
     /// Retrieve all inlines until the end of the current container. Panics if any upcoming node is
     /// not an inline node.
     pub fn take_inlines(&mut self) -> impl Iterator<Item = Span> + '_ {
@@ -270,6 +286,9 @@ impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for
 mod test {
     use crate::Span;
 
+    use super::Event;
+    use super::EventKind;
+
     #[test]
     fn fmt() {
         let mut tree = super::Builder::new();
@@ -310,40 +329,79 @@ mod test {
     }
 
     #[test]
-    fn fmt_container() {
-        let mut tree: super::Builder<u8, u16> = super::Builder::new();
-        tree.enter(1, Span::new(0, 1));
-        tree.atom(11, Span::new(0, 1));
-        tree.atom(12, Span::new(0, 1));
-        tree.exit();
-        tree.enter(2, Span::new(1, 5));
-        tree.enter(21, Span::new(2, 5));
-        tree.enter(211, Span::new(3, 4));
-        tree.atom(2111, Span::new(3, 4));
-        tree.exit();
-        tree.exit();
-        tree.enter(22, Span::new(4, 5));
-        tree.atom(221, Span::new(4, 5));
-        tree.exit();
-        tree.exit();
-        tree.enter(3, Span::new(5, 6));
-        tree.atom(31, Span::new(5, 6));
-        tree.exit();
+    fn branch_take_branch() {
+        let mut b = super::Builder::new();
+        let sp = Span::new(0, 0);
+        b.enter(1, sp);
+        b.atom(11, sp);
+        b.exit();
+        b.enter(2, sp);
+        b.enter(21, sp);
+        b.atom(211, sp);
+        b.exit();
+        b.exit();
+        b.enter(3, sp);
+        b.atom(31, sp);
+        let tree = b.finish();
+
+        let mut root_branch = tree.root();
         assert_eq!(
-            format!("{:?}", tree),
-            concat!(
-                "1 (0:1)\n",
-                "  11 (0:1)\n",
-                "  12 (0:1)\n",
-                "2 (1:5)\n",
-                "  21 (2:5)\n",
-                "    211 (3:4)\n",
-                "      2111 (3:4)\n",
-                "  22 (4:5)\n",
-                "    221 (4:5)\n",
-                "3 (5:6)\n",
-                "  31 (5:6)\n",
-            )
+            (&mut root_branch).take(3).collect::<Vec<_>>(),
+            &[
+                Event {
+                    kind: EventKind::Enter(1),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Atom(11),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Exit(1),
+                    span: sp
+                },
+            ]
+        );
+        assert_eq!(
+            root_branch.next(),
+            Some(Event {
+                kind: EventKind::Enter(2),
+                span: sp
+            })
+        );
+        assert_eq!(
+            root_branch.take_branch().collect::<Vec<_>>(),
+            &[
+                Event {
+                    kind: EventKind::Enter(21),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Atom(211),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Exit(21),
+                    span: sp
+                },
+            ]
+        );
+        assert_eq!(
+            root_branch.collect::<Vec<_>>(),
+            &[
+                Event {
+                    kind: EventKind::Enter(3),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Atom(31),
+                    span: sp
+                },
+                Event {
+                    kind: EventKind::Exit(3),
+                    span: sp
+                },
+            ]
         );
     }
 }
