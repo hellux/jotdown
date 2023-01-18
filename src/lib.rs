@@ -265,10 +265,12 @@ impl<'s> Container<'s> {
 
 pub struct Parser<'s> {
     src: &'s str,
+
     tree: tree::Branch<block::Node, block::Atom>,
+    link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
+
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
-    link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
 
     _tree_data: block::Tree,
 }
