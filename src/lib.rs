@@ -268,7 +268,7 @@ pub struct Parser<'s> {
     tree: tree::Branch<block::Node, block::Atom>,
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
-    link_definitions: std::collections::HashMap<&'s str, String>,
+    link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
 
     _tree_data: block::Tree,
 }
@@ -286,8 +286,11 @@ impl<'s> Parser<'s> {
                     e.kind
                 {
                     let tag = e.span.of(src);
-                    // TODO borrow url string if single inline
-                    let url = branch.take_inlines().map(|sp| sp.of(src).trim()).collect();
+                    let url = match branch.count_children() {
+                        0 => "".into(),
+                        1 => branch.take_inlines().next().unwrap().of(src).trim().into(),
+                        _ => branch.take_inlines().map(|sp| sp.of(src).trim()).collect(),
+                    };
                     defs.insert(tag, url);
                 }
             }

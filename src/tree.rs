@@ -50,6 +50,18 @@ pub struct Branch<C: 'static, A: 'static> {
 }
 
 impl<C, A> Branch<C, A> {
+    /// Count number of direct children nodes.
+    pub fn count_children(&self) -> usize {
+        let mut head = self.head;
+        let mut count = 0;
+        while let Some(h) = head {
+            let n = &self.nodes[h.index()];
+            head = n.next;
+            count += 1;
+        }
+        count
+    }
+
     /// Retrieve all inlines until the end of the current container. Panics if any upcoming node is
     /// not an inline node.
     pub fn take_inlines(&mut self) -> impl Iterator<Item = Span> + '_ {
