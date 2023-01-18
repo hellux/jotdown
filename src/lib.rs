@@ -266,13 +266,12 @@ impl<'s> Container<'s> {
 pub struct Parser<'s> {
     src: &'s str,
 
-    tree: tree::Branch<block::Node, block::Atom>,
+    _tree_data: block::Tree,
     link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
 
+    tree: block::Branch,
     inlines: span::InlineSpans<'s>,
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
-
-    _tree_data: block::Tree,
 }
 
 impl<'s> Parser<'s> {
@@ -303,11 +302,11 @@ impl<'s> Parser<'s> {
 
         Self {
             src,
+            _tree_data: tree,
+            link_definitions,
             tree: branch,
             inlines: span::InlineSpans::new(src),
             inline_parser: None,
-            link_definitions,
-            _tree_data: tree,
         }
     }
 }

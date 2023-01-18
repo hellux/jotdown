@@ -9,6 +9,7 @@ use Container::*;
 use Leaf::*;
 
 pub type Tree = tree::Tree<Node, Atom>;
+pub type Branch = tree::Branch<Node, Atom>;
 pub type TreeBuilder = tree::Builder<Node, Atom>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
