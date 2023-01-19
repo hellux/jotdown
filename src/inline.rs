@@ -243,12 +243,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<Event> {
-        if first.kind == lex::Kind::Open(Delimiter::Brace)
-            && self
-                .events
-                .back()
-                .map_or(false, |e| e.kind == EventKind::Str)
-        {
+        if first.kind == lex::Kind::Open(Delimiter::Brace) {
             let mut ahead = self.lexer.chars();
             let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
             attr_len -= 1; // rm {
@@ -262,7 +257,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     has_attr |= non_empty;
                 }
 
-                Some(if has_attr {
+                let set_attr = has_attr
+                    && self
+                        .events
+                        .back()
+                        .map_or(false, |e| e.kind == EventKind::Str);
+
+                Some(if set_attr {
                     let i = self
                         .events
                         .iter()
@@ -1080,7 +1081,7 @@ mod test {
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
-            (Str, " {.d}"),
+            (Str, " "),
         );
     }
 
@@ -1102,6 +1103,13 @@ mod test {
             (Exit(Span), ""),
             (Str, " with attrs"),
         );
+    }
+
+    #[test]
+    fn attr_whitespace() {
+        test_parse!("word {%comment%}", (Str, "word "));
+        test_parse!("word {%comment%} word", (Str, "word "), (Str, " word"));
+        test_parse!("word {a=b}", (Str, "word "));
     }
 
     #[test]
