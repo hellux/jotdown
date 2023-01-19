@@ -48,8 +48,24 @@ enum Raw {
     Other,
 }
 
-struct Writer<I: Iterator, W> {
-    events: std::iter::Peekable<I>,
+struct FilteredEvents<I> {
+    events: I,
+}
+
+impl<'s, I: Iterator<Item = Event<'s>>> Iterator for FilteredEvents<I> {
+    type Item = Event<'s>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut ev = self.events.next();
+        while matches!(ev, Some(Event::Atom(Atom::Blankline | Atom::Escape))) {
+            ev = self.events.next();
+        }
+        ev
+    }
+}
+
+struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
+    events: std::iter::Peekable<FilteredEvents<I>>,
     out: W,
     raw: Raw,
     text_only: bool,
@@ -58,10 +74,10 @@ struct Writer<I: Iterator, W> {
     footnote_backlink_written: bool,
 }
 
-impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
+impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
     fn new(events: I, out: W) -> Self {
         Self {
-            events: events.peekable(),
+            events: FilteredEvents { events }.peekable(),
             out,
             raw: Raw::None,
             text_only: false,
@@ -324,7 +340,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<I, W> {
                     Atom::NonBreakingSpace => self.out.write_str("&nbsp;")?,
                     Atom::Hardbreak => self.out.write_str("<br>\n")?,
                     Atom::Softbreak => self.out.write_char('\n')?,
-                    Atom::Blankline | Atom::Escape => {}
+                    Atom::Escape | Atom::Blankline => unreachable!("filtered out"),
                 },
             }
         }
