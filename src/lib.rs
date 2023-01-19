@@ -372,7 +372,7 @@ impl<'s> Parser<'s> {
                                 .link_definitions
                                 .get(self.inlines.src(inline.span).as_ref())
                             {
-                                url.clone().into()
+                                url.clone()
                             } else {
                                 "".into()
                             },
@@ -383,7 +383,7 @@ impl<'s> Parser<'s> {
                                 .link_definitions
                                 .get(self.inlines.src(inline.span).as_ref())
                             {
-                                url.clone().into()
+                                url.clone()
                             } else {
                                 "".into()
                             },
