@@ -153,8 +153,21 @@ impl<'s> TreeParser<'s> {
                     Block::Leaf(l) => {
                         self.tree.enter(Node::Leaf(l), span);
 
-                        // trim starting whitespace of the block contents
-                        lines[0] = lines[0].trim_start(self.src);
+                        if matches!(l, Leaf::CodeBlock) {
+                            lines[0] = lines[0].trim_start(self.src);
+                        } else {
+                            // trim starting whitespace of each inline
+                            for line in lines.iter_mut() {
+                                *line = line.trim_start(self.src);
+                            }
+
+                            // trim ending whitespace of block
+                            let l = lines.len();
+                            if l > 0 {
+                                let last = &mut lines[l - 1];
+                                *last = last.trim_end(self.src);
+                            }
+                        }
 
                         // skip first inline if empty (e.g. code block)
                         let lines = if lines[0].is_empty() {
@@ -162,15 +175,6 @@ impl<'s> TreeParser<'s> {
                         } else {
                             lines
                         };
-
-                        // trim ending whitespace of block if not verbatim
-                        if !matches!(l, Leaf::CodeBlock) {
-                            let l = lines.len();
-                            if l > 0 {
-                                let last = &mut lines[l - 1];
-                                *last = last.trim_end(self.src);
-                            }
-                        }
 
                         lines.iter().for_each(|line| self.tree.inline(*line));
                         self.tree.exit();
@@ -462,7 +466,7 @@ mod test {
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Heading)), "#"),
             (Inline, "8\n"),
-            (Inline, "  12\n"),
+            (Inline, "12\n"),
             (Inline, "15"),
             (Exit(Leaf(Heading)), "#"),
         );
