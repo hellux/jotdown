@@ -133,8 +133,12 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         current
     }
 
+    fn peek_char_n(&mut self, n: usize) -> char {
+        self.chars.clone().nth(n).unwrap_or(EOF)
+    }
+
     fn peek_char(&mut self) -> char {
-        self.chars.clone().next().unwrap_or(EOF)
+        self.peek_char_n(0)
     }
 
     fn eat_char(&mut self) -> Option<char> {
@@ -219,7 +223,10 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     self.eat_char();
                     Close(BraceHyphen)
                 } else {
-                    self.eat_seq(Hyphen)
+                    while self.peek_char() == '-' && self.peek_char_n(1) != '}' {
+                        self.eat_char();
+                    }
+                    Seq(Hyphen)
                 }
             }
 
