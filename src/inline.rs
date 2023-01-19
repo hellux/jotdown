@@ -246,7 +246,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         if first.kind == lex::Kind::Open(Delimiter::Brace) {
             let mut ahead = self.lexer.chars();
             let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
-            attr_len -= 1; // rm {
+            attr_len = attr_len.saturating_sub(1); // rm {
             if attr_len > 0 {
                 while attr_len > 0 {
                     self.span = self.span.extend(attr_len);
