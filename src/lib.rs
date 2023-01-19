@@ -254,15 +254,6 @@ impl<'s> Container<'s> {
             _ => todo!(),
         }
     }
-
-    fn from_container_block(content: &'s str, c: block::Container) -> Self {
-        match c {
-            block::Container::Blockquote => Self::Blockquote,
-            block::Container::Div => panic!(),
-            block::Container::Footnote => panic!(),
-            block::Container::ListItem => todo!(),
-        }
-    }
 }
 
 pub struct Parser<'s> {
@@ -474,6 +465,7 @@ impl<'s> Parser<'s> {
                     }
                     block::Node::Container(c) => {
                         let container = match c {
+                            block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div { .. } => Container::Div {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
@@ -481,7 +473,7 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            _ => Container::from_container_block(content, c),
+                            block::Container::ListItem => panic!(),
                         };
                         Event::Start(container, attributes)
                     }
@@ -489,7 +481,15 @@ impl<'s> Parser<'s> {
                 tree::EventKind::Exit(c) => match c {
                     block::Node::Leaf(l) => Event::End(Container::from_leaf_block(content, l)),
                     block::Node::Container(c) => {
-                        Event::End(Container::from_container_block(content, c))
+                        let container = match c {
+                            block::Container::Blockquote => Container::Blockquote,
+                            block::Container::Div { .. } => Container::Div {
+                                class: (!ev.span.is_empty()).then(|| content),
+                            },
+                            block::Container::Footnote => panic!(),
+                            block::Container::ListItem => panic!(),
+                        };
+                        Event::End(container)
                     }
                 },
                 tree::EventKind::Inline => unreachable!(),
