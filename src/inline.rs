@@ -662,10 +662,9 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
                         matches!(
                             e.kind,
                             EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
-                        )
+                        ) && span.end() == e.span.start()
                     }) {
                         let ev = self.events.pop_front().unwrap();
-                        assert_eq!(span.end(), ev.span.start());
                         span = span.union(ev.span);
                     }
                     Some(Event {
@@ -950,6 +949,7 @@ mod test {
             (Str, "abc"),
             (Exit(Span), "]"),
         );
+        test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
     }
 
     #[test]
