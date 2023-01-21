@@ -36,8 +36,8 @@ pub enum Container<'s> {
     List(List),
     /// An item of a list
     ListItem,
-    /// A description list element.
-    DescriptionList,
+    /// An item of a task list, either checked or unchecked.
+    TaskListItem { checked: bool },
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
@@ -99,7 +99,7 @@ impl<'s> Container<'s> {
             Self::Blockquote
             | Self::List(..)
             | Self::ListItem
-            | Self::DescriptionList
+            | Self::TaskListItem { .. }
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
@@ -135,7 +135,7 @@ impl<'s> Container<'s> {
             Self::Blockquote
             | Self::List(..)
             | Self::ListItem
-            | Self::DescriptionList
+            | Self::TaskListItem { .. }
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
@@ -257,6 +257,23 @@ impl<'s> Container<'s> {
             }
             _ => todo!(),
         }
+    }
+}
+
+impl OrderedListNumbering {
+    fn parse_number(self, n: &str) -> u32 {
+        match self {
+            Self::Decimal => n.parse().unwrap(),
+            Self::AlphaLower | Self::AlphaUpper => 1,
+            Self::RomanLower => 1,
+            Self::RomanUpper => 1,
+        }
+    }
+}
+
+impl OrderedListStyle {
+    fn number(self, marker: &str) -> &str {
+        &marker[usize::from(matches!(self, Self::ParenParen))..marker.len() - 1]
     }
 }
 
@@ -482,8 +499,30 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            block::Container::List(ty) => todo!(),
-                            block::Container::ListItem(ty) => todo!(),
+                            block::Container::List(ty) => match ty {
+                                block::ListType::Unordered(..) => Container::List(List::Unordered),
+                                block::ListType::Task => Container::List(List::Task),
+                                block::ListType::Ordered(numbering, style) => {
+                                    let marker = ev.span.of(self.src);
+                                    let start = numbering.parse_number(style.number(marker)).max(1);
+                                    Container::List(List::Ordered {
+                                        numbering,
+                                        style,
+                                        start,
+                                    })
+                                }
+                                block::ListType::Description => panic!(),
+                            },
+                            block::Container::ListItem(ty) => {
+                                if matches!(ty, block::ListType::Task) {
+                                    let marker = ev.span.of(self.src);
+                                    Container::TaskListItem {
+                                        checked: marker.as_bytes()[3] != b' ',
+                                    }
+                                } else {
+                                    Container::ListItem
+                                }
+                            }
                         },
                     };
                     if enter {
@@ -545,6 +584,10 @@ mod test {
     use super::Container::*;
     use super::Event::*;
     use super::LinkType;
+    use super::List;
+    use super::List::*;
+    use super::OrderedListNumbering::*;
+    use super::OrderedListStyle::*;
     use super::SpanLinkType;
 
     macro_rules! test_parse {
@@ -960,6 +1003,141 @@ mod test {
             Str("def".into()),
             End(Emphasis),
             End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn list_item_unordered() {
+        test_parse!(
+            "- abc",
+            Start(List(List::Unordered), Attributes::new()),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("abc".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Unordered)),
+        );
+    }
+
+    #[test]
+    fn list_item_ordered_decimal() {
+        test_parse!(
+            "123. abc",
+            Start(
+                List(List::Ordered {
+                    numbering: Decimal,
+                    style: Period,
+                    start: 123
+                }),
+                Attributes::new()
+            ),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("abc".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Ordered {
+                numbering: Decimal,
+                style: Period,
+                start: 123
+            })),
+        );
+    }
+
+    #[test]
+    fn list_mixed() {
+        test_parse!(
+            concat!(
+                "- a\n",   //
+                "+ b\n",   //
+                "0) c\n",  //
+                "0) d\n",  //
+                "(b) e\n", //
+            ),
+            Start(List(List::Unordered), Attributes::new()),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("a".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Unordered)),
+            Start(List(List::Unordered), Attributes::new()),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("b".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Unordered)),
+            Start(
+                List(List::Ordered {
+                    numbering: Decimal,
+                    style: Paren,
+                    start: 1,
+                }),
+                Attributes::new()
+            ),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("c".into()),
+            End(Paragraph),
+            End(ListItem),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("d".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Ordered {
+                numbering: Decimal,
+                style: Paren,
+                start: 1,
+            })),
+            Start(
+                List(List::Ordered {
+                    numbering: AlphaLower,
+                    style: ParenParen,
+                    start: 2
+                }),
+                Attributes::new()
+            ),
+            Start(ListItem, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("e".into()),
+            End(Paragraph),
+            End(ListItem),
+            End(List(List::Ordered {
+                numbering: AlphaLower,
+                style: ParenParen,
+                start: 2,
+            })),
+        );
+    }
+
+    #[test]
+    fn list_task() {
+        test_parse!(
+            concat!(
+                "- [ ] a\n", //
+                "- [x] b\n", //
+                "- [X] c\n", //
+            ),
+            Start(List(List::Task), Attributes::new()),
+            Start(TaskListItem { checked: false }, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("a".into()),
+            End(Paragraph),
+            End(TaskListItem { checked: false }),
+            Start(TaskListItem { checked: true }, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("b".into()),
+            End(Paragraph),
+            End(TaskListItem { checked: true }),
+            Start(TaskListItem { checked: true }, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("c".into()),
+            End(Paragraph),
+            End(TaskListItem { checked: true }),
+            End(List(List::Task)),
         );
     }
 }

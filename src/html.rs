@@ -101,7 +101,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Blockquote => self.out.write_str("<blockquote")?,
                         Container::List(..) => todo!(),
                         Container::ListItem => self.out.write_str("<li")?,
-                        Container::DescriptionList => self.out.write_str("<dl")?,
+                        Container::TaskListItem { .. } => todo!(),
                         Container::DescriptionDetails => self.out.write_str("<dd")?,
                         Container::Footnote { number, .. } => {
                             assert!(self.footnote_number.is_none());
@@ -225,7 +225,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Blockquote => self.out.write_str("</blockquote>")?,
                         Container::List(..) => todo!(),
                         Container::ListItem => self.out.write_str("</li>")?,
-                        Container::DescriptionList => self.out.write_str("</dl>")?,
+                        Container::TaskListItem { .. } => todo!(),
                         Container::DescriptionDetails => self.out.write_str("</dd>")?,
                         Container::Footnote { number, .. } => {
                             if !self.footnote_backlink_written {
