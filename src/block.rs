@@ -822,7 +822,7 @@ mod test {
         test_block!(
             concat!(
                 "   -*- -*-\n",
-                "\n",   //
+                "\n",
                 "para", //
             ),
             Block::Atom(ThematicBreak),
