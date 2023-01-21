@@ -456,49 +456,42 @@ impl<'s> Parser<'s> {
                         continue;
                     }
                 },
-                tree::EventKind::Enter(c) | tree::EventKind::Exit(c)
-                    if matches!(c, block::Node::Leaf(block::Leaf::LinkDefinition)) =>
-                {
-                    // ignore link definitions
-                    self.tree.take_inlines().last();
-                    continue;
-                }
-                tree::EventKind::Enter(c) => match c {
-                    block::Node::Leaf(l) => {
-                        self.inlines.set_spans(self.tree.take_inlines());
-                        self.inline_parser = Some(inline::Parser::new(self.inlines.chars()));
-                        let container = Container::from_leaf_block(content, l);
-                        Event::Start(container, attributes)
-                    }
-                    block::Node::Container(c) => {
-                        let container = match c {
+                tree::EventKind::Enter(c) | tree::EventKind::Exit(c) => {
+                    let enter = matches!(ev.kind, tree::EventKind::Enter(..));
+                    let cont = match c {
+                        block::Node::Leaf(l) => {
+                            if matches!(l, block::Leaf::LinkDefinition) {
+                                // ignore link definitions
+                                self.tree.take_inlines().last();
+                                continue;
+                            }
+                            if enter {
+                                self.inlines.set_spans(self.tree.take_inlines());
+                                self.inline_parser =
+                                    Some(inline::Parser::new(self.inlines.chars()));
+                            }
+                            Container::from_leaf_block(content, l)
+                        }
+                        block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div { .. } => Container::Div {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
                             block::Container::Footnote => {
+                                assert!(enter);
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            _ => panic!(),
-                        };
-                        Event::Start(container, attributes)
+                            block::Container::List(ty) => todo!(),
+                            block::Container::ListItem(ty) => todo!(),
+                        },
+                    };
+                    if enter {
+                        Event::Start(cont, attributes)
+                    } else {
+                        Event::End(cont)
                     }
-                },
-                tree::EventKind::Exit(c) => match c {
-                    block::Node::Leaf(l) => Event::End(Container::from_leaf_block(content, l)),
-                    block::Node::Container(c) => {
-                        let container = match c {
-                            block::Container::Blockquote => Container::Blockquote,
-                            block::Container::Div { .. } => Container::Div {
-                                class: (!ev.span.is_empty()).then(|| content),
-                            },
-                            block::Container::Footnote => panic!(),
-                            _ => panic!(),
-                        };
-                        Event::End(container)
-                    }
-                },
+                }
                 tree::EventKind::Inline => unreachable!(),
             };
             return Some(event);
