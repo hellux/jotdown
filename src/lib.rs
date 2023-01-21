@@ -263,14 +263,11 @@ impl<'s> Container<'s> {
 pub struct Parser<'s> {
     src: &'s str,
 
-    /// Block tree parsed at first, written once. This is never accessed directly, the data is read
-    /// via [`Branch`] cursors. This is here only to keep it alive during the `Parser`'s lifetime.
-    _tree_data: block::Tree,
     /// Link definitions encountered during block parse, written once.
     link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
 
     /// Block tree cursor.
-    tree: block::Branch,
+    tree: block::Tree,
     /// Spans to the inlines in the block currently being parsed.
     inlines: span::InlineSpans<'s>,
     /// Inline parser, recreated for each new inline.
@@ -279,7 +276,7 @@ pub struct Parser<'s> {
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
-    footnotes: std::collections::HashMap<&'s str, block::Branch>,
+    footnotes: std::collections::HashMap<&'s str, block::Tree>,
     /// Next or current footnote being parsed and emitted.
     footnote_index: usize,
     /// Currently within a footnote.
@@ -292,7 +289,7 @@ impl<'s> Parser<'s> {
         let tree = block::parse(src);
 
         let link_definitions = {
-            let mut branch = tree.root();
+            let mut branch = tree.clone();
             let mut defs = std::collections::HashMap::new();
             while let Some(e) = branch.next() {
                 if let tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) =
@@ -310,11 +307,10 @@ impl<'s> Parser<'s> {
             defs
         };
 
-        let branch = tree.root();
+        let branch = tree.clone();
 
         Self {
             src,
-            _tree_data: tree,
             link_definitions,
             tree: branch,
             footnote_references: Vec::new(),
@@ -523,7 +519,7 @@ impl<'s> Parser<'s> {
             self.tree = self
                 .footnotes
                 .remove(tag)
-                .unwrap_or_else(block::Branch::empty);
+                .unwrap_or_else(block::Tree::empty);
             self.footnote_active = true;
 
             Some(Event::Start(

@@ -12,7 +12,6 @@ use Leaf::*;
 use ListType::*;
 
 pub type Tree = tree::Tree<Node, Atom>;
-pub type Branch = tree::Branch<Node, Atom>;
 pub type TreeBuilder = tree::Builder<Node, Atom>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -523,7 +522,7 @@ mod test {
     macro_rules! test_parse {
             ($src:expr $(,$($event:expr),* $(,)?)?) => {
                 let t = super::TreeParser::new($src).parse();
-                let actual = t.root().map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
+                let actual = t.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
                 let expected = &[$($($event),*,)?];
                 assert_eq!(actual, expected, "\n\n{}\n\n", $src);
             };

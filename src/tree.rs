@@ -14,45 +14,17 @@ pub struct Event<C, A> {
     pub span: Span,
 }
 
-pub struct Tree<C, A>(Box<[Node<C, A>]>);
-
 #[derive(Clone)]
-pub struct Inlines<'t, C, A> {
-    iter: std::slice::Iter<'t, Node<C, A>>,
-}
-
-impl<'t, C, A> Iterator for Inlines<'t, C, A> {
-    type Item = Span;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|n| n.span)
-    }
-}
-
-impl<C, A> Tree<C, A> {
-    pub fn root(&self) -> Branch<C, A> {
-        let head = self.0[NodeIndex::root().index()].next;
-        // SAFETY: tree must outlive the branch
-        let nodes = unsafe { std::mem::transmute::<&[Node<C, A>], &'static [Node<C, A>]>(&self.0) };
-        Branch {
-            nodes,
-            branch: Vec::new(),
-            head,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Branch<C: 'static, A: 'static> {
-    nodes: &'static [Node<C, A>],
+pub struct Tree<C: 'static, A: 'static> {
+    nodes: std::rc::Rc<[Node<C, A>]>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
 
-impl<C, A> Branch<C, A> {
+impl<C: Clone, A: Clone> Tree<C, A> {
     pub fn empty() -> Self {
         Self {
-            nodes: &[],
+            nodes: vec![].into_boxed_slice().into(),
             branch: Vec::new(),
             head: None,
         }
@@ -78,7 +50,7 @@ impl<C, A> Branch<C, A> {
             self.head = n.next;
         }
         Self {
-            nodes: self.nodes,
+            nodes: self.nodes.clone(),
             branch: Vec::new(),
             head,
         }
@@ -99,7 +71,7 @@ impl<C, A> Branch<C, A> {
     }
 }
 
-impl<C: Clone, A: Clone> Iterator for Branch<C, A> {
+impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
     type Item = Event<C, A>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -223,7 +195,12 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
-        Tree(self.nodes.into_boxed_slice())
+        let head = self.nodes[NodeIndex::root().index()].next;
+        Tree {
+            nodes: self.nodes.into_boxed_slice().into(),
+            branch: Vec::new(),
+            head,
+        }
     }
 
     fn add_node(&mut self, node: Node<C, A>) {
@@ -259,11 +236,11 @@ impl<C: std::fmt::Debug + Clone + 'static, A: std::fmt::Debug + Clone + 'static>
     for Builder<C, A>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.clone().finish().root().fmt(f)
+        self.clone().finish().fmt(f)
     }
 }
 
-impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Branch<C, A> {
+impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Tree<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
@@ -348,11 +325,11 @@ mod test {
         b.exit();
         b.enter(3, sp);
         b.atom(31, sp);
-        let tree = b.finish();
+        b.exit();
+        let mut tree = b.finish();
 
-        let mut root_branch = tree.root();
         assert_eq!(
-            (&mut root_branch).take(3).collect::<Vec<_>>(),
+            (&mut tree).take(3).collect::<Vec<_>>(),
             &[
                 Event {
                     kind: EventKind::Enter(1),
@@ -369,14 +346,14 @@ mod test {
             ]
         );
         assert_eq!(
-            root_branch.next(),
+            tree.next(),
             Some(Event {
                 kind: EventKind::Enter(2),
                 span: sp
             })
         );
         assert_eq!(
-            root_branch.take_branch().collect::<Vec<_>>(),
+            tree.take_branch().collect::<Vec<_>>(),
             &[
                 Event {
                     kind: EventKind::Enter(21),
@@ -393,7 +370,7 @@ mod test {
             ]
         );
         assert_eq!(
-            root_branch.collect::<Vec<_>>(),
+            tree.collect::<Vec<_>>(),
             &[
                 Event {
                     kind: EventKind::Enter(3),
