@@ -78,7 +78,7 @@ pub enum Container {
     /// Span is `>`.
     Blockquote,
 
-    /// Span is class specifier.
+    /// Span is class specifier, possibly empty.
     Div,
 
     /// Span is the list marker.
@@ -130,11 +130,9 @@ impl<'s> TreeParser<'s> {
         BlockParser::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
             0,
             |(indent, kind, span, line_count)| {
-                let lines = {
-                    let l = lines.len().min(line_count);
-                    &mut lines[..l]
-                };
-                let truncated = lines.len() < line_count;
+                let truncated = line_count > lines.len();
+                let l = line_count.min(lines.len());
+                let lines = &mut lines[..l];
                 let span = span.translate(lines[0].start());
 
                 // skip part of first inline that is shared with the block span
@@ -376,6 +374,8 @@ impl BlockParser {
 
     /// Determine if this line continues the block.
     fn continues(&mut self, line: &str) -> bool {
+        let line_t = line.trim();
+        let empty = line_t.is_empty();
         match self.kind {
             Block::Atom(..) => false,
             Block::Leaf(Paragraph | Heading | Table) => !line.trim().is_empty(),
@@ -383,7 +383,7 @@ impl BlockParser {
             Block::Container(Blockquote) => line.trim().starts_with('>'),
             Block::Container(Footnote | ListItem(..)) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                line.trim().is_empty() || spaces > self.indent
+                empty || spaces > self.indent
             }
             Block::Container(Div) | Block::Leaf(CodeBlock) => {
                 let (fence, fence_length) = self.fence.unwrap();
