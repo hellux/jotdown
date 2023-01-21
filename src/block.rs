@@ -90,9 +90,9 @@ pub enum Container {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListType {
-    Bullet(u8),
-    Task,
+    Unordered(u8),
     Ordered(crate::OrderedListNumbering, crate::OrderedListStyle),
+    Task,
     Description,
 }
 
@@ -320,7 +320,7 @@ impl BlockParser {
                     (Block::Container(ListItem(Task)), Span::by_len(start, 5))
                 } else {
                     (
-                        Block::Container(ListItem(Bullet(b as u8))),
+                        Block::Container(ListItem(Unordered(b as u8))),
                         Span::by_len(start, 1),
                     )
                 }
@@ -345,9 +345,9 @@ impl BlockParser {
                     )
                 })
             }
-            c => maybe_ordered_list_item(c, &mut chars).map(|(num, fmt, len)| {
+            c => maybe_ordered_list_item(c, &mut chars).map(|(num, style, len)| {
                 (
-                    Block::Container(ListItem(Ordered(num, fmt))),
+                    Block::Container(ListItem(Ordered(num, style))),
                     Span::by_len(start, len),
                 )
             }),
@@ -763,11 +763,11 @@ mod test {
     fn parse_list() {
         test_parse!(
             "- abc\n",
-            (Enter(Container(ListItem(Bullet(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Bullet(b'-')))), "-"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
         );
     }
 
@@ -937,9 +937,24 @@ mod test {
 
     #[test]
     fn block_list_bullet() {
-        test_block!("- abc\n", Block::Container(ListItem(Bullet(b'-'))), "-", 1);
-        test_block!("+ abc\n", Block::Container(ListItem(Bullet(b'+'))), "+", 1);
-        test_block!("* abc\n", Block::Container(ListItem(Bullet(b'*'))), "*", 1);
+        test_block!(
+            "- abc\n",
+            Block::Container(ListItem(Unordered(b'-'))),
+            "-",
+            1
+        );
+        test_block!(
+            "+ abc\n",
+            Block::Container(ListItem(Unordered(b'+'))),
+            "+",
+            1
+        );
+        test_block!(
+            "* abc\n",
+            Block::Container(ListItem(Unordered(b'*'))),
+            "*",
+            1
+        );
     }
 
     #[test]
