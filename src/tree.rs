@@ -244,7 +244,7 @@ impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const INDENT: &str = "  ";
         let mut level = 0;
-        write!(f, "\n")?;
+        writeln!(f)?;
         for e in self.clone() {
             let indent = INDENT.repeat(level);
             match e.kind {
