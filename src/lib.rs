@@ -182,13 +182,13 @@ pub enum LinkType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum List {
     Unordered,
-    Ordered { kind: OrderedListKind, start: u32 },
+    Ordered { kind: OrderedListNumbering, start: u32 },
     Description,
     Task,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OrderedListKind {
+pub enum OrderedListNumbering {
     /// Decimal numbering, e.g. `1)`.
     Decimal,
     /// Lowercase alphabetic numbering, e.g. `a)`.
@@ -473,7 +473,7 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            block::Container::ListItem => panic!(),
+                            block::Container::ListItem(..) => panic!(),
                         };
                         Event::Start(container, attributes)
                     }
@@ -487,7 +487,7 @@ impl<'s> Parser<'s> {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
                             block::Container::Footnote => panic!(),
-                            block::Container::ListItem => panic!(),
+                            block::Container::ListItem(..) => panic!(),
                         };
                         Event::End(container)
                     }

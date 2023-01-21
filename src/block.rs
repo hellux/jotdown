@@ -1,3 +1,5 @@
+use crate::OrderedListNumbering::*;
+use crate::OrderedListStyle::*;
 use crate::Span;
 use crate::EOF;
 
@@ -7,6 +9,7 @@ use crate::tree;
 use Atom::*;
 use Container::*;
 use Leaf::*;
+use ListType::*;
 
 pub type Tree = tree::Tree<Node, Atom>;
 pub type Branch = tree::Branch<Node, Atom>;
@@ -79,10 +82,18 @@ pub enum Container {
     Div,
 
     /// Span is the list marker.
-    ListItem,
+    ListItem(ListType),
 
     /// Span is footnote tag.
     Footnote,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListType {
+    Bullet(u8),
+    Task,
+    Ordered(crate::OrderedListNumbering, crate::OrderedListStyle),
+    Description,
 }
 
 /// Parser for block-level tree structure of entire document.
@@ -182,7 +193,7 @@ impl<'s> TreeParser<'s> {
                     Block::Container(c) => {
                         let (skip_chars, skip_lines_suffix) = match c {
                             Blockquote => (2, 0),
-                            ListItem | Footnote => (indent, 0),
+                            ListItem(..) | Footnote => (indent, 0),
                             Div => (0, 1),
                         };
                         let line_count_inner = lines.len() - skip_lines_suffix;
@@ -300,19 +311,24 @@ impl BlockParser {
                 Block::Atom(ThematicBreak),
                 Span::from_slice(line, line_t.trim()),
             )),
-            '-' => chars.next().map_or(true, char::is_whitespace).then(|| {
+            b @ ('-' | '*' | '+') => chars.next().map_or(true, char::is_whitespace).then(|| {
                 let task_list = chars.next() == Some('[')
-                    && matches!(chars.next(), Some('X' | ' '))
+                    && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
                     && chars.next().map_or(true, char::is_whitespace);
-                (
-                    Block::Container(ListItem),
-                    Span::by_len(start, if task_list { 3 } else { 1 }),
-                )
+                if task_list {
+                    (Block::Container(ListItem(Task)), Span::by_len(start, 5))
+                } else {
+                    (
+                        Block::Container(ListItem(Bullet(b as u8))),
+                        Span::by_len(start, 1),
+                    )
+                }
             }),
-            '+' | '*' | ':' if chars.next().map_or(true, char::is_whitespace) => {
-                Some((Block::Container(ListItem), Span::by_len(start, 1)))
-            }
+            ':' if chars.clone().next().map_or(true, char::is_whitespace) => Some((
+                Block::Container(ListItem(Description)),
+                Span::by_len(start, 1),
+            )),
             f @ ('`' | ':' | '~') => {
                 let fence_length = (&mut chars).take_while(|c| *c == f).count() + 1;
                 fence = Some((f, fence_length));
@@ -329,7 +345,12 @@ impl BlockParser {
                     )
                 })
             }
-            _ => None,
+            c => maybe_ordered_list_item(c, &mut chars).map(|(num, fmt, len)| {
+                (
+                    Block::Container(ListItem(Ordered(num, fmt))),
+                    Span::by_len(start, len),
+                )
+            }),
         }
         .unwrap_or((Block::Leaf(Paragraph), Span::new(0, 0)));
 
@@ -360,7 +381,7 @@ impl BlockParser {
             Block::Leaf(Paragraph | Heading | Table) => !line.trim().is_empty(),
             Block::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
             Block::Container(Blockquote) => line.trim().starts_with('>'),
-            Block::Container(Footnote | ListItem) => {
+            Block::Container(Footnote | ListItem(..)) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
                 line.trim().is_empty() || spaces > self.indent
             }
@@ -372,6 +393,82 @@ impl BlockParser {
             }
         }
     }
+}
+
+fn maybe_ordered_list_item(
+    mut first: char,
+    chars: &mut std::str::Chars,
+) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
+    let start_paren = first == '(';
+    if start_paren {
+        first = chars.next().unwrap_or(EOF);
+    }
+
+    let numbering = if first.is_ascii_digit() {
+        Decimal
+    } else if first.is_ascii_lowercase() {
+        AlphaLower
+    } else if first.is_ascii_uppercase() {
+        AlphaUpper
+    } else if is_roman_lower_digit(first) {
+        RomanLower
+    } else if is_roman_upper_digit(first) {
+        RomanUpper
+    } else {
+        return None;
+    };
+
+    let chars_num = chars.clone();
+    let len_num = 1 + chars_num
+        .clone()
+        .take_while(|c| match numbering {
+            Decimal => c.is_ascii_digit(),
+            AlphaLower => c.is_ascii_lowercase(),
+            AlphaUpper => c.is_ascii_uppercase(),
+            RomanLower => is_roman_lower_digit(*c),
+            RomanUpper => is_roman_upper_digit(*c),
+        })
+        .count();
+
+    let post_num = chars.nth(len_num - 1)?;
+    let style = if start_paren {
+        if post_num == ')' {
+            ParenParen
+        } else {
+            return None;
+        }
+    } else if post_num == ')' {
+        Paren
+    } else if post_num == '.' {
+        Period
+    } else {
+        return None;
+    };
+    let len_style = usize::from(start_paren) + 1;
+
+    let chars_num = std::iter::once(first).chain(chars_num.take(len_num - 1));
+    let numbering =
+        if matches!(numbering, AlphaLower) && chars_num.clone().all(is_roman_lower_digit) {
+            RomanLower
+        } else if matches!(numbering, AlphaUpper) && chars_num.clone().all(is_roman_upper_digit) {
+            RomanUpper
+        } else {
+            numbering
+        };
+
+    if chars.next().map_or(true, char::is_whitespace) {
+        Some((numbering, style, len_num + len_style))
+    } else {
+        None
+    }
+}
+
+fn is_roman_lower_digit(c: char) -> bool {
+    matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
+}
+
+fn is_roman_upper_digit(c: char) -> bool {
+    matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')
 }
 
 impl std::fmt::Display for Block {
@@ -411,13 +508,16 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
-    use crate::tree::EventKind::*;
     use crate::tree::EventKind;
+    use crate::tree::EventKind::*;
+    use crate::OrderedListNumbering::*;
+    use crate::OrderedListStyle::*;
 
     use super::Atom::*;
     use super::Block;
     use super::Container::*;
     use super::Leaf::*;
+    use super::ListType::*;
     use super::Node::*;
 
     macro_rules! test_parse {
@@ -659,6 +759,18 @@ mod test {
         );
     }
 
+    #[test]
+    fn parse_list() {
+        test_parse!(
+            "- abc\n",
+            (Enter(Container(ListItem(Bullet(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "abc"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Bullet(b'-')))), "-"),
+        );
+    }
+
     macro_rules! test_block {
         ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
             let lines = super::lines($src).map(|sp| sp.of($src));
@@ -820,6 +932,65 @@ mod test {
             Block::Container(Footnote),
             "tag",
             3,
+        );
+    }
+
+    #[test]
+    fn block_list_bullet() {
+        test_block!("- abc\n", Block::Container(ListItem(Bullet(b'-'))), "-", 1);
+        test_block!("+ abc\n", Block::Container(ListItem(Bullet(b'+'))), "+", 1);
+        test_block!("* abc\n", Block::Container(ListItem(Bullet(b'*'))), "*", 1);
+    }
+
+    #[test]
+    fn block_list_description() {
+        test_block!(": abc\n", Block::Container(ListItem(Description)), ":", 1);
+    }
+
+    #[test]
+    fn block_list_task() {
+        test_block!("- [ ] abc\n", Block::Container(ListItem(Task)), "- [ ]", 1);
+        test_block!("+ [x] abc\n", Block::Container(ListItem(Task)), "+ [x]", 1);
+        test_block!("* [X] abc\n", Block::Container(ListItem(Task)), "* [X]", 1);
+    }
+
+    #[test]
+    fn block_list_ordered() {
+        test_block!(
+            "123. abc\n",
+            Block::Container(ListItem(Ordered(Decimal, Period))),
+            "123.",
+            1
+        );
+        test_block!(
+            "i. abc\n",
+            Block::Container(ListItem(Ordered(RomanLower, Period))),
+            "i.",
+            1
+        );
+        test_block!(
+            "I. abc\n",
+            Block::Container(ListItem(Ordered(RomanUpper, Period))),
+            "I.",
+            1
+        );
+        test_block!(
+            "IJ. abc\n",
+            Block::Container(ListItem(Ordered(AlphaUpper, Period))),
+            "IJ.",
+            1
+        );
+        test_block!(
+            "(a) abc\n",
+            Block::Container(ListItem(Ordered(AlphaLower, ParenParen))),
+            "(a)",
+            1
+        );
+        test_block!(
+            "a) abc\n",
+            Block::Container(ListItem(Ordered(AlphaLower, Paren))),
+            "a)",
+            1
         );
     }
 }
