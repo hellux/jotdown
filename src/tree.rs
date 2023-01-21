@@ -293,7 +293,7 @@ mod test {
         tree.atom(31, Span::new(5, 6));
         tree.exit();
         assert_eq!(
-            format!("{:?}", tree),
+            format!("{:?}", tree.finish()),
             concat!(
                 "\n",
                 "1 (0:1)\n",
