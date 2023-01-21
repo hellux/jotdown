@@ -480,7 +480,7 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            block::Container::ListItem(..) => panic!(),
+                            _ => panic!(),
                         };
                         Event::Start(container, attributes)
                     }
@@ -494,7 +494,7 @@ impl<'s> Parser<'s> {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
                             block::Container::Footnote => panic!(),
-                            block::Container::ListItem(..) => panic!(),
+                            _ => panic!(),
                         };
                         Event::End(container)
                     }

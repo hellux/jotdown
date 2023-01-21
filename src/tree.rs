@@ -146,6 +146,7 @@ pub struct Builder<C, A> {
     nodes: Vec<Node<C, A>>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
+    depth: usize,
 }
 
 impl<C: Clone, A: Clone> Builder<C, A> {
@@ -158,6 +159,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
             }],
             branch: vec![],
             head: Some(NodeIndex::root()),
+            depth: 0,
         }
     }
 
@@ -178,6 +180,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 
     pub(super) fn enter(&mut self, c: C, span: Span) {
+        self.depth += 1;
         self.add_node(Node {
             span,
             kind: NodeKind::Container(c, None),
@@ -186,6 +189,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 
     pub(super) fn exit(&mut self) {
+        self.depth -= 1;
         if self.head.is_some() {
             self.head = None;
         } else {
@@ -195,12 +199,17 @@ impl<C: Clone, A: Clone> Builder<C, A> {
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
+        assert_eq!(self.depth, 0);
         let head = self.nodes[NodeIndex::root().index()].next;
         Tree {
             nodes: self.nodes.into_boxed_slice().into(),
             branch: Vec::new(),
             head,
         }
+    }
+
+    pub(super) fn depth(&self) -> usize {
+        self.depth
     }
 
     fn add_node(&mut self, node: Node<C, A>) {

@@ -80,6 +80,9 @@ pub enum Container {
     /// Span is class specifier, possibly empty.
     Div,
 
+    /// Span is the list marker of the first list item in the list.
+    List(ListType),
+
     /// Span is the list marker.
     ListItem(ListType),
 
@@ -95,10 +98,22 @@ pub enum ListType {
     Description,
 }
 
+#[derive(Debug)]
+struct OpenList {
+    /// Type of the list, used to determine whether this list should be continued or a new one
+    /// should be created.
+    ty: ListType,
+    /// Depth in the tree where the direct list items of the list are. Needed to determine when to
+    /// close the list.
+    depth: u16,
+}
+
 /// Parser for block-level tree structure of entire document.
 struct TreeParser<'s> {
     src: &'s str,
     tree: TreeBuilder,
+
+    lists_open: Vec<OpenList>,
 }
 
 impl<'s> TreeParser<'s> {
@@ -107,6 +122,7 @@ impl<'s> TreeParser<'s> {
         Self {
             src,
             tree: TreeBuilder::new(),
+            lists_open: Vec::new(),
         }
     }
 
@@ -120,6 +136,9 @@ impl<'s> TreeParser<'s> {
                 break;
             }
             line_pos += line_count;
+        }
+        for _ in self.lists_open.drain(..) {
+            self.tree.exit(); // list
         }
         self.tree.finish()
     }
@@ -190,6 +209,7 @@ impl<'s> TreeParser<'s> {
                     Block::Container(c) => {
                         let (skip_chars, skip_lines_suffix) = match c {
                             Blockquote => (2, 0),
+                            List(..) => panic!(),
                             ListItem(..) | Footnote => (indent, 0),
                             Div => (0, 1),
                         };
@@ -211,11 +231,36 @@ impl<'s> TreeParser<'s> {
                                 *sp = sp.skip(skip);
                             });
 
+                        if let Container::ListItem(ty) = c {
+                            if self
+                                .lists_open
+                                .last()
+                                .map_or(true, |OpenList { depth, .. }| {
+                                    usize::from(*depth) < self.tree.depth()
+                                })
+                            {
+                                self.tree.enter(Node::Container(Container::List(ty)), span);
+                                self.lists_open.push(OpenList {
+                                    ty,
+                                    depth: self.tree.depth().try_into().unwrap(),
+                                });
+                            }
+                        }
+
                         self.tree.enter(Node::Container(c), span);
                         let mut l = 0;
                         while l < line_count_inner {
                             l += self.parse_block(&mut lines[l..line_count_inner]);
                         }
+
+                        if let Some(OpenList { depth, .. }) = self.lists_open.last() {
+                            assert!(usize::from(*depth) <= self.tree.depth());
+                            if self.tree.depth() == (*depth).into() {
+                                self.tree.exit(); // list
+                                self.lists_open.pop();
+                            }
+                        }
+
                         self.tree.exit();
                     }
                 }
@@ -390,6 +435,7 @@ impl BlockParser {
                 !((&mut c).take(fence_length).all(|c| c == fence)
                     && c.next().map_or(true, char::is_whitespace))
             }
+            Block::Container(List(..)) => panic!(),
         }
     }
 }
@@ -759,14 +805,80 @@ mod test {
     }
 
     #[test]
-    fn parse_list() {
+    fn parse_list_single_item() {
         test_parse!(
-            "- abc\n",
+            concat!(
+                "- abc\n",
+                "\n",
+                "\n", //
+            ),
+            (Enter(Container(List(Unordered(b'-')))), "-"),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(List(Unordered(b'-')))), "-"),
+        );
+    }
+
+    #[test]
+    fn parse_list_multi_item() {
+        test_parse!(
+            "- abc\n\n\n- def\n\n",
+            (Enter(Container(List(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "abc"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "def"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(List(Unordered(b'-')))), "-"),
+        );
+    }
+
+    #[test]
+    fn parse_list_nest() {
+        test_parse!(
+            concat!(
+                "- a\n",     //
+                "\n",        //
+                "   - aa\n", //
+                "\n",        //
+                "\n",        //
+                "- b\n",     //
+            ),
+            (Enter(Container(List(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Enter(Container(List(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "aa"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(List(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "b"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(List(Unordered(b'-')))), "-"),
         );
     }
 
