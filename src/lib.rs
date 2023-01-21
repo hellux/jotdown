@@ -183,7 +183,8 @@ pub enum LinkType {
 pub enum List {
     Unordered,
     Ordered {
-        num: OrderedListNumbering,
+        numbering: OrderedListNumbering,
+        style: OrderedListStyle,
         start: u32,
     },
     Description,
