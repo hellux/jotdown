@@ -262,12 +262,19 @@ impl<'s> Container<'s> {
 pub struct Parser<'s> {
     src: &'s str,
 
+    /// Block tree parsed at first, written once. This is never accessed directly, the data is read
+    /// via [`Branch`] cursors. This is here only to keep it alive during the `Parser`'s lifetime.
     _tree_data: block::Tree,
+    /// Link definitions encountered during block parse, written once.
     link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
 
+    /// Block tree cursor.
     tree: block::Branch,
+    /// Spans to the inlines in the block currently being parsed.
     inlines: span::InlineSpans<'s>,
+    /// Inline parser, recreated for each new inline.
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
