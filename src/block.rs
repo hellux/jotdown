@@ -388,7 +388,7 @@ impl BlockParser {
                     )
                 })
             }
-            c => maybe_ordered_list_item(c, &mut chars).map(|(num, style, len)| {
+            c => Self::maybe_ordered_list_item(c, &mut chars).map(|(num, style, len)| {
                 (
                     Block::Container(ListItem(Ordered(num, style))),
                     Span::by_len(start, len),
@@ -426,7 +426,16 @@ impl BlockParser {
             Block::Leaf(Paragraph | Heading | Table) => !line.trim().is_empty(),
             Block::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
             Block::Container(Blockquote) => line.trim().starts_with('>'),
-            Block::Container(Footnote | ListItem(..)) => {
+            Block::Container(ListItem(..)) => {
+                let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
+                empty
+                    || spaces > self.indent
+                    || matches!(
+                        Self::parse(std::iter::once(line)),
+                        Some((_, Block::Leaf(Leaf::Paragraph), _, _)),
+                    )
+            }
+            Block::Container(Footnote) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
                 empty || spaces > self.indent
             }
@@ -439,62 +448,70 @@ impl BlockParser {
             Block::Container(List(..)) => panic!(),
         }
     }
-}
 
-fn maybe_ordered_list_item(
-    mut first: char,
-    chars: &mut std::str::Chars,
-) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
-    let start_paren = first == '(';
-    if start_paren {
-        first = chars.next().unwrap_or(EOF);
-    }
+    fn maybe_ordered_list_item(
+        mut first: char,
+        chars: &mut std::str::Chars,
+    ) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
+        fn is_roman_lower_digit(c: char) -> bool {
+            matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
+        }
 
-    let numbering = if first.is_ascii_digit() {
-        Decimal
-    } else if first.is_ascii_lowercase() {
-        AlphaLower
-    } else if first.is_ascii_uppercase() {
-        AlphaUpper
-    } else if is_roman_lower_digit(first) {
-        RomanLower
-    } else if is_roman_upper_digit(first) {
-        RomanUpper
-    } else {
-        return None;
-    };
+        fn is_roman_upper_digit(c: char) -> bool {
+            matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')
+        }
 
-    let chars_num = chars.clone();
-    let len_num = 1 + chars_num
-        .clone()
-        .take_while(|c| match numbering {
-            Decimal => c.is_ascii_digit(),
-            AlphaLower => c.is_ascii_lowercase(),
-            AlphaUpper => c.is_ascii_uppercase(),
-            RomanLower => is_roman_lower_digit(*c),
-            RomanUpper => is_roman_upper_digit(*c),
-        })
-        .count();
+        let start_paren = first == '(';
+        if start_paren {
+            first = chars.next().unwrap_or(EOF);
+        }
 
-    let post_num = chars.nth(len_num - 1)?;
-    let style = if start_paren {
-        if post_num == ')' {
-            ParenParen
+        let numbering = if first.is_ascii_digit() {
+            Decimal
+        } else if first.is_ascii_lowercase() {
+            AlphaLower
+        } else if first.is_ascii_uppercase() {
+            AlphaUpper
+        } else if is_roman_lower_digit(first) {
+            RomanLower
+        } else if is_roman_upper_digit(first) {
+            RomanUpper
         } else {
             return None;
-        }
-    } else if post_num == ')' {
-        Paren
-    } else if post_num == '.' {
-        Period
-    } else {
-        return None;
-    };
-    let len_style = usize::from(start_paren) + 1;
+        };
 
-    let chars_num = std::iter::once(first).chain(chars_num.take(len_num - 1));
-    let numbering =
-        if matches!(numbering, AlphaLower) && chars_num.clone().all(is_roman_lower_digit) {
+        let chars_num = chars.clone();
+        let len_num = 1 + chars_num
+            .clone()
+            .take_while(|c| match numbering {
+                Decimal => c.is_ascii_digit(),
+                AlphaLower => c.is_ascii_lowercase(),
+                AlphaUpper => c.is_ascii_uppercase(),
+                RomanLower => is_roman_lower_digit(*c),
+                RomanUpper => is_roman_upper_digit(*c),
+            })
+            .count();
+
+        let post_num = chars.nth(len_num - 1)?;
+        let style = if start_paren {
+            if post_num == ')' {
+                ParenParen
+            } else {
+                return None;
+            }
+        } else if post_num == ')' {
+            Paren
+        } else if post_num == '.' {
+            Period
+        } else {
+            return None;
+        };
+        let len_style = usize::from(start_paren) + 1;
+
+        let chars_num = std::iter::once(first).chain(chars_num.take(len_num - 1));
+        let numbering = if matches!(numbering, AlphaLower)
+            && chars_num.clone().all(is_roman_lower_digit)
+        {
             RomanLower
         } else if matches!(numbering, AlphaUpper) && chars_num.clone().all(is_roman_upper_digit) {
             RomanUpper
@@ -502,19 +519,12 @@ fn maybe_ordered_list_item(
             numbering
         };
 
-    if chars.next().map_or(true, char::is_whitespace) {
-        Some((numbering, style, len_num + len_style))
-    } else {
-        None
+        if chars.next().map_or(true, char::is_whitespace) {
+            Some((numbering, style, len_num + len_style))
+        } else {
+            None
+        }
     }
-}
-
-fn is_roman_lower_digit(c: char) -> bool {
-    matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
-}
-
-fn is_roman_upper_digit(c: char) -> bool {
-    matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')
 }
 
 impl std::fmt::Display for Block {
