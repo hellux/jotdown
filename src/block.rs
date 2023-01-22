@@ -13,6 +13,7 @@ use ListType::*;
 
 pub type Tree = tree::Tree<Node, Atom>;
 pub type TreeBuilder = tree::Builder<Node, Atom>;
+pub type Element = tree::Element<Node, Atom>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Node {

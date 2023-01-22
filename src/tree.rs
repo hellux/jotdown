@@ -8,6 +8,13 @@ pub enum EventKind<C, A> {
     Atom(A),
 }
 
+#[derive(Debug, Clone)]
+pub enum Element<C, A> {
+    Container(C),
+    Atom(A),
+    Inline,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event<C, A> {
     pub kind: EventKind<C, A>,
@@ -22,6 +29,14 @@ pub struct Tree<C: 'static, A: 'static> {
 }
 
 impl<C: Clone, A: Clone> Tree<C, A> {
+    fn with_head(&self, head: Option<NodeIndex>) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            branch: Vec::new(),
+            head,
+        }
+    }
+
     pub fn empty() -> Self {
         Self {
             nodes: vec![].into_boxed_slice().into(),
@@ -42,6 +57,44 @@ impl<C: Clone, A: Clone> Tree<C, A> {
         count
     }
 
+    /// Retrieve upcoming direct events without entering branches.
+    pub fn linear(&self) -> impl Iterator<Item = Element<C, A>> + '_ {
+        let mut head = self.head;
+        std::iter::from_fn(move || {
+            head.take().map(|h| {
+                let n = &self.nodes[h.index()];
+                head = n.next;
+                match &n.kind {
+                    NodeKind::Root => unreachable!(),
+                    NodeKind::Container(c, ..) => Element::Container(c.clone()),
+                    NodeKind::Atom(a) => Element::Atom(a.clone()),
+                    NodeKind::Inline => Element::Inline,
+                }
+            })
+        })
+    }
+
+    /// Retrieve the upcoming branches.
+    pub fn linear_containers(&self) -> impl Iterator<Item = (C, Self)> + '_ {
+        let mut head = self.head;
+        std::iter::from_fn(move || {
+            while let Some(h) = head.take() {
+                let n = &self.nodes[h.index()];
+                head = n.next;
+                match &n.kind {
+                    NodeKind::Root => unreachable!(),
+                    NodeKind::Container(c, child) => {
+                        return Some((c.clone(), self.with_head(*child)));
+                    }
+                    NodeKind::Atom(_) | NodeKind::Inline => continue,
+                }
+            }
+            None
+        })
+    }
+
+    /// Split off the remaining part of the current branch. The returned [`Tree`] will continue on
+    /// the branch, this [`Tree`] will skip over the current branch.
     pub fn take_branch(&mut self) -> Self {
         let head = self.head.take();
         self.head = self.branch.pop();

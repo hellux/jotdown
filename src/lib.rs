@@ -33,7 +33,7 @@ pub enum Container<'s> {
     /// A blockquote element.
     Blockquote,
     /// A list.
-    List(List),
+    List { kind: ListKind, tight: bool },
     /// An item of a list
     ListItem,
     /// An item of a task list, either checked or unchecked.
@@ -99,7 +99,7 @@ impl<'s> Container<'s> {
     fn is_block(&self) -> bool {
         match self {
             Self::Blockquote
-            | Self::List(..)
+            | Self::List { .. }
             | Self::ListItem
             | Self::TaskListItem { .. }
             | Self::DescriptionList
@@ -136,7 +136,7 @@ impl<'s> Container<'s> {
     fn is_block_container(&self) -> bool {
         match self {
             Self::Blockquote
-            | Self::List(..)
+            | Self::List { .. }
             | Self::ListItem
             | Self::TaskListItem { .. }
             | Self::DescriptionList
@@ -184,7 +184,7 @@ pub enum LinkType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum List {
+pub enum ListKind {
     Unordered,
     Ordered {
         numbering: OrderedListNumbering,
@@ -502,20 +502,41 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            block::Container::List(ty) => match ty {
-                                block::ListType::Unordered(..) => Container::List(List::Unordered),
-                                block::ListType::Task => Container::List(List::Task),
-                                block::ListType::Ordered(numbering, style) => {
-                                    let marker = ev.span.of(self.src);
-                                    let start = numbering.parse_number(style.number(marker)).max(1);
-                                    Container::List(List::Ordered {
-                                        numbering,
-                                        style,
-                                        start,
-                                    })
-                                }
-                                block::ListType::Description => panic!(),
-                            },
+                            block::Container::List(block::ListType::Description) => {
+                                Container::DescriptionList
+                            }
+                            block::Container::List(ty) => {
+                                let kind = match ty {
+                                    block::ListType::Unordered(..) => ListKind::Unordered,
+                                    block::ListType::Ordered(numbering, style) => {
+                                        let marker = ev.span.of(self.src);
+                                        let start =
+                                            numbering.parse_number(style.number(marker)).max(1);
+                                        ListKind::Ordered {
+                                            numbering,
+                                            style,
+                                            start,
+                                        }
+                                    }
+                                    block::ListType::Task => ListKind::Task,
+                                    block::ListType::Description => unreachable!(),
+                                };
+                                let tight =
+                                    !self.tree.linear().any(|elem| {
+                                        matches!(elem, block::Element::Atom(block::Atom::Blankline))
+                                    }) && !self.tree.linear_containers().any(|(c, tree)| {
+                                        matches!(
+                                            c,
+                                            block::Node::Container(block::Container::ListItem(..))
+                                        ) && tree.linear().any(|elem| {
+                                            matches!(
+                                                elem,
+                                                block::Element::Atom(block::Atom::Blankline)
+                                            )
+                                        })
+                                    });
+                                Container::List { kind, tight }
+                            }
                             block::Container::ListItem(ty) => {
                                 if matches!(ty, block::ListType::Task) {
                                     let marker = ev.span.of(self.src);
@@ -587,8 +608,7 @@ mod test {
     use super::Container::*;
     use super::Event::*;
     use super::LinkType;
-    use super::List;
-    use super::List::*;
+    use super::ListKind;
     use super::OrderedListNumbering::*;
     use super::OrderedListStyle::*;
     use super::SpanLinkType;
@@ -1013,13 +1033,22 @@ mod test {
     fn list_item_unordered() {
         test_parse!(
             "- abc",
-            Start(List(List::Unordered), Attributes::new()),
+            Start(
+                List {
+                    kind: ListKind::Unordered,
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
             Start(ListItem, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("abc".into()),
             End(Paragraph),
             End(ListItem),
-            End(List(List::Unordered)),
+            End(List {
+                kind: ListKind::Unordered,
+                tight: true,
+            }),
         );
     }
 
@@ -1028,23 +1057,29 @@ mod test {
         test_parse!(
             "123. abc",
             Start(
-                List(List::Ordered {
-                    numbering: Decimal,
-                    style: Period,
-                    start: 123
-                }),
-                Attributes::new()
+                List {
+                    kind: ListKind::Ordered {
+                        numbering: Decimal,
+                        style: Period,
+                        start: 123
+                    },
+                    tight: true,
+                },
+                Attributes::new(),
             ),
             Start(ListItem, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("abc".into()),
             End(Paragraph),
             End(ListItem),
-            End(List(List::Ordered {
-                numbering: Decimal,
-                style: Period,
-                start: 123
-            })),
+            End(List {
+                kind: ListKind::Ordered {
+                    numbering: Decimal,
+                    style: Period,
+                    start: 123
+                },
+                tight: true,
+            }),
         );
     }
 
@@ -1056,7 +1091,13 @@ mod test {
                 "- [x] b\n", //
                 "- [X] c\n", //
             ),
-            Start(List(List::Task), Attributes::new()),
+            Start(
+                List {
+                    kind: ListKind::Task,
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
             Start(TaskListItem { checked: false }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("a".into()),
@@ -1072,7 +1113,10 @@ mod test {
             Str("c".into()),
             End(Paragraph),
             End(TaskListItem { checked: true }),
-            End(List(List::Task)),
+            End(List {
+                kind: ListKind::Task,
+                tight: true,
+            }),
         );
     }
 }

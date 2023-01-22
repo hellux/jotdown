@@ -1,7 +1,7 @@
 use crate::Atom;
 use crate::Container;
 use crate::Event;
-use crate::List;
+use crate::ListKind;
 use crate::OrderedListNumbering::*;
 
 /// Generate HTML from parsed events and push it to a unicode-accepting buffer or stream.
@@ -101,12 +101,19 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     match &c {
                         Container::Blockquote => self.out.write_str("<blockquote")?,
-                        Container::List(List::Unordered | List::Task) => {
+                        Container::List {
+                            kind: ListKind::Unordered | ListKind::Task,
+                            ..
+                        } => {
                             self.out.write_str("<ul")?;
                         }
-                        Container::List(List::Ordered {
-                            numbering, start, ..
-                        }) => {
+                        Container::List {
+                            kind:
+                                ListKind::Ordered {
+                                    numbering, start, ..
+                                },
+                            ..
+                        } => {
                             self.out.write_str("<ol")?;
                             if *start > 1 {
                                 write!(self.out, r#" start="{}""#, start)?;
@@ -191,14 +198,20 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             c,
                             Container::Div { class: Some(_) }
                                 | Container::Math { .. }
-                                | Container::List(List::Task)
+                                | Container::List {
+                                    kind: ListKind::Task,
+                                    ..
+                                }
                                 | Container::TaskListItem { .. }
                         )
                     {
                         self.out.write_str(r#" class=""#)?;
                         let mut first_written = false;
                         if let Some(cls) = match c {
-                            Container::List(List::Task) => Some("task-list"),
+                            Container::List {
+                                kind: ListKind::Task,
+                                ..
+                            } => Some("task-list"),
                             Container::TaskListItem { checked: false } => Some("unchecked"),
                             Container::TaskListItem { checked: true } => Some("checked"),
                             Container::Math { display: false } => Some("math inline"),
@@ -256,10 +269,16 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     match c {
                         Container::Blockquote => self.out.write_str("</blockquote>")?,
-                        Container::List(List::Unordered | List::Task) => {
+                        Container::List {
+                            kind: ListKind::Unordered | ListKind::Task,
+                            ..
+                        } => {
                             self.out.write_str("</ul>")?;
                         }
-                        Container::List(List::Ordered { .. }) => self.out.write_str("</ol>")?,
+                        Container::List {
+                            kind: ListKind::Ordered { .. },
+                            ..
+                        } => self.out.write_str("</ol>")?,
                         Container::ListItem | Container::TaskListItem { .. } => {
                             self.out.write_str("</li>")?;
                         }
