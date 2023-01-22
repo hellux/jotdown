@@ -1,6 +1,8 @@
 use crate::Atom;
 use crate::Container;
 use crate::Event;
+use crate::List;
+use crate::OrderedListNumbering::*;
 
 /// Generate HTML from parsed events and push it to a unicode-accepting buffer or stream.
 pub fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(out: W, events: I) {
@@ -99,9 +101,29 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     match &c {
                         Container::Blockquote => self.out.write_str("<blockquote")?,
-                        Container::List(..) => todo!(),
-                        Container::ListItem => self.out.write_str("<li")?,
-                        Container::TaskListItem { .. } => todo!(),
+                        Container::List(List::Unordered | List::Task) => {
+                            self.out.write_str("<ul")?;
+                        }
+                        Container::List(List::Ordered {
+                            numbering, start, ..
+                        }) => {
+                            self.out.write_str("<ol")?;
+                            if *start > 1 {
+                                write!(self.out, r#" start="{}""#, start)?;
+                            }
+                            if let Some(ty) = match numbering {
+                                Decimal => None,
+                                AlphaLower => Some('a'),
+                                AlphaUpper => Some('A'),
+                                RomanLower => Some('i'),
+                                RomanUpper => Some('I'),
+                            } {
+                                write!(self.out, r#" type="{}""#, ty)?;
+                            }
+                        }
+                        Container::ListItem | Container::TaskListItem { .. } => {
+                            self.out.write_str("<li")?;
+                        }
                         Container::DescriptionDetails => self.out.write_str("<dd")?,
                         Container::Footnote { number, .. } => {
                             assert!(self.footnote_number.is_none());
@@ -153,42 +175,53 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Mark => self.out.write_str("<mark")?,
                         Container::SingleQuoted => self.out.write_str("&lsquo;")?,
                         Container::DoubleQuoted => self.out.write_str("&ldquo;")?,
+                        _ => panic!(),
                     }
 
                     if matches!(c, Container::SingleQuoted | Container::DoubleQuoted) {
                         continue; // TODO add span to allow attributes?
                     }
 
+                    for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
+                        write!(self.out, r#" {}="{}""#, a, v)?;
+                    }
+
                     if attrs.iter().any(|(a, _)| a == "class")
                         || matches!(
                             c,
-                            Container::Div { class: Some(_) } | Container::Math { .. }
+                            Container::Div { class: Some(_) }
+                                | Container::Math { .. }
+                                | Container::List(List::Task)
+                                | Container::TaskListItem { .. }
                         )
                     {
                         self.out.write_str(r#" class=""#)?;
-                        let mut classes = attrs
+                        let mut first_written = false;
+                        if let Some(cls) = match c {
+                            Container::List(List::Task) => Some("task-list"),
+                            Container::TaskListItem { checked: false } => Some("unchecked"),
+                            Container::TaskListItem { checked: true } => Some("checked"),
+                            Container::Math { display: false } => Some("math inline"),
+                            Container::Math { display: true } => Some("math display"),
+                            _ => None,
+                        } {
+                            first_written = true;
+                            self.out.write_str(cls)?;
+                        }
+                        for cls in attrs
                             .iter()
                             .filter(|(a, _)| a == &"class")
-                            .map(|(_, cls)| cls);
-                        let has_attr = if let Container::Math { display } = c {
-                            self.out.write_str(if display {
-                                "math display"
-                            } else {
-                                "math inline"
-                            })?;
-                            true
-                        } else if let Some(cls) = classes.next() {
-                            self.out.write_str(cls)?;
-                            for cls in classes {
+                            .map(|(_, cls)| cls)
+                        {
+                            if first_written {
                                 self.out.write_char(' ')?;
-                                self.out.write_str(cls)?;
                             }
-                            true
-                        } else {
-                            false
-                        };
+                            first_written = true;
+                            self.out.write_str(cls)?;
+                        }
+                        // div class goes after classes from attrs
                         if let Container::Div { class: Some(cls) } = c {
-                            if has_attr {
+                            if first_written {
                                 self.out.write_char(' ')?;
                             }
                             self.out.write_str(cls)?;
@@ -223,9 +256,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     match c {
                         Container::Blockquote => self.out.write_str("</blockquote>")?,
-                        Container::List(..) => todo!(),
-                        Container::ListItem => self.out.write_str("</li>")?,
-                        Container::TaskListItem { .. } => todo!(),
+                        Container::List(List::Unordered | List::Task) => {
+                            self.out.write_str("</ul>")?;
+                        }
+                        Container::List(List::Ordered { .. }) => self.out.write_str("</ol>")?,
+                        Container::ListItem | Container::TaskListItem { .. } => {
+                            self.out.write_str("</li>")?;
+                        }
                         Container::DescriptionDetails => self.out.write_str("</dd>")?,
                         Container::Footnote { number, .. } => {
                             if !self.footnote_backlink_written {
@@ -291,6 +328,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Mark => self.out.write_str("</mark>")?,
                         Container::SingleQuoted => self.out.write_str("&rsquo;")?,
                         Container::DoubleQuoted => self.out.write_str("&rdquo;")?,
+                        _ => panic!(),
                     }
                 }
                 Event::Str(s) => {
