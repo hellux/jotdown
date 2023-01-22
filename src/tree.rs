@@ -8,10 +8,9 @@ pub enum EventKind<C, A> {
     Atom(A),
 }
 
-#[derive(Debug, Clone)]
-pub enum Element<C, A> {
-    Container(C),
-    Atom(A),
+pub enum Element<'a, C, A> {
+    Container(&'a mut C),
+    Atom(&'a mut A),
     Inline,
 }
 
@@ -29,14 +28,6 @@ pub struct Tree<C: 'static, A: 'static> {
 }
 
 impl<C: Clone, A: Clone> Tree<C, A> {
-    fn with_head(&self, head: Option<NodeIndex>) -> Self {
-        Self {
-            nodes: self.nodes.clone(),
-            branch: Vec::new(),
-            head,
-        }
-    }
-
     pub fn empty() -> Self {
         Self {
             nodes: vec![].into_boxed_slice().into(),
@@ -55,42 +46,6 @@ impl<C: Clone, A: Clone> Tree<C, A> {
             count += 1;
         }
         count
-    }
-
-    /// Retrieve upcoming direct events without entering branches.
-    pub fn linear(&self) -> impl Iterator<Item = Element<C, A>> + '_ {
-        let mut head = self.head;
-        std::iter::from_fn(move || {
-            head.take().map(|h| {
-                let n = &self.nodes[h.index()];
-                head = n.next;
-                match &n.kind {
-                    NodeKind::Root => unreachable!(),
-                    NodeKind::Container(c, ..) => Element::Container(c.clone()),
-                    NodeKind::Atom(a) => Element::Atom(a.clone()),
-                    NodeKind::Inline => Element::Inline,
-                }
-            })
-        })
-    }
-
-    /// Retrieve the upcoming branches.
-    pub fn linear_containers(&self) -> impl Iterator<Item = (C, Self)> + '_ {
-        let mut head = self.head;
-        std::iter::from_fn(move || {
-            while let Some(h) = head.take() {
-                let n = &self.nodes[h.index()];
-                head = n.next;
-                match &n.kind {
-                    NodeKind::Root => unreachable!(),
-                    NodeKind::Container(c, child) => {
-                        return Some((c.clone(), self.with_head(*child)));
-                    }
-                    NodeKind::Atom(_) | NodeKind::Inline => continue,
-                }
-            }
-            None
-        })
     }
 
     /// Split off the remaining part of the current branch. The returned [`Tree`] will continue on
@@ -162,7 +117,7 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct NodeIndex(std::num::NonZeroUsize);
+pub struct NodeIndex(std::num::NonZeroUsize);
 
 impl NodeIndex {
     fn new(i: usize) -> Self {
@@ -232,13 +187,13 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         });
     }
 
-    pub(super) fn enter(&mut self, c: C, span: Span) {
+    pub(super) fn enter(&mut self, c: C, span: Span) -> NodeIndex {
         self.depth += 1;
         self.add_node(Node {
             span,
             kind: NodeKind::Container(c, None),
             next: None,
-        });
+        })
     }
 
     pub(super) fn exit(&mut self) {
@@ -248,6 +203,19 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         } else {
             let last = self.branch.pop();
             assert_ne!(last, None);
+        }
+    }
+
+    pub(super) fn depth(&self) -> usize {
+        self.depth
+    }
+
+    pub(super) fn elem_mut(&mut self, ni: NodeIndex) -> Element<C, A> {
+        match &mut self.nodes[ni.index()].kind {
+            NodeKind::Root => unreachable!(),
+            NodeKind::Container(c, ..) => Element::Container(c),
+            NodeKind::Atom(a) => Element::Atom(a),
+            NodeKind::Inline => Element::Inline,
         }
     }
 
@@ -261,11 +229,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         }
     }
 
-    pub(super) fn depth(&self) -> usize {
-        self.depth
-    }
-
-    fn add_node(&mut self, node: Node<C, A>) {
+    fn add_node(&mut self, node: Node<C, A>) -> NodeIndex {
         let ni = NodeIndex::new(self.nodes.len());
         self.nodes.push(node);
         if let Some(head_ni) = &mut self.head {
@@ -291,6 +255,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
             panic!()
         }
         self.head = Some(ni);
+        ni
     }
 }
 

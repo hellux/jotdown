@@ -103,31 +103,29 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     match &c {
                         Container::Blockquote => self.out.write_str("<blockquote")?,
-                        Container::List {
-                            kind: ListKind::Unordered | ListKind::Task,
-                            ..
-                        } => {
-                            self.out.write_str("<ul")?;
-                        }
-                        Container::List {
-                            kind:
+                        Container::List { kind, tight } => {
+                            self.list_tightness.push(*tight);
+                            match kind {
+                                ListKind::Unordered | ListKind::Task => {
+                                    self.out.write_str("<ul")?
+                                }
                                 ListKind::Ordered {
                                     numbering, start, ..
-                                },
-                            ..
-                        } => {
-                            self.out.write_str("<ol")?;
-                            if *start > 1 {
-                                write!(self.out, r#" start="{}""#, start)?;
-                            }
-                            if let Some(ty) = match numbering {
-                                Decimal => None,
-                                AlphaLower => Some('a'),
-                                AlphaUpper => Some('A'),
-                                RomanLower => Some('i'),
-                                RomanUpper => Some('I'),
-                            } {
-                                write!(self.out, r#" type="{}""#, ty)?;
+                                } => {
+                                    self.out.write_str("<ol")?;
+                                    if *start > 1 {
+                                        write!(self.out, r#" start="{}""#, start)?;
+                                    }
+                                    if let Some(ty) = match numbering {
+                                        Decimal => None,
+                                        AlphaLower => Some('a'),
+                                        AlphaUpper => Some('A'),
+                                        RomanLower => Some('i'),
+                                        RomanUpper => Some('I'),
+                                    } {
+                                        write!(self.out, r#" type="{}""#, ty)?;
+                                    }
+                                }
                             }
                         }
                         Container::ListItem | Container::TaskListItem { .. } => {

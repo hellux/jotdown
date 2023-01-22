@@ -293,9 +293,6 @@ pub struct Parser<'s> {
     /// Inline parser, recreated for each new inline.
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
 
-    /// Stack of tightnesses for current open lists.
-    list_tightness: Vec<bool>,
-
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
@@ -336,7 +333,6 @@ impl<'s> Parser<'s> {
             src,
             link_definitions,
             tree: branch,
-            list_tightness: Vec::new(),
             footnote_references: Vec::new(),
             footnotes: std::collections::HashMap::new(),
             footnote_index: 0,
@@ -506,10 +502,8 @@ impl<'s> Parser<'s> {
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 continue;
                             }
-                            block::Container::List(block::ListType::Description) => {
-                                Container::DescriptionList
-                            }
-                            block::Container::List(ty) => {
+                            block::Container::DescriptionList => Container::DescriptionList,
+                            block::Container::List { ty, tight } => {
                                 let kind = match ty {
                                     block::ListType::Unordered(..) => ListKind::Unordered,
                                     block::ListType::Ordered(numbering, style) => {
@@ -523,30 +517,6 @@ impl<'s> Parser<'s> {
                                         }
                                     }
                                     block::ListType::Task => ListKind::Task,
-                                    block::ListType::Description => unreachable!(),
-                                };
-                                let tight = if enter {
-                                    let tight = !self.tree.linear().any(|elem| {
-                                        matches!(elem, block::Element::Atom(block::Atom::Blankline))
-                                    }) && !self.tree.linear_containers().any(
-                                        |(c, tree)| {
-                                            matches!(
-                                                c,
-                                                block::Node::Container(block::Container::ListItem(
-                                                    ..
-                                                ))
-                                            ) && tree.linear().any(|elem| {
-                                                matches!(
-                                                    elem,
-                                                    block::Element::Atom(block::Atom::Blankline)
-                                                )
-                                            })
-                                        },
-                                    );
-                                    self.list_tightness.push(tight);
-                                    tight
-                                } else {
-                                    self.list_tightness.pop().unwrap()
                                 };
                                 Container::List { kind, tight }
                             }
