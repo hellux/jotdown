@@ -191,7 +191,6 @@ pub enum List {
         style: OrderedListStyle,
         start: u32,
     },
-    Description,
     Task,
 }
 
