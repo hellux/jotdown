@@ -202,9 +202,9 @@ pub enum OrderedListNumbering {
     AlphaLower,
     /// Uppercase alphabetic numbering, e.g. `A)`.
     AlphaUpper,
-    /// Lowercase roman numbering, e.g. `iv)`.
+    /// Lowercase roman or alphabetic numbering, e.g. `iv)`.
     RomanLower,
-    /// Uppercase roman numbering, e.g. `IV)`.
+    /// Uppercase roman or alphabetic numbering, e.g. `IV)`.
     RomanUpper,
 }
 
