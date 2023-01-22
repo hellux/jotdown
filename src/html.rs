@@ -71,6 +71,7 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
     out: W,
     raw: Raw,
     text_only: bool,
+    list_tightness: Vec<bool>,
     encountered_footnote: bool,
     footnote_number: Option<std::num::NonZeroUsize>,
     footnote_backlink_written: bool,
@@ -83,6 +84,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             out,
             raw: Raw::None,
             text_only: false,
+            list_tightness: Vec::new(),
             encountered_footnote: false,
             footnote_number: None,
             footnote_backlink_written: false,
@@ -147,7 +149,12 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Table => self.out.write_str("<table")?,
                         Container::TableRow => self.out.write_str("<tr")?,
                         Container::Div { .. } => self.out.write_str("<div")?,
-                        Container::Paragraph => self.out.write_str("<p")?,
+                        Container::Paragraph => {
+                            if matches!(self.list_tightness.last(), Some(true)) {
+                                continue;
+                            }
+                            self.out.write_str("<p")?;
+                        }
                         Container::Heading { level } => write!(self.out, "<h{}", level)?,
                         Container::TableCell => self.out.write_str("<td")?,
                         Container::DescriptionTerm => self.out.write_str("<dt")?,
@@ -273,6 +280,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             kind: ListKind::Unordered | ListKind::Task,
                             ..
                         } => {
+                            self.list_tightness.pop();
                             self.out.write_str("</ul>")?;
                         }
                         Container::List {
@@ -298,6 +306,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::TableRow => self.out.write_str("</tr>")?,
                         Container::Div { .. } => self.out.write_str("</div>")?,
                         Container::Paragraph => {
+                            if matches!(self.list_tightness.last(), Some(true)) {
+                                continue;
+                            }
                             if let Some(num) = self.footnote_number {
                                 if matches!(
                                     self.events.peek(),
