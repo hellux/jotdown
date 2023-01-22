@@ -38,6 +38,8 @@ pub enum Container<'s> {
     ListItem,
     /// An item of a task list, either checked or unchecked.
     TaskListItem { checked: bool },
+    /// A description list element.
+    DescriptionList,
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
@@ -100,6 +102,7 @@ impl<'s> Container<'s> {
             | Self::List(..)
             | Self::ListItem
             | Self::TaskListItem { .. }
+            | Self::DescriptionList
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
@@ -136,6 +139,7 @@ impl<'s> Container<'s> {
             | Self::List(..)
             | Self::ListItem
             | Self::TaskListItem { .. }
+            | Self::DescriptionList
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
