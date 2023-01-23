@@ -287,8 +287,32 @@ impl OrderedListNumbering {
                     .map(|(d, w)| w * (d - d0 + 1))
                     .sum()
             }
-            Self::RomanLower => 1,
-            Self::RomanUpper => 1,
+            Self::RomanLower | Self::RomanUpper => {
+                fn value(d: char) -> u32 {
+                    match d {
+                        'i' | 'I' => 1,
+                        'v' | 'V' => 5,
+                        'x' | 'X' => 10,
+                        'l' | 'L' => 50,
+                        'c' | 'C' => 100,
+                        'd' | 'D' => 500,
+                        'm' | 'M' => 1000,
+                        _ => panic!(),
+                    }
+                }
+                let mut prev = 0;
+                let mut sum = 0;
+                for d in n.chars().rev() {
+                    let v = value(d);
+                    if v < prev {
+                        sum -= v;
+                    } else {
+                        sum += v;
+                    }
+                    prev = v;
+                }
+                sum
+            }
         }
     }
 }
