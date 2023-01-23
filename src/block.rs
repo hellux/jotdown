@@ -254,13 +254,7 @@ impl<'s> TreeParser<'s> {
                         self.tree.exit();
                     }
                     Block::Container(c) => {
-                        let (skip_chars, skip_lines_suffix) = match c {
-                            Blockquote => (2, 0),
-                            List{..} | DescriptionList => panic!(),
-                            ListItem(..) | Footnote => (indent, 0),
-                            Div => (0, 1),
-                        };
-                        let line_count_inner = lines.len() - skip_lines_suffix;
+                        let line_count_inner = lines.len() - usize::from(matches!(c, Div));
 
                         // update spans, remove indentation / container prefix
                         lines
@@ -268,14 +262,18 @@ impl<'s> TreeParser<'s> {
                             .skip(1)
                             .take(line_count_inner)
                             .for_each(|sp| {
-                                let skip = (sp
+                                let spaces = sp
                                     .of(self.src)
                                     .chars()
                                     .take_while(|c| c.is_whitespace())
-                                    .count()
-                                    + skip_chars)
-                                    .min(sp.len() - usize::from(sp.of(self.src).ends_with('\n')));
-                                *sp = sp.skip(skip);
+                                    .count();
+                                let skip = match c {
+                                    Blockquote => spaces + 2,
+                                    ListItem(..) | Footnote | Div => spaces.min(indent),
+                                    List { .. } | DescriptionList => panic!(),
+                                };
+                                let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
+                                *sp = sp.skip(skip.min(len));
                             });
 
                         if let Container::ListItem(ty) = c {
