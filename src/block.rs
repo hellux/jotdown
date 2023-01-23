@@ -112,6 +112,21 @@ struct OpenList {
     node: tree::NodeIndex,
 }
 
+impl ListType {
+    fn compatible(self, other: Self) -> bool {
+        self == other
+            || if let (Self::Ordered(n0, s0), Self::Ordered(n1, s1)) = (self, other) {
+                s0 == s1
+                    && (matches!((n0, n1), (AlphaLower, RomanLower))
+                        || matches!((n0, n1), (RomanLower, AlphaLower))
+                        || matches!((n0, n1), (RomanUpper, AlphaUpper))
+                        || matches!((n0, n1), (AlphaLower, RomanLower)))
+            } else {
+                false
+            }
+    }
+}
+
 /// Parser for block-level tree structure of entire document.
 struct TreeParser<'s> {
     src: &'s str,
@@ -184,12 +199,12 @@ impl<'s> TreeParser<'s> {
                 };
 
                 // close list if a non list item or a list item of new type appeared
-                if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
+                if let Some(OpenList { ty, depth, node }) = self.open_lists.last() {
                     assert!(usize::from(*depth) <= self.tree.depth());
                     if self.tree.depth() == (*depth).into()
                         && !matches!(
                             kind,
-                            Block::Container(Container::ListItem(ty_new)) if *ty == ty_new,
+                            Block::Container(Container::ListItem(ty_new)) if ty.compatible(ty_new),
                         )
                     {
                         self.tree.exit(); // list
@@ -293,6 +308,20 @@ impl<'s> TreeParser<'s> {
                                     depth: self.tree.depth().try_into().unwrap(),
                                     node,
                                 });
+                            } else if let ListType::Ordered(n @ (AlphaLower | AlphaUpper), _) = ty {
+                                if let Some(OpenList { node, .. }) = self.open_lists.last() {
+                                    if let tree::Element::Container(Node::Container(
+                                        Container::List {
+                                            ty: ListType::Ordered(numbering, _),
+                                            ..
+                                        },
+                                    )) = self.tree.elem_mut(*node)
+                                    {
+                                        *numbering = n;
+                                    } else {
+                                        panic!();
+                                    }
+                                }
                             }
                         }
 
