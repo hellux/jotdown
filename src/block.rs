@@ -268,7 +268,7 @@ impl<'s> TreeParser<'s> {
                                     .take_while(|c| c.is_whitespace())
                                     .count();
                                 let skip = match c {
-                                    Blockquote => spaces + 2,
+                                    Blockquote => spaces + "> ".len(),
                                     ListItem(..) | Footnote | Div => spaces.min(indent),
                                     List { .. } | DescriptionList => panic!(),
                                 };
