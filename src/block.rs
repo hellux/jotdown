@@ -305,6 +305,7 @@ impl<'s> TreeParser<'s> {
                         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
                             assert!(usize::from(*depth) <= self.tree.depth());
                             if self.tree.depth() == (*depth).into() {
+                                self.prev_blankline = false;
                                 self.tree.exit(); // list
                                 self.open_lists.pop();
                             }
@@ -1004,6 +1005,19 @@ mod test {
             (Inline, "ab"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
+            (
+                Exit(Container(List {
+                    ty: Unordered(b'+'),
+                    tight: true,
+                })),
+                "+",
+            ),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "b"),
+            (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
                 Exit(Container(List {
@@ -1034,8 +1048,48 @@ mod test {
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
             (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (
+                Enter(Container(List {
+                    ty: Unordered(b'+'),
+                    tight: true,
+                })),
+                "+",
+            ),
+            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (
+                Enter(Container(List {
+                    ty: Unordered(b'*'),
+                    tight: true,
+                })),
+                "*",
+            ),
+            (Enter(Container(ListItem(Unordered(b'*')))), "*"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "c"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'*')))), "*"),
+            (
+                Exit(Container(List {
+                    ty: Unordered(b'*'),
+                    tight: true,
+                })),
+                "*",
+            ),
+            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
+            (
+                Exit(Container(List {
+                    ty: Unordered(b'+'),
+                    tight: true,
+                })),
+                "+",
+            ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
                 Exit(Container(List {
