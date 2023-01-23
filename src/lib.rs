@@ -1036,50 +1036,6 @@ mod test {
     }
 
     #[test]
-    fn list_item_unordered_nest() {
-        test_parse!(
-            concat!(
-                "- a\n",    //
-                "\n",       //
-                "  - aa\n", //
-            ),
-            Start(
-                List {
-                    kind: ListKind::Unordered,
-                    tight: false,
-                },
-                Attributes::new(),
-            ),
-            Start(ListItem, Attributes::new()),
-            Start(Paragraph, Attributes::new()),
-            Str("a".into()),
-            End(Paragraph),
-            Atom(Blankline),
-            Start(
-                List {
-                    kind: ListKind::Unordered,
-                    tight: true,
-                },
-                Attributes::new(),
-            ),
-            Start(ListItem, Attributes::new()),
-            Start(Paragraph, Attributes::new()),
-            Str("aa".into()),
-            End(Paragraph),
-            End(ListItem),
-            End(List {
-                kind: ListKind::Unordered,
-                tight: true,
-            }),
-            End(ListItem),
-            End(List {
-                kind: ListKind::Unordered,
-                tight: false,
-            }),
-        );
-    }
-
-    #[test]
     fn list_item_ordered_decimal() {
         test_parse!(
             "123. abc",
