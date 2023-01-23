@@ -346,7 +346,8 @@ impl BlockParser {
         let start = line
             .chars()
             .take_while(|c| *c != '\n' && c.is_whitespace())
-            .count();
+            .map(char::len_utf8)
+            .sum();
         let line_t = &line[start..];
         let mut chars = line_t.chars();
 
@@ -625,13 +626,48 @@ mod test {
     use super::Node::*;
 
     macro_rules! test_parse {
-            ($src:expr $(,$($event:expr),* $(,)?)?) => {
-                let t = super::TreeParser::new($src).parse();
-                let actual = t.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
-                let expected = &[$($($event),*,)?];
-                assert_eq!(actual, expected, "\n\n{}\n\n", $src);
-            };
-        }
+        ($src:expr $(,$($event:expr),* $(,)?)?) => {
+            let t = super::TreeParser::new($src).parse();
+            let actual = t.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
+            let expected = &[$($($event),*,)?];
+            assert_eq!(
+                actual,
+                expected,
+                concat!(
+                    "\n",
+                    "\x1b[0;1m====================== INPUT =========================\x1b[0m\n",
+                    "\x1b[2m{}",
+                    "\x1b[0;1m================ ACTUAL vs EXPECTED ==================\x1b[0m\n",
+                    "{}",
+                    "\x1b[0;1m======================================================\x1b[0m\n",
+                ),
+                $src,
+                {
+                    let a = actual.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>();
+                    let b = expected.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>();
+                    let max = a.len().max(b.len());
+                    let a_width = a.iter().map(|a| a.len()).max().unwrap_or(0);
+                    a.iter()
+                        .map(AsRef::as_ref)
+                        .chain(std::iter::repeat(""))
+                        .zip(b.iter().map(AsRef::as_ref).chain(std::iter::repeat("")))
+                        .take(max)
+                        .map(|(a, b)|
+                            format!(
+                                "\x1b[{}m{:a_width$}\x1b[0m    {}=    \x1b[{}m{}\x1b[0m\n",
+                                if a == b { "2" } else { "31" },
+                                a,
+                                if a == b { '=' } else { '!' },
+                                if a == b { "2" } else { "32" },
+                                b,
+                                a_width = a_width,
+                            )
+                        )
+                        .collect::<String>()
+                },
+            );
+        };
+    }
 
     #[test]
     fn parse_para_oneline() {
