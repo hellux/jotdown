@@ -211,7 +211,7 @@ impl<'s> TreeParser<'s> {
                             if let tree::Element::Container(Node::Container(Container::List {
                                 tight,
                                 ..
-                            })) = self.tree.elem_mut(*node)
+                            })) = self.tree.elem(*node)
                             {
                                 *tight = false;
                             } else {

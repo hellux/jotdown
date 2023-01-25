@@ -210,7 +210,7 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         self.depth
     }
 
-    pub(super) fn elem_mut(&mut self, ni: NodeIndex) -> Element<C, A> {
+    pub(super) fn elem(&mut self, ni: NodeIndex) -> Element<C, A> {
         match &mut self.nodes[ni.index()].kind {
             NodeKind::Root => unreachable!(),
             NodeKind::Container(c, ..) => Element::Container(c),
