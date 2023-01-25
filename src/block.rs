@@ -1,9 +1,11 @@
+use crate::Alignment;
 use crate::OrderedListNumbering::*;
 use crate::OrderedListStyle::*;
 use crate::Span;
 use crate::EOF;
 
 use crate::attr;
+use crate::lex;
 use crate::tree;
 
 use Atom::*;
@@ -59,9 +61,9 @@ pub enum Leaf {
     /// Each inline is a line.
     Heading,
 
-    /// Span is first `|` character.
-    /// Each inline is a line (row).
-    Table,
+    /// Span is '|'.
+    /// Has zero or one inline for the cell contents.
+    TableCell(Alignment),
 
     /// Span is the link tag.
     /// Inlines are lines of the URL.
@@ -91,6 +93,12 @@ pub enum Container {
 
     /// Span is footnote tag.
     Footnote,
+
+    /// Span is empty, before first '|' character.
+    Table,
+
+    /// Span is first '|' character.
+    TableRow { head: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +129,8 @@ struct TreeParser<'s> {
     prev_blankline: bool,
     /// Stack of currently open lists.
     open_lists: Vec<OpenList>,
+    /// Alignments for each column in for the current table.
+    alignments: Vec<Alignment>,
 }
 
 impl<'s> TreeParser<'s> {
@@ -131,6 +141,7 @@ impl<'s> TreeParser<'s> {
             tree: TreeBuilder::new(),
             prev_blankline: false,
             open_lists: Vec::new(),
+            alignments: Vec::new(),
         }
     }
 
@@ -253,6 +264,134 @@ impl<'s> TreeParser<'s> {
                         lines.iter().for_each(|line| self.tree.inline(*line));
                         self.tree.exit();
                     }
+                    Block::Container(Table) => {
+                        self.alignments.clear();
+                        self.tree.enter(Node::Container(Table), span);
+                        let mut last_row_node = None;
+                        for row in lines {
+                            let row_node = self
+                                .tree
+                                .enter(Node::Container(TableRow { head: false }), row.with_len(1));
+                            let rem = row.skip(1);
+                            let lex = lex::Lexer::new(row.skip(1).of(self.src).chars());
+                            let mut pos = rem.start();
+                            let mut cell_start = pos;
+                            let mut separator_row = true;
+                            let mut verbatim = None;
+                            let mut column_index = 0;
+                            for lex::Token { kind, len } in lex {
+                                if let Some(l) = verbatim {
+                                    if matches!(kind, lex::Kind::Seq(lex::Sequence::Backtick))
+                                        && len == l
+                                    {
+                                        verbatim = None;
+                                    }
+                                } else {
+                                    match kind {
+                                        lex::Kind::Sym(lex::Symbol::Pipe) => {
+                                            {
+                                                let span =
+                                                    Span::new(cell_start, pos).trim(self.src);
+                                                let cell = span.of(self.src);
+                                                let separator_cell = match cell.len() {
+                                                    0 => false,
+                                                    1 => cell == "-",
+                                                    2 => matches!(cell, ":-" | "--" | "-:"),
+                                                    l => {
+                                                        matches!(cell.as_bytes()[0], b'-' | b':')
+                                                            && matches!(
+                                                                cell.as_bytes()[l - 1],
+                                                                b'-' | b':'
+                                                            )
+                                                            && cell
+                                                                .chars()
+                                                                .skip(1)
+                                                                .take(l - 2)
+                                                                .all(|c| c == '-')
+                                                    }
+                                                };
+                                                separator_row &= separator_cell;
+                                                self.tree.enter(
+                                                    Node::Leaf(TableCell(
+                                                        self.alignments
+                                                            .get(column_index)
+                                                            .copied()
+                                                            .unwrap_or(Alignment::Unspecified),
+                                                    )),
+                                                    Span::by_len(cell_start - 1, 1),
+                                                );
+                                                self.tree.inline(span);
+                                                self.tree.exit(); // cell
+                                                cell_start = pos + len;
+                                                column_index += 1;
+                                            }
+                                        }
+                                        lex::Kind::Seq(lex::Sequence::Backtick) => {
+                                            verbatim = Some(len);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                pos += len;
+                            }
+                            if separator_row {
+                                self.alignments.clear();
+                                self.alignments.extend(
+                                    self.tree
+                                        .children(row_node)
+                                        .filter(|(kind, _)| matches!(kind, tree::Element::Inline))
+                                        .map(|(_, sp)| {
+                                            let cell = sp.of(self.src);
+                                            let l = cell.as_bytes()[0] == b':';
+                                            let r = cell.as_bytes()[cell.len() - 1] == b':';
+                                            match (l, r) {
+                                                (false, false) => Alignment::Unspecified,
+                                                (false, true) => Alignment::Right,
+                                                (true, false) => Alignment::Left,
+                                                (true, true) => Alignment::Center,
+                                            }
+                                        }),
+                                );
+                                self.tree.exit_discard(); // table row
+                                if let Some(head_row) = last_row_node {
+                                    self.tree
+                                        .children(head_row)
+                                        .filter(|(e, _sp)| {
+                                            matches!(
+                                                e,
+                                                tree::Element::Container(Node::Leaf(TableCell(..)))
+                                            )
+                                        })
+                                        .zip(
+                                            self.alignments
+                                                .iter()
+                                                .copied()
+                                                .chain(std::iter::repeat(Alignment::Unspecified)),
+                                        )
+                                        .for_each(|((e, _), new_align)| {
+                                            if let tree::Element::Container(Node::Leaf(
+                                                TableCell(alignment),
+                                            )) = e
+                                            {
+                                                *alignment = new_align;
+                                            }
+                                        });
+                                    if let tree::Element::Container(Node::Container(TableRow {
+                                        head,
+                                    })) = self.tree.elem(head_row)
+                                    {
+                                        *head = true;
+                                    } else {
+                                        panic!()
+                                    }
+                                }
+                            } else {
+                                self.tree.exit(); // table row
+                            }
+                            last_row_node = Some(row_node);
+                        }
+                        self.tree.exit(); // table
+                    }
                     Block::Container(c) => {
                         let line_count_inner = lines.len() - usize::from(matches!(c, Div));
 
@@ -270,7 +409,9 @@ impl<'s> TreeParser<'s> {
                                 let skip = match c {
                                     Blockquote => spaces + "> ".len(),
                                     ListItem(..) | Footnote | Div => spaces.min(indent),
-                                    List { .. } | DescriptionList => panic!(),
+                                    List { .. } | DescriptionList | Table | TableRow { .. } => {
+                                        panic!()
+                                    }
                                 };
                                 let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
                                 *sp = sp.skip(skip.min(len));
@@ -381,9 +522,12 @@ impl BlockParser {
             }
             '{' => (attr::valid(line_t.chars()).0 == line_t.trim_end().len())
                 .then(|| (Block::Atom(Attributes), Span::by_len(start, line_t.len()))),
-            '|' => (&line_t[line_t.len() - 1..] == "|"
-                && &line_t[line_t.len() - 2..line_t.len() - 1] != "\\")
-                .then(|| (Block::Leaf(Table), Span::by_len(start, 1))),
+            '|' => {
+                let l = line_t.trim_end().len();
+                // FIXME: last byte may be pipe but end of prefixed unicode char
+                (line_t.as_bytes()[l - 1] == b'|' && line_t.as_bytes()[l - 2] != b'\\')
+                    .then(|| (Block::Container(Table), Span::empty_at(start)))
+            }
             '[' => chars.as_str().find("]:").map(|l| {
                 let tag = &chars.as_str()[0..l];
                 let (tag, is_footnote) = if let Some(tag) = tag.strip_prefix('^') {
@@ -472,7 +616,7 @@ impl BlockParser {
         let empty = line_t.is_empty();
         match self.kind {
             Block::Atom(..) => false,
-            Block::Leaf(Paragraph | Heading | Table) => !line.trim().is_empty(),
+            Block::Leaf(Paragraph | Heading) => !line.trim().is_empty(),
             Block::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
             Block::Container(Blockquote) => line.trim().starts_with('>'),
             Block::Container(ListItem(..)) => {
@@ -494,7 +638,15 @@ impl BlockParser {
                 !((&mut c).take(fence_length).all(|c| c == fence)
                     && c.next().map_or(true, char::is_whitespace))
             }
-            Block::Container(List { .. } | DescriptionList) => panic!(),
+            Block::Container(List { .. } | DescriptionList | TableRow { .. })
+            | Block::Leaf(TableCell(..)) => {
+                panic!()
+            }
+            Block::Container(Table) => {
+                let line = line.trim();
+                let l = line.len();
+                line.as_bytes()[l - 1] == b'|' && line.as_bytes()[l - 2] != b'\\'
+            }
         }
     }
 
@@ -615,6 +767,7 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 mod test {
     use crate::tree::EventKind;
     use crate::tree::EventKind::*;
+    use crate::Alignment;
     use crate::OrderedListNumbering::*;
     use crate::OrderedListStyle::*;
 
@@ -1239,6 +1392,90 @@ mod test {
                 })),
                 "+"
             ),
+        );
+    }
+
+    #[test]
+    fn parse_table() {
+        test_parse!(
+            concat!(
+                "|a|b|c|\n", //
+                "|-|-|-|\n", //
+                "|1|2|3|\n", //
+            ),
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: true })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "a"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "b"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "c"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: true })), "|"),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "1"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "2"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "3"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), "")
+        );
+    }
+
+    #[test]
+    fn parse_table_post() {
+        test_parse!(
+            "|a|\npara",
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "a"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), ""),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "para"),
+            (Exit(Leaf(Paragraph)), ""),
+        );
+    }
+
+    #[test]
+    fn parse_table_align() {
+        test_parse!(
+            concat!(
+                "|:---|:----:|----:|\n",
+                "|left|center|right|\n", //
+            ),
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Left))), "|"),
+            (Inline, "left"),
+            (Exit(Leaf(TableCell(Alignment::Left))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Center))), "|"),
+            (Inline, "center"),
+            (Exit(Leaf(TableCell(Alignment::Center))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Right))), "|"),
+            (Inline, "right"),
+            (Exit(Leaf(TableCell(Alignment::Right))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), "")
+        );
+    }
+
+    #[test]
+    fn parse_table_sep_row_only() {
+        test_parse!(
+            "|-|-|",
+            (Enter(Container(Table)), ""),
+            (Exit(Container(Table)), "")
         );
     }
 

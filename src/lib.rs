@@ -47,7 +47,7 @@ pub enum Container<'s> {
     /// A table element.
     Table,
     /// A row element of a table.
-    TableRow,
+    TableRow { head: bool },
     /// A block-level divider element.
     Div { class: Option<&'s str> },
     /// A paragraph.
@@ -55,7 +55,7 @@ pub enum Container<'s> {
     /// A heading.
     Heading { level: usize },
     /// A cell element of row within a table.
-    TableCell,
+    TableCell { alignment: Alignment, head: bool },
     /// A term within a description list.
     DescriptionTerm,
     /// A block with raw markup for a specific output format.
@@ -106,12 +106,12 @@ impl<'s> Container<'s> {
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
-            | Self::TableRow
+            | Self::TableRow { .. }
             | Self::Div { .. }
             | Self::Paragraph
             | Self::Heading { .. }
+            | Self::TableCell { .. }
             | Self::DescriptionTerm
-            | Self::TableCell
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
             Self::Span
@@ -143,11 +143,11 @@ impl<'s> Container<'s> {
             | Self::DescriptionDetails
             | Self::Footnote { .. }
             | Self::Table
-            | Self::TableRow
+            | Self::TableRow { .. }
             | Self::Div { .. } => true,
             Self::Paragraph
             | Self::Heading { .. }
-            | Self::TableCell
+            | Self::TableCell { .. }
             | Self::DescriptionTerm
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. }
@@ -168,6 +168,14 @@ impl<'s> Container<'s> {
             | Self::DoubleQuoted => false,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alignment {
+    Unspecified,
+    Left,
+    Center,
+    Right,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -240,27 +248,6 @@ pub enum Atom<'s> {
     Escape,
     /// A blank line, not visible in output.
     Blankline,
-}
-
-impl<'s> Container<'s> {
-    fn from_leaf_block(content: &'s str, l: block::Leaf) -> Self {
-        match l {
-            block::Leaf::Paragraph => Self::Paragraph,
-            block::Leaf::Heading => Self::Heading {
-                level: content.len(),
-            },
-            block::Leaf::CodeBlock => {
-                if let Some(format) = content.strip_prefix('=') {
-                    Self::RawBlock { format }
-                } else {
-                    Self::CodeBlock {
-                        lang: (!content.is_empty()).then(|| content),
-                    }
-                }
-            }
-            _ => todo!(),
-        }
-    }
 }
 
 impl OrderedListNumbering {
@@ -336,6 +323,8 @@ pub struct Parser<'s> {
     /// Inline parser, recreated for each new inline.
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
 
+    table_head_row: bool,
+
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
@@ -376,6 +365,7 @@ impl<'s> Parser<'s> {
             src,
             link_definitions,
             tree: branch,
+            table_head_row: false,
             footnote_references: Vec::new(),
             footnotes: std::collections::HashMap::new(),
             footnote_index: 0,
@@ -533,7 +523,26 @@ impl<'s> Parser<'s> {
                                 self.inline_parser =
                                     Some(inline::Parser::new(self.inlines.chars()));
                             }
-                            Container::from_leaf_block(content, l)
+                            match l {
+                                block::Leaf::Paragraph => Container::Paragraph,
+                                block::Leaf::Heading => Container::Heading {
+                                    level: content.len(),
+                                },
+                                block::Leaf::CodeBlock => {
+                                    if let Some(format) = content.strip_prefix('=') {
+                                        Container::RawBlock { format }
+                                    } else {
+                                        Container::CodeBlock {
+                                            lang: (!content.is_empty()).then(|| content),
+                                        }
+                                    }
+                                }
+                                block::Leaf::TableCell(alignment) => Container::TableCell {
+                                    alignment,
+                                    head: self.table_head_row,
+                                },
+                                block::Leaf::LinkDefinition => unreachable!(),
+                            }
                         }
                         block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
@@ -572,6 +581,13 @@ impl<'s> Parser<'s> {
                                 } else {
                                     Container::ListItem
                                 }
+                            }
+                            block::Container::Table => Container::Table,
+                            block::Container::TableRow { head } => {
+                                if enter {
+                                    self.table_head_row = head;
+                                }
+                                Container::TableRow { head }
                             }
                         },
                     };

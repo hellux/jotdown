@@ -157,7 +157,18 @@ pub struct Builder<C, A> {
     depth: usize,
 }
 
-impl<C: Clone, A: Clone> Builder<C, A> {
+impl<'a, C, A> From<&'a mut NodeKind<C, A>> for Element<'a, C, A> {
+    fn from(kind: &'a mut NodeKind<C, A>) -> Self {
+        match kind {
+            NodeKind::Root => unreachable!(),
+            NodeKind::Container(c, ..) => Element::Container(c),
+            NodeKind::Atom(a) => Element::Atom(a),
+            NodeKind::Inline => Element::Inline,
+        }
+    }
+}
+
+impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
     pub(super) fn new() -> Self {
         Builder {
             nodes: vec![Node {
@@ -206,6 +217,19 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         }
     }
 
+    /// Exit and discard all the contents of the current container.
+    pub(super) fn exit_discard(&mut self) {
+        self.exit();
+        let exited = self.branch.pop().unwrap();
+        self.nodes.drain(exited.index()..);
+        let (ni, has_parent) = self.relink(exited, None);
+        if has_parent {
+            self.head = Some(ni);
+        } else {
+            self.branch.push(ni);
+        }
+    }
+
     pub(super) fn depth(&self) -> usize {
         self.depth
     }
@@ -217,6 +241,23 @@ impl<C: Clone, A: Clone> Builder<C, A> {
             NodeKind::Atom(a) => Element::Atom(a),
             NodeKind::Inline => Element::Inline,
         }
+    }
+
+    /// Retrieve all children nodes for the specified node. Order is in the order they were added.
+    pub(super) fn children(
+        &mut self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (Element<C, A>, Span)> {
+        assert!(matches!(
+            self.nodes[node.index()].kind,
+            NodeKind::Container(..)
+        ));
+        let end = self.nodes[node.index()]
+            .next
+            .map_or(self.nodes.len(), NodeIndex::index);
+        self.nodes[node.index()..end]
+            .iter_mut()
+            .map(|n| (Element::from(&mut n.kind), n.span))
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
@@ -256,6 +297,25 @@ impl<C: Clone, A: Clone> Builder<C, A> {
         }
         self.head = Some(ni);
         ni
+    }
+
+    /// Remove the link from the node that points to the specified node. Return the pointer node
+    /// and whether it is a container or not.
+    fn relink(&mut self, prev: NodeIndex, next: Option<NodeIndex>) -> (NodeIndex, bool) {
+        for (i, n) in self.nodes.iter_mut().enumerate().rev() {
+            let ni = NodeIndex::new(i);
+            if n.next == Some(prev) {
+                n.next = next;
+                return (ni, false);
+            } else if let NodeKind::Container(kind, child) = &mut n.kind {
+                if *child == Some(prev) {
+                    dbg!(kind, next);
+                    *child = next;
+                    return (ni, true);
+                }
+            }
+        }
+        panic!()
     }
 }
 

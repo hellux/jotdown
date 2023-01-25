@@ -145,7 +145,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             continue;
                         }
                         Container::Table => self.out.write_str("<table")?,
-                        Container::TableRow => self.out.write_str("<tr")?,
+                        Container::TableRow { .. } => self.out.write_str("<tr")?,
                         Container::Div { .. } => self.out.write_str("<div")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
@@ -154,7 +154,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             self.out.write_str("<p")?;
                         }
                         Container::Heading { level } => write!(self.out, "<h{}", level)?,
-                        Container::TableCell => self.out.write_str("<td")?,
+                        Container::TableCell { .. } => self.out.write_str("<td")?,
                         Container::DescriptionTerm => self.out.write_str("<dt")?,
                         Container::CodeBlock { .. } => self.out.write_str("<pre")?,
                         Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
@@ -301,7 +301,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             self.footnote_number = None;
                         }
                         Container::Table => self.out.write_str("</table>")?,
-                        Container::TableRow => self.out.write_str("</tr>")?,
+                        Container::TableRow { .. } => self.out.write_str("</tr>")?,
                         Container::Div { .. } => self.out.write_str("</div>")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
@@ -323,7 +323,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             self.out.write_str("</p>")?;
                         }
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
-                        Container::TableCell => self.out.write_str("</td>")?,
+                        Container::TableCell { .. } => self.out.write_str("</td>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
                         Container::Span => self.out.write_str("</span>")?,
