@@ -1,3 +1,4 @@
+use crate::Alignment;
 use crate::Atom;
 use crate::Container;
 use crate::Event;
@@ -154,7 +155,8 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             self.out.write_str("<p")?;
                         }
                         Container::Heading { level } => write!(self.out, "<h{}", level)?,
-                        Container::TableCell { .. } => self.out.write_str("<td")?,
+                        Container::TableCell { head: false, .. } => self.out.write_str("<td")?,
+                        Container::TableCell { head: true, .. } => self.out.write_str("<th")?,
                         Container::DescriptionTerm => self.out.write_str("<dt")?,
                         Container::CodeBlock { .. } => self.out.write_str("<pre")?,
                         Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
@@ -248,6 +250,17 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
 
                     match c {
+                        Container::TableCell { alignment, .. }
+                            if !matches!(alignment, Alignment::Unspecified) =>
+                        {
+                            let a = match alignment {
+                                Alignment::Unspecified => unreachable!(),
+                                Alignment::Left => "left",
+                                Alignment::Center => "center",
+                                Alignment::Right => "right",
+                            };
+                            write!(self.out, r#" style="text-align: {};">"#, a)?;
+                        }
                         Container::CodeBlock { lang } => {
                             if let Some(l) = lang {
                                 write!(self.out, r#"><code class="language-{}">"#, l)?;
@@ -323,7 +336,8 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             self.out.write_str("</p>")?;
                         }
                         Container::Heading { level } => write!(self.out, "</h{}>", level)?,
-                        Container::TableCell { .. } => self.out.write_str("</td>")?,
+                        Container::TableCell { head: false, .. } => self.out.write_str("</td>")?,
+                        Container::TableCell { head: true, .. } => self.out.write_str("</th>")?,
                         Container::DescriptionTerm => self.out.write_str("</dt>")?,
                         Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
                         Container::Span => self.out.write_str("</span>")?,
