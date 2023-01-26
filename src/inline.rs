@@ -404,6 +404,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     let (d, e) = self.openers[o];
                     let e_attr = e;
                     let e_opener = e + 1;
+                    if e_opener == self.events.len() - 1 {
+                        // empty container
+                        return None;
+                    }
                     let inner_span = Span::new(self.events[e_opener].span.end(), self.span.start());
                     let mut event_closer = match Container::try_from(d) {
                         Ok(cont) => {
