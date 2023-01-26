@@ -639,9 +639,8 @@ impl BlockParser {
         let empty = line_t.is_empty();
         match self.kind {
             Block::Atom(..) => false,
-            Block::Leaf(Paragraph | Heading) => !line.trim().is_empty(),
-            Block::Leaf(LinkDefinition) => line.starts_with(' ') && !line.trim().is_empty(),
-            Block::Container(Blockquote) => line.trim().starts_with('>'),
+            Block::Leaf(Paragraph | Heading) | Block::Container(Blockquote) => !empty,
+            Block::Leaf(LinkDefinition) => line.starts_with(' ') && !empty,
             Block::Container(ListItem(..)) => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
                 empty
