@@ -209,8 +209,10 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
 
     pub(super) fn exit(&mut self) {
         self.depth -= 1;
-        if self.head.is_some() {
-            self.head = None;
+        if let Some(head) = self.head.take() {
+            if matches!(self.nodes[head.index()].kind, NodeKind::Container(..)) {
+                self.branch.push(head);
+            }
         } else {
             let last = self.branch.pop();
             assert_ne!(last, None);
