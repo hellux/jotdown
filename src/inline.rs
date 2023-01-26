@@ -401,6 +401,14 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     if matches!(dir, Dir::Open) {
                         return None;
                     }
+                    if matches!(dir, Dir::Both)
+                        && self
+                            .events
+                            .back()
+                            .map_or(false, |ev| matches!(ev.kind, EventKind::Whitespace))
+                    {
+                        return None;
+                    }
                     let (d, e) = self.openers[o];
                     let e_attr = e;
                     let e_opener = e + 1;
@@ -474,6 +482,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
                 .or_else(|| {
                     if matches!(dir, Dir::Close) {
+                        return None;
+                    }
+                    if matches!(dir, Dir::Both)
+                        && self
+                            .peek()
+                            .map_or(true, |t| matches!(t.kind, lex::Kind::Whitespace))
+                    {
                         return None;
                     }
                     self.openers.push((delim, self.events.len()));
