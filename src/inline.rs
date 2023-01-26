@@ -591,7 +591,7 @@ enum Delim {
     Insert,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum Dir {
     Open,
     Close,
