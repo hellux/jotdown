@@ -116,7 +116,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or(Event {
-                    kind: if first.kind == lex::Kind::Whitespace {
+                    kind: if matches!(first.kind, lex::Kind::Whitespace) {
                         EventKind::Whitespace
                     } else {
                         EventKind::Str
@@ -402,10 +402,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         return None;
                     }
                     if matches!(dir, Dir::Both)
-                        && self
-                            .events
-                            .back()
-                            .map_or(false, |ev| matches!(ev.kind, EventKind::Whitespace))
+                        && self.events.back().map_or(false, |ev| {
+                            matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
+                        })
                     {
                         return None;
                     }
