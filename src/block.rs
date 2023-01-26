@@ -65,6 +65,9 @@ pub enum Leaf {
     /// Has zero or one inline for the cell contents.
     TableCell(Alignment),
 
+    /// Span is '^' character.
+    Caption,
+
     /// Span is the link tag.
     /// Inlines are lines of the URL.
     LinkDefinition,
@@ -268,7 +271,25 @@ impl<'s> TreeParser<'s> {
                         self.alignments.clear();
                         self.tree.enter(Node::Container(Table), span);
                         let mut last_row_node = None;
-                        for row in lines {
+                        let caption_line = lines
+                            .iter()
+                            .position(|sp| sp.of(self.src).trim_start().starts_with('^'))
+                            .map_or(lines.len(), |caption_line| {
+                                self.tree.enter(Node::Leaf(Caption), span);
+                                lines[caption_line] =
+                                    lines[caption_line].trim_start(self.src).skip("^ ".len());
+                                lines[lines.len() - 1] = lines[lines.len() - 1].trim_end(self.src);
+                                for line in &lines[caption_line..] {
+                                    self.tree.inline(*line);
+                                }
+                                self.tree.exit(); // caption, will insert inlines later if any
+                                caption_line
+                            });
+                        for row in &lines[..caption_line] {
+                            let row = row.trim(self.src);
+                            if row.is_empty() {
+                                break;
+                            }
                             let row_node = self
                                 .tree
                                 .enter(Node::Container(TableRow { head: false }), row.with_len(1));
@@ -468,6 +489,7 @@ struct BlockParser {
     kind: Block,
     span: Span,
     fence: Option<(char, usize)>,
+    caption: bool,
 }
 
 impl BlockParser {
@@ -595,6 +617,7 @@ impl BlockParser {
             kind,
             span,
             fence,
+            caption: false,
         }
     }
 
@@ -638,14 +661,26 @@ impl BlockParser {
                 !((&mut c).take(fence_length).all(|c| c == fence)
                     && c.next().map_or(true, char::is_whitespace))
             }
-            Block::Container(List { .. } | DescriptionList | TableRow { .. })
-            | Block::Leaf(TableCell(..)) => {
-                panic!()
-            }
+            Block::Container(Table) if self.caption => !line.trim().is_empty(),
             Block::Container(Table) => {
                 let line = line.trim();
                 let l = line.len();
-                line.as_bytes()[l - 1] == b'|' && line.as_bytes()[l - 2] != b'\\'
+                match l {
+                    0 => true,
+                    1..=2 => false,
+                    _ => {
+                        if line.starts_with("^ ") {
+                            self.caption = true;
+                            true
+                        } else {
+                            line.as_bytes()[l - 1] == b'|' && line.as_bytes()[l - 2] != b'\\'
+                        }
+                    }
+                }
+            }
+            Block::Container(List { .. } | DescriptionList | TableRow { .. })
+            | Block::Leaf(TableCell(..) | Caption) => {
+                panic!()
             }
         }
     }
@@ -1467,6 +1502,69 @@ mod test {
             (Exit(Leaf(TableCell(Alignment::Right))), "|"),
             (Exit(Container(TableRow { head: false })), "|"),
             (Exit(Container(Table)), "")
+        );
+    }
+
+    #[test]
+    fn parse_table_caption() {
+        test_parse!(
+            "|a|\n^ caption",
+            (Enter(Container(Table)), ""),
+            (Enter(Leaf(Caption)), ""),
+            (Inline, "caption"),
+            (Exit(Leaf(Caption)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "a"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), ""),
+        );
+    }
+
+    #[test]
+    fn parse_table_caption_multiline() {
+        test_parse!(
+            concat!(
+                "|a|\n",       //
+                "\n",          //
+                "^ caption\n", //
+                "continued\n", //
+                "\n",          //
+                "para\n",      //
+            ),
+            (Enter(Container(Table)), ""),
+            (Enter(Leaf(Caption)), ""),
+            (Inline, "caption\n"),
+            (Inline, "continued"),
+            (Exit(Leaf(Caption)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "a"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), ""),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "para"),
+            (Exit(Leaf(Paragraph)), ""),
+        );
+    }
+
+    #[test]
+    fn parse_table_caption_empty() {
+        test_parse!(
+            "|a|\n^ ",
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, "a"),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), ""),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "^"),
+            (Exit(Leaf(Paragraph)), ""),
         );
     }
 

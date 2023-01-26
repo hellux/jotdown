@@ -56,6 +56,8 @@ pub enum Container<'s> {
     Heading { level: usize },
     /// A cell element of row within a table.
     TableCell { alignment: Alignment, head: bool },
+    /// A caption within a table.
+    Caption,
     /// A term within a description list.
     DescriptionTerm,
     /// A block with raw markup for a specific output format.
@@ -111,6 +113,7 @@ impl<'s> Container<'s> {
             | Self::Paragraph
             | Self::Heading { .. }
             | Self::TableCell { .. }
+            | Self::Caption
             | Self::DescriptionTerm
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
@@ -148,6 +151,7 @@ impl<'s> Container<'s> {
             Self::Paragraph
             | Self::Heading { .. }
             | Self::TableCell { .. }
+            | Self::Caption
             | Self::DescriptionTerm
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. }
@@ -541,6 +545,7 @@ impl<'s> Parser<'s> {
                                     alignment,
                                     head: self.table_head_row,
                                 },
+                                block::Leaf::Caption => Container::Caption,
                                 block::Leaf::LinkDefinition => unreachable!(),
                             }
                         }
