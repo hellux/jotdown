@@ -391,86 +391,87 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
-        Delim::from_token(first.kind).map(|(delim, dir)| {
+        Delim::from_token(first.kind).and_then(|(delim, dir)| {
             self.openers
                 .iter()
                 .rposition(|(d, _)| {
                     *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
                 })
                 .and_then(|o| {
-                    if matches!(dir, Dir::Close | Dir::Both) {
-                        let (d, e) = self.openers[o];
-                        let e_attr = e;
-                        let e_opener = e + 1;
-                        let inner_span =
-                            Span::new(self.events[e_opener].span.end(), self.span.start());
-                        let mut event_closer = match Container::try_from(d) {
-                            Ok(cont) => {
-                                self.events[e_opener].kind = EventKind::Enter(cont);
-                                Some(Event {
-                                    kind: EventKind::Exit(cont),
-                                    span: self.span,
-                                })
-                            }
-                            Err(ty) => self.post_span(ty, e_opener),
-                        };
-                        self.openers.drain(o..);
-
-                        if let Some(event_closer) = &mut event_closer {
-                            if event_closer.span.is_empty() {
-                                assert!(matches!(
-                                    event_closer.kind,
-                                    EventKind::Exit(
-                                        Container::ReferenceLink | Container::ReferenceImage
-                                    )
-                                ));
-                                assert_eq!(self.events[e_opener].span, event_closer.span);
-                                event_closer.span = inner_span;
-                                self.events[e_opener].span = inner_span;
-                            }
-                        }
-
-                        let mut ahead = self.lexer.chars();
-                        let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
-                        if attr_len > 0 {
-                            let span_closer = self.span;
-                            self.span = Span::empty_at(self.span.end());
-                            while attr_len > 0 {
-                                self.span = self.span.extend(attr_len);
-                                self.lexer = lex::Lexer::new(ahead.clone());
-
-                                let (l, non_empty) = attr::valid(&mut ahead);
-                                has_attr |= non_empty;
-                                attr_len = l;
-                            }
-
-                            if has_attr {
-                                self.events[e_attr] = Event {
-                                    kind: EventKind::Attributes,
-                                    span: self.span,
-                                };
-                            }
-
-                            if event_closer.is_none() {
-                                if has_attr {
-                                    self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                                }
-                                event_closer = Some(Event {
-                                    kind: if has_attr {
-                                        EventKind::Exit(Container::Span)
-                                    } else {
-                                        EventKind::Str
-                                    },
-                                    span: span_closer,
-                                });
-                            }
-                        }
-                        event_closer
-                    } else {
-                        None
+                    if !dir.can_close() {
+                        return None;
                     }
+                    let (d, e) = self.openers[o];
+                    let e_attr = e;
+                    let e_opener = e + 1;
+                    let inner_span = Span::new(self.events[e_opener].span.end(), self.span.start());
+                    let mut event_closer = match Container::try_from(d) {
+                        Ok(cont) => {
+                            self.events[e_opener].kind = EventKind::Enter(cont);
+                            Some(Event {
+                                kind: EventKind::Exit(cont),
+                                span: self.span,
+                            })
+                        }
+                        Err(ty) => self.post_span(ty, e_opener),
+                    };
+                    self.openers.drain(o..);
+
+                    if let Some(event_closer) = &mut event_closer {
+                        if event_closer.span.is_empty() {
+                            assert!(matches!(
+                                event_closer.kind,
+                                EventKind::Exit(
+                                    Container::ReferenceLink | Container::ReferenceImage
+                                )
+                            ));
+                            assert_eq!(self.events[e_opener].span, event_closer.span);
+                            event_closer.span = inner_span;
+                            self.events[e_opener].span = inner_span;
+                        }
+                    }
+
+                    let mut ahead = self.lexer.chars();
+                    let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
+                    if attr_len > 0 {
+                        let span_closer = self.span;
+                        self.span = Span::empty_at(self.span.end());
+                        while attr_len > 0 {
+                            self.span = self.span.extend(attr_len);
+                            self.lexer = lex::Lexer::new(ahead.clone());
+
+                            let (l, non_empty) = attr::valid(&mut ahead);
+                            has_attr |= non_empty;
+                            attr_len = l;
+                        }
+
+                        if has_attr {
+                            self.events[e_attr] = Event {
+                                kind: EventKind::Attributes,
+                                span: self.span,
+                            };
+                        }
+
+                        if event_closer.is_none() {
+                            if has_attr {
+                                self.events[e_opener].kind = EventKind::Enter(Container::Span);
+                            }
+                            event_closer = Some(Event {
+                                kind: if has_attr {
+                                    EventKind::Exit(Container::Span)
+                                } else {
+                                    EventKind::Str
+                                },
+                                span: span_closer,
+                            });
+                        }
+                    }
+                    event_closer
                 })
-                .unwrap_or_else(|| {
+                .or_else(|| {
+                    if !dir.can_open() {
+                        return None;
+                    }
                     self.openers.push((delim, self.events.len()));
                     // push dummy event in case attributes are encountered after closing delimiter
                     self.events.push_back(Event {
@@ -478,10 +479,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         span: Span::empty_at(self.span.start()),
                     });
                     // use str for now, replace if closed later
-                    Event {
+                    Some(Event {
                         kind: EventKind::Str,
                         span: self.span,
-                    }
+                    })
                 })
         })
     }
@@ -572,10 +573,21 @@ enum Delim {
     Insert,
 }
 
+#[derive(Clone, Copy)]
 enum Dir {
     Open,
     Close,
     Both,
+}
+
+impl Dir {
+    fn can_open(self) -> bool {
+        matches!(self, Dir::Open | Dir::Both)
+    }
+
+    fn can_close(self) -> bool {
+        matches!(self, Dir::Close | Dir::Both)
+    }
 }
 
 impl Delim {
