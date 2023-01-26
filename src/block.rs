@@ -660,19 +660,18 @@ impl BlockParser {
                 !((&mut c).take(fence_length).all(|c| c == fence)
                     && c.next().map_or(true, char::is_whitespace))
             }
-            Block::Container(Table) if self.caption => !line.trim().is_empty(),
+            Block::Container(Table) if self.caption => !empty,
             Block::Container(Table) => {
-                let line = line.trim();
-                let l = line.len();
+                let l = line_t.len();
                 match l {
                     0 => true,
                     1..=2 => false,
                     _ => {
-                        if line.starts_with("^ ") {
+                        if line_t.starts_with("^ ") {
                             self.caption = true;
                             true
                         } else {
-                            line.as_bytes()[l - 1] == b'|' && line.as_bytes()[l - 2] != b'\\'
+                            line_t.as_bytes()[l - 1] == b'|' && line_t.as_bytes()[l - 2] != b'\\'
                         }
                     }
                 }
