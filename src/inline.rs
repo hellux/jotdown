@@ -398,7 +398,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
                 })
                 .and_then(|o| {
-                    if !dir.can_close() {
+                    if matches!(dir, Dir::Open) {
                         return None;
                     }
                     let (d, e) = self.openers[o];
@@ -473,7 +473,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     event_closer
                 })
                 .or_else(|| {
-                    if !dir.can_open() {
+                    if matches!(dir, Dir::Close) {
                         return None;
                     }
                     self.openers.push((delim, self.events.len()));
@@ -582,16 +582,6 @@ enum Dir {
     Open,
     Close,
     Both,
-}
-
-impl Dir {
-    fn can_open(self) -> bool {
-        matches!(self, Dir::Open | Dir::Both)
-    }
-
-    fn can_close(self) -> bool {
-        matches!(self, Dir::Close | Dir::Both)
-    }
 }
 
 impl Delim {
