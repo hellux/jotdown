@@ -34,8 +34,16 @@ impl Span {
         Self::by_len(self.start(), len)
     }
 
+    pub fn union(self, span: Self) -> Self {
+        Self::new(self.start(), span.end())
+    }
+
     pub fn skip(self, n: usize) -> Self {
         Self::new(self.start() + n, self.end())
+    }
+
+    pub fn extend(self, n: usize) -> Self {
+        Self::new(self.start(), self.end() + n)
     }
 
     pub fn translate(self, n: usize) -> Self {
@@ -43,14 +51,6 @@ impl Span {
             self.start().checked_add(n).unwrap(),
             self.end().checked_add(n).unwrap(),
         )
-    }
-
-    pub fn extend(self, n: usize) -> Self {
-        Self::new(self.start(), self.end() + n)
-    }
-
-    pub fn union(self, span: Self) -> Self {
-        Self::new(self.start(), span.end())
     }
 
     pub fn is_empty(self) -> bool {
