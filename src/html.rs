@@ -132,6 +132,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::ListItem | Container::TaskListItem { .. } => {
                             self.out.write_str("<li")?;
                         }
+                        Container::DescriptionList => self.out.write_str("<dl")?,
                         Container::DescriptionDetails => self.out.write_str("<dd")?,
                         Container::Footnote { number, .. } => {
                             assert!(self.footnote_number.is_none());
@@ -188,13 +189,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Strong => self.out.write_str("<strong")?,
                         Container::Emphasis => self.out.write_str("<em")?,
                         Container::Mark => self.out.write_str("<mark")?,
-                        Container::SingleQuoted => self.out.write_str("&lsquo;")?,
-                        Container::DoubleQuoted => self.out.write_str("&ldquo;")?,
-                        _ => panic!(),
-                    }
-
-                    if matches!(c, Container::SingleQuoted | Container::DoubleQuoted) {
-                        continue; // TODO add span to allow attributes?
                     }
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
@@ -302,6 +296,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::ListItem | Container::TaskListItem { .. } => {
                             self.out.write_str("</li>")?;
                         }
+                        Container::DescriptionList => self.out.write_str("</dl>")?,
                         Container::DescriptionDetails => self.out.write_str("</dd>")?,
                         Container::Footnote { number, .. } => {
                             if !self.footnote_backlink_written {
@@ -370,9 +365,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Strong => self.out.write_str("</strong>")?,
                         Container::Emphasis => self.out.write_str("</em>")?,
                         Container::Mark => self.out.write_str("</mark>")?,
-                        Container::SingleQuoted => self.out.write_str("&rsquo;")?,
-                        Container::DoubleQuoted => self.out.write_str("&rdquo;")?,
-                        _ => panic!(),
                     }
                 }
                 Event::Str(s) => {
@@ -385,7 +377,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                     '<' => Some("&lt;"),
                                     '>' => Some("&gt;"),
                                     '&' => Some("&amp;"),
-                                    '"' => Some("&quot;"),
                                     _ => None,
                                 } {
                                     ent = s;
@@ -415,6 +406,10 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             number, number, number
                         )?;
                     }
+                    Atom::LeftSingleQuote => self.out.write_str("&lsquo;")?,
+                    Atom::RightSingleQuote => self.out.write_str("&rsquo;")?,
+                    Atom::LeftDoubleQuote => self.out.write_str("&ldquo;")?,
+                    Atom::RightDoubleQuote => self.out.write_str("&rdquo;")?,
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
                     Atom::EnDash => self.out.write_str("&ndash;")?,
                     Atom::EmDash => self.out.write_str("&mdash;")?,

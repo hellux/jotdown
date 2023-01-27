@@ -18,6 +18,7 @@ pub enum Atom {
     Ellipsis,
     EnDash,
     EmDash,
+    Quote { ty: QuoteType, left: bool },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -30,9 +31,6 @@ pub enum Container {
     Emphasis,
     Strong,
     Mark,
-    // smart quoting
-    SingleQuoted,
-    DoubleQuoted,
     // Verbatim
     Verbatim,
     /// Span is the format.
@@ -49,6 +47,12 @@ pub enum Container {
     InlineImage,
 
     Autolink,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuoteType {
+    Single,
+    Double,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -417,15 +421,23 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     }
 
                     let inner_span = self.events[e_opener].span.between(self.span);
-                    let mut event_closer = match Container::try_from(d) {
-                        Ok(cont) => {
+                    let mut event_closer = match DelimEventKind::from(d) {
+                        DelimEventKind::Container(cont) => {
                             self.events[e_opener].kind = EventKind::Enter(cont);
                             Some(Event {
                                 kind: EventKind::Exit(cont),
                                 span: self.span,
                             })
                         }
-                        Err(ty) => self.post_span(ty, e_opener),
+                        DelimEventKind::Quote(ty) => {
+                            self.events[e_opener].kind =
+                                EventKind::Atom(Atom::Quote { ty, left: true });
+                            Some(Event {
+                                kind: EventKind::Atom(Atom::Quote { ty, left: false }),
+                                span: self.span,
+                            })
+                        }
+                        DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
                     };
                     self.openers.drain(o..);
 
@@ -491,15 +503,33 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     {
                         return None;
                     }
+                    if matches!(delim, Delim::SingleQuoted | Delim::DoubleQuoted)
+                        && self
+                            .events
+                            .back()
+                            .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                    {
+                        return None;
+                    }
                     self.openers.push((delim, self.events.len()));
                     // push dummy event in case attributes are encountered after closing delimiter
                     self.events.push_back(Event {
                         kind: EventKind::Placeholder,
                         span: Span::empty_at(self.span.start()),
                     });
-                    // use str for now, replace if closed later
+                    // use non-opener for now, replace if closed later
                     Some(Event {
-                        kind: EventKind::Str,
+                        kind: match delim {
+                            Delim::SingleQuoted => EventKind::Atom(Quote {
+                                ty: QuoteType::Single,
+                                left: false,
+                            }),
+                            Delim::DoubleQuoted => EventKind::Atom(Quote {
+                                ty: QuoteType::Double,
+                                left: true,
+                            }),
+                            _ => EventKind::Str,
+                        },
                         span: self.span,
                     })
                 })
@@ -548,16 +578,35 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
-        let atom = match first.kind {
-            lex::Kind::Newline => Softbreak,
-            lex::Kind::Hardbreak => Hardbreak,
-            lex::Kind::Escape => Escape,
-            lex::Kind::Nbsp => Nbsp,
-            lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
-            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
-            lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
-            _ => return None,
-        };
+        let atom =
+            match first.kind {
+                lex::Kind::Newline => Softbreak,
+                lex::Kind::Hardbreak => Hardbreak,
+                lex::Kind::Escape => Escape,
+                lex::Kind::Nbsp => Nbsp,
+                lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
+                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
+                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
+                lex::Kind::Open(lex::Delimiter::BraceQuote1) => Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                },
+                lex::Kind::Sym(lex::Symbol::Quote1)
+                | lex::Kind::Close(lex::Delimiter::BraceQuote1) => Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                },
+                lex::Kind::Open(lex::Delimiter::BraceQuote2) => Quote {
+                    ty: QuoteType::Double,
+                    left: true,
+                },
+                lex::Kind::Sym(lex::Symbol::Quote2)
+                | lex::Kind::Close(lex::Delimiter::BraceQuote2) => Quote {
+                    ty: QuoteType::Double,
+                    left: false,
+                },
+                _ => return None,
+            };
 
         Some(Event {
             kind: EventKind::Atom(atom),
@@ -585,11 +634,11 @@ enum Delim {
     Emphasis(Directionality),
     Superscript(Directionality),
     Subscript(Directionality),
-    SingleQuoted,
-    DoubleQuoted,
     Mark,
     Delete,
     Insert,
+    SingleQuoted,
+    DoubleQuoted,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -630,26 +679,34 @@ impl Delim {
             lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Close)),
             lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Open)),
             lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Close)),
+            lex::Kind::Open(Delimiter::BraceQuote1) => Some((SingleQuoted, Open)),
+            lex::Kind::Close(Delimiter::BraceQuote1) => Some((SingleQuoted, Close)),
+            lex::Kind::Open(Delimiter::BraceQuote2) => Some((DoubleQuoted, Open)),
+            lex::Kind::Close(Delimiter::BraceQuote2) => Some((DoubleQuoted, Close)),
             _ => None,
         }
     }
 }
 
-impl TryFrom<Delim> for Container {
-    type Error = SpanType;
+enum DelimEventKind {
+    Container(Container),
+    Span(SpanType),
+    Quote(QuoteType),
+}
 
-    fn try_from(d: Delim) -> Result<Self, Self::Error> {
+impl From<Delim> for DelimEventKind {
+    fn from(d: Delim) -> Self {
         match d {
-            Delim::Span(ty) => Err(ty),
-            Delim::Strong(..) => Ok(Self::Strong),
-            Delim::Emphasis(..) => Ok(Self::Emphasis),
-            Delim::Superscript(..) => Ok(Self::Superscript),
-            Delim::Subscript(..) => Ok(Self::Subscript),
-            Delim::SingleQuoted => Ok(Self::SingleQuoted),
-            Delim::DoubleQuoted => Ok(Self::DoubleQuoted),
-            Delim::Mark => Ok(Self::Mark),
-            Delim::Delete => Ok(Self::Delete),
-            Delim::Insert => Ok(Self::Insert),
+            Delim::Span(ty) => Self::Span(ty),
+            Delim::Strong(..) => Self::Container(Strong),
+            Delim::Emphasis(..) => Self::Container(Emphasis),
+            Delim::Superscript(..) => Self::Container(Superscript),
+            Delim::Subscript(..) => Self::Container(Subscript),
+            Delim::Mark => Self::Container(Mark),
+            Delim::Delete => Self::Container(Delete),
+            Delim::Insert => Self::Container(Insert),
+            Delim::SingleQuoted => Self::Quote(QuoteType::Single),
+            Delim::DoubleQuoted => Self::Quote(QuoteType::Double),
         }
     }
 }

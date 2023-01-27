@@ -90,10 +90,6 @@ pub enum Container<'s> {
     Emphasis,
     /// A highlighted inline element.
     Mark,
-    /// An quoted inline element, using single quotes.
-    SingleQuoted,
-    /// A quoted inline element, using double quotes.
-    DoubleQuoted,
 }
 
 impl<'s> Container<'s> {
@@ -129,9 +125,7 @@ impl<'s> Container<'s> {
             | Self::Delete
             | Self::Strong
             | Self::Emphasis
-            | Self::Mark
-            | Self::SingleQuoted
-            | Self::DoubleQuoted => false,
+            | Self::Mark => false,
         }
     }
 
@@ -167,9 +161,7 @@ impl<'s> Container<'s> {
             | Self::Delete
             | Self::Strong
             | Self::Emphasis
-            | Self::Mark
-            | Self::SingleQuoted
-            | Self::DoubleQuoted => false,
+            | Self::Mark => false,
         }
     }
 }
@@ -234,6 +226,14 @@ pub enum OrderedListStyle {
 pub enum Atom<'s> {
     /// A footnote reference.
     FootnoteReference(&'s str, usize),
+    /// Left single quotation mark.
+    LeftSingleQuote,
+    /// Right double quotation mark.
+    RightSingleQuote,
+    /// Left single quotation mark.
+    LeftDoubleQuote,
+    /// Right double quotation mark.
+    RightDoubleQuote,
     /// A horizontal ellipsis, i.e. a set of three periods.
     Ellipsis,
     /// An en dash.
@@ -419,8 +419,6 @@ impl<'s> Parser<'s> {
                         inline::Container::Emphasis => Container::Emphasis,
                         inline::Container::Strong => Container::Strong,
                         inline::Container::Mark => Container::Mark,
-                        inline::Container::SingleQuoted => Container::SingleQuoted,
-                        inline::Container::DoubleQuoted => Container::DoubleQuoted,
                         inline::Container::InlineLink => Container::Link(
                             match self.inlines.src(inline.span) {
                                 CowStr::Owned(s) => s.replace('\n', "").into(),
@@ -482,6 +480,12 @@ impl<'s> Parser<'s> {
                             number,
                         )
                     }
+                    inline::Atom::Quote { ty, left } => match (ty, left) {
+                        (inline::QuoteType::Single, true) => Atom::LeftSingleQuote,
+                        (inline::QuoteType::Single, false) => Atom::RightSingleQuote,
+                        (inline::QuoteType::Double, true) => Atom::LeftDoubleQuote,
+                        (inline::QuoteType::Double, false) => Atom::RightDoubleQuote,
+                    },
                     inline::Atom::Ellipsis => Atom::Ellipsis,
                     inline::Atom::EnDash => Atom::EnDash,
                     inline::Atom::EmDash => Atom::EmDash,

@@ -36,6 +36,8 @@ pub enum Delimiter {
     BraceTilde,
     BraceUnderscore,
     Bracket,
+    BraceQuote1,
+    BraceQuote2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +191,8 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     '+' => Some(Open(BracePlus)),
                     '~' => Some(Open(BraceTilde)),
                     '_' => Some(Open(BraceUnderscore)),
+                    '\'' => Some(Open(BraceQuote1)),
+                    '"' => Some(Open(BraceQuote2)),
                     _ => None,
                 };
                 if let Some(exp) = explicit {
@@ -204,6 +208,8 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             '+' => self.maybe_eat_close_brace(Text, BracePlus),
             '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
             '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
+            '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
+            '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
             '-' => {
                 if self.peek_char() == '}' {
                     self.eat_char();
@@ -222,8 +228,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             }
             '<' => Sym(Lt),
             '|' => Sym(Pipe),
-            '\'' => Sym(Quote1),
-            '"' => Sym(Quote2),
 
             '`' => self.eat_seq(Backtick),
             '$' => self.eat_seq(Dollar),
