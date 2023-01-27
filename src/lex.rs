@@ -36,7 +36,6 @@ pub enum Delimiter {
     BraceTilde,
     BraceUnderscore,
     Bracket,
-    Paren,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,8 +187,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                 Whitespace
             }
 
-            '(' => Open(Paren),
-            ')' => Close(Paren),
             '[' => Open(Bracket),
             ']' => Close(Bracket),
             '{' => {
