@@ -422,11 +422,9 @@ impl<'s> TreeParser<'s> {
                             .skip(1)
                             .take(line_count_inner)
                             .for_each(|sp| {
-                                let spaces = sp
-                                    .of(self.src)
-                                    .chars()
-                                    .take_while(|c| c.is_whitespace())
-                                    .count();
+                                let src = sp.of(self.src);
+                                let src_t = src.trim();
+                                let spaces = src.len() - src.trim_start().len();
                                 let skip = match c {
                                     Blockquote => spaces + "> ".len(),
                                     ListItem(..) | Footnote | Div => spaces.min(indent),
