@@ -55,7 +55,6 @@ pub enum Symbol {
 pub enum Sequence {
     Backtick,
     Dollar,
-    Hash,
     Hyphen,
     Period,
 }
@@ -65,7 +64,6 @@ impl Sequence {
         match self {
             Self::Backtick => '`',
             Self::Dollar => '$',
-            Self::Hash => '#',
             Self::Period => '.',
             Self::Hyphen => '-',
         }
@@ -229,7 +227,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
 
             '`' => self.eat_seq(Backtick),
             '$' => self.eat_seq(Dollar),
-            '#' => self.eat_seq(Hash),
             '.' => self.eat_seq(Period),
 
             _ => Text,
@@ -376,10 +373,9 @@ mod test {
         test_lex!("`", Seq(Backtick).l(1));
         test_lex!("```", Seq(Backtick).l(3));
         test_lex!(
-            "`$#-.",
+            "`$-.",
             Seq(Backtick).l(1),
             Seq(Dollar).l(1),
-            Seq(Hash).l(1),
             Seq(Hyphen).l(1),
             Seq(Period).l(1),
         );
