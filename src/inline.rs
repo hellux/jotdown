@@ -408,6 +408,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     {
                         return None;
                     }
+
                     let (d, e) = self.openers[o];
                     let e_attr = e;
                     let e_opener = e + 1;
