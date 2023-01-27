@@ -22,6 +22,14 @@ impl Span {
         Self::by_len(start, 0)
     }
 
+    pub fn empty_before(self) -> Self {
+        Self::empty_at(self.start())
+    }
+
+    pub fn empty_after(self) -> Self {
+        Self::empty_at(self.end())
+    }
+
     pub fn with_start(self, start: usize) -> Self {
         Self::new(start, self.end())
     }
@@ -34,8 +42,16 @@ impl Span {
         Self::by_len(self.start(), len)
     }
 
+    pub fn after(self, len: usize) -> Self {
+        Self::by_len(self.end(), len)
+    }
+
     pub fn union(self, span: Self) -> Self {
         Self::new(self.start(), span.end())
+    }
+
+    pub fn between(self, span: Self) -> Self {
+        Self::new(self.end(), span.start())
     }
 
     pub fn skip(self, n: usize) -> Self {
