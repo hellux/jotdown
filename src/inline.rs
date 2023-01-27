@@ -584,7 +584,23 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 lex::Kind::Hardbreak => Hardbreak,
                 lex::Kind::Escape => Escape,
                 lex::Kind::Nbsp => Nbsp,
-                lex::Kind::Seq(lex::Sequence::Period) if first.len == 3 => Ellipsis,
+                lex::Kind::Seq(lex::Sequence::Period) if first.len >= 3 => {
+                    while self.span.len() > 3 {
+                        self.events.push_back(Event {
+                            kind: EventKind::Atom(Ellipsis),
+                            span: self.span.with_len(3),
+                        });
+                        self.span = self.span.skip(3);
+                    }
+                    if self.span.len() == 3 {
+                        Ellipsis
+                    } else {
+                        return Some(Event {
+                            kind: EventKind::Str,
+                            span: self.span,
+                        });
+                    }
+                }
                 lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
                 lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
                 lex::Kind::Open(lex::Delimiter::BraceQuote1) => Quote {
