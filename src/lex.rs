@@ -45,7 +45,6 @@ pub enum Symbol {
     ExclaimBracket,
     Lt,
     Pipe,
-    Plus,
     Quote1,
     Quote2,
     Tilde,
@@ -206,7 +205,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
             '=' => self.maybe_eat_close_brace(Text, BraceEqual),
-            '+' => self.maybe_eat_close_brace(Sym(Plus), BracePlus),
+            '+' => self.maybe_eat_close_brace(Text, BracePlus),
             '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
             '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
             '-' => {
@@ -355,14 +354,13 @@ mod test {
     #[test]
     fn sym() {
         test_lex!(
-            r#"'*^![<|+"~_"#,
+            r#"'*^![<|"~_"#,
             Sym(Quote1).l(1),
             Sym(Asterisk).l(1),
             Sym(Caret).l(1),
             Sym(ExclaimBracket).l(2),
             Sym(Lt).l(1),
             Sym(Pipe).l(1),
-            Sym(Plus).l(1),
             Sym(Quote2).l(1),
             Sym(Tilde).l(1),
             Sym(Underscore).l(1),
