@@ -206,12 +206,12 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     Open(Brace)
                 }
             }
-            '*' => self.maybe_eat_close_brace(Asterisk, BraceAsterisk),
-            '^' => self.maybe_eat_close_brace(Caret, BraceCaret),
-            '=' => self.maybe_eat_close_brace(Equal, BraceEqual),
-            '+' => self.maybe_eat_close_brace(Plus, BracePlus),
-            '~' => self.maybe_eat_close_brace(Tilde, BraceTilde),
-            '_' => self.maybe_eat_close_brace(Underscore, BraceUnderscore),
+            '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
+            '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
+            '=' => self.maybe_eat_close_brace(Sym(Equal), BraceEqual),
+            '+' => self.maybe_eat_close_brace(Sym(Plus), BracePlus),
+            '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
+            '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
             '-' => {
                 if self.peek_char() == '}' {
                     self.eat_char();
@@ -259,12 +259,12 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         Seq(s)
     }
 
-    fn maybe_eat_close_brace(&mut self, s: Symbol, d: Delimiter) -> Kind {
+    fn maybe_eat_close_brace(&mut self, kind: Kind, d: Delimiter) -> Kind {
         if self.peek_char() == '}' {
             self.eat_char();
             Close(d)
         } else {
-            Sym(s)
+            kind
         }
     }
 }
