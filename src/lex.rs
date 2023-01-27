@@ -42,7 +42,6 @@ pub enum Delimiter {
 pub enum Symbol {
     Asterisk,
     Caret,
-    Equal,
     ExclaimBracket,
     Gt,
     Lt,
@@ -208,7 +207,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             }
             '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
-            '=' => self.maybe_eat_close_brace(Sym(Equal), BraceEqual),
+            '=' => self.maybe_eat_close_brace(Text, BraceEqual),
             '+' => self.maybe_eat_close_brace(Sym(Plus), BracePlus),
             '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
             '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
@@ -360,11 +359,10 @@ mod test {
     #[test]
     fn sym() {
         test_lex!(
-            r#"'*^=![><%|+"~_"#,
+            r#"'*^![><%|+"~_"#,
             Sym(Quote1).l(1),
             Sym(Asterisk).l(1),
             Sym(Caret).l(1),
-            Sym(Equal).l(1),
             Sym(ExclaimBracket).l(2),
             Sym(Gt).l(1),
             Sym(Lt).l(1),
