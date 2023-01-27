@@ -40,7 +40,6 @@ pub enum Delimiter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Symbol {
-    Ampersand,
     Asterisk,
     Caret,
     Equal,
@@ -207,7 +206,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     Open(Brace)
                 }
             }
-            '&' => self.maybe_eat_close_brace(Ampersand, BraceAsterisk),
             '*' => self.maybe_eat_close_brace(Asterisk, BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Caret, BraceCaret),
             '=' => self.maybe_eat_close_brace(Equal, BraceEqual),
