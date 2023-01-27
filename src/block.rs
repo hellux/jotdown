@@ -426,7 +426,15 @@ impl<'s> TreeParser<'s> {
                                 let src_t = src.trim();
                                 let spaces = src.len() - src.trim_start().len();
                                 let skip = match c {
-                                    Blockquote => spaces + "> ".len(),
+                                    Blockquote => {
+                                        if src_t == ">" {
+                                            spaces + 1
+                                        } else if src_t.starts_with("> ") {
+                                            spaces + "> ".len()
+                                        } else {
+                                            0
+                                        }
+                                    }
                                     ListItem(..) | Footnote | Div => spaces.min(indent),
                                     List { .. } | DescriptionList | Table | TableRow { .. } => {
                                         panic!()
