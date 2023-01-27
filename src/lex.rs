@@ -19,7 +19,6 @@ pub enum Kind {
     Nbsp,
     Hardbreak,
     Escape,
-    Integer,
     Open(Delimiter),
     Close(Delimiter),
     Sym(Symbol),
@@ -247,11 +246,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             '#' => self.eat_seq(Hash),
             '.' => self.eat_seq(Period),
 
-            '0'..='9' => {
-                self.eat_while(|c| c.is_ascii_digit());
-                Integer
-            }
-
             _ => Text,
         };
 
@@ -408,13 +402,5 @@ mod test {
             Seq(Hyphen).l(1),
             Seq(Period).l(1),
         );
-    }
-
-    #[test]
-    fn int() {
-        test_lex!("1", Integer.l(1));
-        test_lex!("123", Integer.l(3));
-        test_lex!("1234567890", Integer.l(10));
-        test_lex!("000", Integer.l(3));
     }
 }
