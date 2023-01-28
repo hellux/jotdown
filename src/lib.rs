@@ -532,6 +532,7 @@ impl<'s> Parser<'s> {
                                 if enter {
                                     self.tree.take_inlines().last();
                                 }
+                                attributes = Attributes::new();
                                 continue;
                             }
                             if enter {
@@ -569,6 +570,7 @@ impl<'s> Parser<'s> {
                             block::Container::Footnote => {
                                 assert!(enter);
                                 self.footnotes.insert(content, self.tree.take_branch());
+                                attributes = Attributes::new();
                                 continue;
                             }
                             block::Container::DescriptionList => Container::DescriptionList,
@@ -935,7 +937,6 @@ mod test {
                 "\n",
                 "{a=b}\n",
                 "[tag]: url\n",
-                "\n",
                 "para\n",
             ),
             Start(Paragraph, Attributes::new()),
@@ -946,7 +947,6 @@ mod test {
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
-            Atom(Blankline),
             Atom(Blankline),
             Start(Paragraph, Attributes::new()),
             Str("para".into()),
