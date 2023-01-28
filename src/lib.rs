@@ -457,7 +457,15 @@ impl<'s> Parser<'s> {
                                 Container::Image(url, SpanLinkType::Reference)
                             }
                         }
-                        inline::Container::Autolink => todo!("{:?}", c),
+                        inline::Container::Autolink => {
+                            let url = self.inlines.src(inline.span);
+                            let url = if url.contains('@') {
+                                format!("mailto:{}", url).into()
+                            } else {
+                                url
+                            };
+                            Container::Link(url, LinkType::AutoLink)
+                        }
                     };
                     if matches!(inline.kind, inline::EventKind::Enter(_)) {
                         Event::Start(t, attributes)
