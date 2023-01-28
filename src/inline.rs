@@ -601,8 +601,28 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         });
                     }
                 }
-                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 2 => EnDash,
-                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len == 3 => EmDash,
+                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len >= 2 => {
+                    let (m, n) = if first.len % 3 == 0 {
+                        (first.len / 3, 0)
+                    } else if first.len % 2 == 0 {
+                        (0, first.len / 2)
+                    } else {
+                        let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
+                        ((first.len - 2 * n) / 3, n)
+                    };
+                    std::iter::repeat(EmDash)
+                        .take(m)
+                        .chain(std::iter::repeat(EnDash).take(n))
+                        .for_each(|atom| {
+                            let l = if matches!(atom, EnDash) { 2 } else { 3 };
+                            self.events.push_back(Event {
+                                kind: EventKind::Atom(atom),
+                                span: self.span.with_len(l),
+                            });
+                            self.span = self.span.skip(l);
+                        });
+                    return self.events.pop_back();
+                }
                 lex::Kind::Open(lex::Delimiter::BraceQuote1) => Quote {
                     ty: QuoteType::Single,
                     left: true,
