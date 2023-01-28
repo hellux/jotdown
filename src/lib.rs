@@ -441,9 +441,13 @@ impl<'s> Parser<'s> {
                             SpanLinkType::Inline,
                         ),
                         inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
+                            let tag = match self.inlines.src(inline.span) {
+                                CowStr::Owned(s) => s.replace('\n', " ").into(),
+                                s @ CowStr::Borrowed(_) => s,
+                            };
                             let (url, attrs_def) = self
                                 .link_definitions
-                                .get(self.inlines.src(inline.span).replace('\n', " ").as_str())
+                                .get(tag.as_ref())
                                 .cloned()
                                 .unwrap_or_else(|| ("".into(), Attributes::new()));
                             attributes.union(attrs_def);
