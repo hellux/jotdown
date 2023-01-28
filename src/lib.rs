@@ -523,7 +523,9 @@ impl<'s> Parser<'s> {
                         block::Node::Leaf(l) => {
                             if matches!(l, block::Leaf::LinkDefinition) {
                                 // ignore link definitions
-                                self.tree.take_inlines().last();
+                                if enter {
+                                    self.tree.take_inlines().last();
+                                }
                                 continue;
                             }
                             if enter {
