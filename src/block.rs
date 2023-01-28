@@ -287,8 +287,7 @@ impl<'s> TreeParser<'s> {
             let first_close = self
                 .open_sections
                 .iter()
-                .rev()
-                .rposition(|l| *l > level)
+                .rposition(|l| *l < level)
                 .map_or(0, |i| i + 1);
             self.open_sections.drain(first_close..).for_each(|_| {
                 self.tree.exit(); // section
@@ -915,6 +914,60 @@ mod test {
             (Inline, "8\n"),
             (Inline, "12\n"),
             (Inline, "15"),
+            (Exit(Leaf(Heading)), "#"),
+            (Exit(Container(Section)), "#"),
+        );
+    }
+
+    #[test]
+    fn parse_section() {
+        test_parse!(
+            concat!(
+                "# a\n",
+                "\n",
+                "## aa\n",
+                "\n",
+                "#### aaaa\n",
+                "\n",
+                "## ab\n",
+                "\n",
+                "### aba\n",
+                "\n",
+                "# b\n",
+            ),
+            (Enter(Container(Section)), "#"),
+            (Enter(Leaf(Heading)), "#"),
+            (Inline, "a"),
+            (Exit(Leaf(Heading)), "#"),
+            (Atom(Blankline), "\n"),
+            (Enter(Container(Section)), "##"),
+            (Enter(Leaf(Heading)), "##"),
+            (Inline, "aa"),
+            (Exit(Leaf(Heading)), "##"),
+            (Atom(Blankline), "\n"),
+            (Enter(Container(Section)), "####"),
+            (Enter(Leaf(Heading)), "####"),
+            (Inline, "aaaa"),
+            (Exit(Leaf(Heading)), "####"),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(Section)), "####"),
+            (Exit(Container(Section)), "##"),
+            (Enter(Container(Section)), "##"),
+            (Enter(Leaf(Heading)), "##"),
+            (Inline, "ab"),
+            (Exit(Leaf(Heading)), "##"),
+            (Atom(Blankline), "\n"),
+            (Enter(Container(Section)), "###"),
+            (Enter(Leaf(Heading)), "###"),
+            (Inline, "aba"),
+            (Exit(Leaf(Heading)), "###"),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(Section)), "###"),
+            (Exit(Container(Section)), "##"),
+            (Exit(Container(Section)), "#"),
+            (Enter(Container(Section)), "#"),
+            (Enter(Leaf(Heading)), "#"),
+            (Inline, "b"),
             (Exit(Leaf(Heading)), "#"),
             (Exit(Container(Section)), "#"),
         );
