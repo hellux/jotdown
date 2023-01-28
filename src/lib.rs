@@ -368,25 +368,17 @@ impl<'s> Parser<'s> {
                             SpanLinkType::Inline,
                         ),
                         inline::Container::ReferenceLink => Container::Link(
-                            if let Some(url) = self
-                                .link_definitions
+                            self.link_definitions
                                 .get(self.inlines.src(inline.span).as_ref())
-                            {
-                                url.clone()
-                            } else {
-                                "".into()
-                            },
+                                .cloned()
+                                .unwrap_or_else(|| "".into()),
                             LinkType::Span(SpanLinkType::Reference),
                         ),
                         inline::Container::ReferenceImage => Container::Image(
-                            if let Some(url) = self
-                                .link_definitions
+                            self.link_definitions
                                 .get(self.inlines.src(inline.span).as_ref())
-                            {
-                                url.clone()
-                            } else {
-                                "".into()
-                            },
+                                .cloned()
+                                .unwrap_or_else(|| "".into()),
                             SpanLinkType::Reference,
                         ),
                         inline::Container::Autolink => todo!("{:?}", c),
