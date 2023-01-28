@@ -435,14 +435,14 @@ impl<'s> Parser<'s> {
                         ),
                         inline::Container::ReferenceLink => Container::Link(
                             self.link_definitions
-                                .get(self.inlines.src(inline.span).as_ref())
+                                .get(self.inlines.src(inline.span).replace('\n', " ").as_str())
                                 .cloned()
                                 .unwrap_or_else(|| "".into()),
                             LinkType::Span(SpanLinkType::Reference),
                         ),
                         inline::Container::ReferenceImage => Container::Image(
                             self.link_definitions
-                                .get(self.inlines.src(inline.span).as_ref())
+                                .get(self.inlines.src(inline.span).replace('\n', " ").as_str())
                                 .cloned()
                                 .unwrap_or_else(|| "".into()),
                             SpanLinkType::Reference,
