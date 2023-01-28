@@ -45,7 +45,7 @@ pub enum Container {
     InlineLink,
     /// Span is the URL.
     InlineImage,
-
+    /// Open delimiter span is URL, closing is '>'.
     Autolink,
 }
 
@@ -327,11 +327,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .count();
             (end && is_url).then(|| {
                 self.lexer = lex::Lexer::new(ahead);
+                self.span = self.span.after(len);
                 self.events.push_back(Event {
                     kind: EventKind::Enter(Autolink),
                     span: self.span,
                 });
-                self.span = self.span.after(len);
                 self.events.push_back(Event {
                     kind: EventKind::Str,
                     span: self.span,
@@ -1070,22 +1070,22 @@ mod test {
     fn autolink() {
         test_parse!(
             "<https://example.com>",
-            (Enter(Autolink), "<"),
+            (Enter(Autolink), "https://example.com"),
             (Str, "https://example.com"),
             (Exit(Autolink), ">")
         );
         test_parse!(
             "<a@b.c>",
-            (Enter(Autolink), "<"),
+            (Enter(Autolink), "a@b.c"),
             (Str, "a@b.c"),
             (Exit(Autolink), ">"),
         );
         test_parse!(
             "<http://a.b><http://c.d>",
-            (Enter(Autolink), "<"),
+            (Enter(Autolink), "http://a.b"),
             (Str, "http://a.b"),
             (Exit(Autolink), ">"),
-            (Enter(Autolink), "<"),
+            (Enter(Autolink), "http://c.d"),
             (Str, "http://c.d"),
             (Exit(Autolink), ">")
         );
