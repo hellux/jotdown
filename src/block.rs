@@ -102,6 +102,9 @@ pub enum Container {
 
     /// Span is first '|' character.
     TableRow { head: bool },
+
+    /// Span is '#' characters of heading.
+    Section,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +135,8 @@ struct TreeParser<'s> {
     prev_blankline: bool,
     /// Stack of currently open lists.
     open_lists: Vec<OpenList>,
+    /// Stack of currently open sections.
+    open_sections: Vec<u32>,
     /// Alignments for each column in for the current table.
     alignments: Vec<Alignment>,
 }
@@ -145,6 +150,7 @@ impl<'s> TreeParser<'s> {
             prev_blankline: false,
             open_lists: Vec::new(),
             alignments: Vec::new(),
+            open_sections: Vec::new(),
         }
     }
 
@@ -153,7 +159,7 @@ impl<'s> TreeParser<'s> {
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
         while line_pos < lines.len() {
-            let line_count = self.parse_block(&mut lines[line_pos..]);
+            let line_count = self.parse_block(&mut lines[line_pos..], true);
             if line_count == 0 {
                 break;
             }
@@ -162,11 +168,14 @@ impl<'s> TreeParser<'s> {
         for _ in self.open_lists.drain(..) {
             self.tree.exit(); // list
         }
+        for _ in self.open_sections.drain(..) {
+            self.tree.exit(); // section
+        }
         self.tree.finish()
     }
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
-    fn parse_block(&mut self, lines: &mut [Span]) -> usize {
+    fn parse_block(&mut self, lines: &mut [Span], top_level: bool) -> usize {
         BlockParser::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
             0,
             |(indent, kind, span, line_count)| {
@@ -236,7 +245,7 @@ impl<'s> TreeParser<'s> {
 
                 match kind {
                     Block::Atom(a) => self.tree.atom(a, span),
-                    Block::Leaf(l) => self.parse_leaf(l, lines, span, indent),
+                    Block::Leaf(l) => self.parse_leaf(l, lines, span, indent, top_level),
                     Block::Container(Table) => self.parse_table(lines, span),
                     Block::Container(c) => self.parse_container(c, lines, span, indent),
                 }
@@ -246,7 +255,14 @@ impl<'s> TreeParser<'s> {
         )
     }
 
-    fn parse_leaf(&mut self, l: Leaf, lines: &mut [Span], span: Span, indent: usize) {
+    fn parse_leaf(
+        &mut self,
+        l: Leaf,
+        lines: &mut [Span],
+        span: Span,
+        indent: usize,
+        top_level: bool,
+    ) {
         if matches!(l, Leaf::CodeBlock) {
             for line in lines.iter_mut() {
                 let indent_line = line.len() - line.trim_start(self.src).len();
@@ -264,6 +280,21 @@ impl<'s> TreeParser<'s> {
                 let last = &mut lines[l - 1];
                 *last = last.trim_end(self.src);
             }
+        }
+
+        if matches!(l, Leaf::Heading) && top_level {
+            let level = u32::try_from(span.len()).unwrap();
+            let first_close = self
+                .open_sections
+                .iter()
+                .rev()
+                .rposition(|l| *l > level)
+                .map_or(0, |i| i + 1);
+            self.open_sections.drain(first_close..).for_each(|_| {
+                self.tree.exit(); // section
+            });
+            self.open_sections.push(level);
+            self.tree.enter(Node::Container(Section), span);
         }
 
         self.tree.enter(Node::Leaf(l), span);
@@ -288,7 +319,7 @@ impl<'s> TreeParser<'s> {
                     }
                 }
                 ListItem(..) | Footnote | Div => spaces.min(indent),
-                List { .. } | DescriptionList | Table | TableRow { .. } => {
+                List { .. } | DescriptionList | Table | TableRow { .. } | Section => {
                     panic!()
                 }
             };
@@ -319,7 +350,7 @@ impl<'s> TreeParser<'s> {
         self.tree.enter(Node::Container(c), span);
         let mut l = 0;
         while l < lines.len() {
-            l += self.parse_block(&mut lines[l..]);
+            l += self.parse_block(&mut lines[l..], false);
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
@@ -663,7 +694,7 @@ impl BlockParser {
                     }
                 }
             }
-            Block::Container(List { .. } | DescriptionList | TableRow { .. })
+            Block::Container(List { .. } | DescriptionList | TableRow { .. } | Section)
             | Block::Leaf(TableCell(..) | Caption) => {
                 panic!()
             }
@@ -867,21 +898,25 @@ mod test {
     fn parse_heading_multi() {
         test_parse!(
             concat!(
-                            "# 2\n",
-                            "\n",
-                            " #   8\n",
-                            "  12\n",
-                            "15\n", //
-                        ),
+                    "# 2\n",
+                    "\n",
+                    " #   8\n",
+                    "  12\n",
+                    "15\n", //
+                ),
+            (Enter(Container(Section)), "#"),
             (Enter(Leaf(Heading)), "#"),
             (Inline, "2"),
             (Exit(Leaf(Heading)), "#"),
             (Atom(Blankline), "\n"),
+            (Exit(Container(Section)), "#"),
+            (Enter(Container(Section)), "#"),
             (Enter(Leaf(Heading)), "#"),
             (Inline, "8\n"),
             (Inline, "12\n"),
             (Inline, "15"),
             (Exit(Leaf(Heading)), "#"),
+            (Exit(Container(Section)), "#"),
         );
     }
 

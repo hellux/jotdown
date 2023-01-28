@@ -48,6 +48,8 @@ pub enum Container<'s> {
     Table,
     /// A row element of a table.
     TableRow { head: bool },
+    /// A section belonging to a top level heading.
+    Section,
     /// A block-level divider element.
     Div { class: Option<&'s str> },
     /// A paragraph.
@@ -105,6 +107,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow { .. }
+            | Self::Section
             | Self::Div { .. }
             | Self::Paragraph
             | Self::Heading { .. }
@@ -141,6 +144,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow { .. }
+            | Self::Section
             | Self::Div { .. } => true,
             Self::Paragraph
             | Self::Heading { .. }
@@ -620,6 +624,7 @@ impl<'s> Parser<'s> {
                                 }
                                 Container::TableRow { head }
                             }
+                            block::Container::Section => Container::Section,
                         },
                     };
                     if enter {
@@ -739,16 +744,20 @@ mod test {
     fn heading() {
         test_parse!(
             "#\n",
+            Start(Section, Attributes::new()),
             Start(Heading { level: 1 }, Attributes::new()),
             End(Heading { level: 1 }),
+            End(Section),
         );
         test_parse!(
             "# abc\ndef\n",
+            Start(Section, Attributes::new()),
             Start(Heading { level: 1 }, Attributes::new()),
             Str("abc".into()),
             Atom(Softbreak),
             Str("def".into()),
             End(Heading { level: 1 }),
+            End(Section),
         );
     }
 

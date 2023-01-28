@@ -148,6 +148,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         }
                         Container::Table => self.out.write_str("<table")?,
                         Container::TableRow { .. } => self.out.write_str("<tr")?,
+                        Container::Section => self.out.write_str("<section")?,
                         Container::Div { .. } => self.out.write_str("<div")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
@@ -311,6 +312,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         }
                         Container::Table => self.out.write_str("</table>")?,
                         Container::TableRow { .. } => self.out.write_str("</tr>")?,
+                        Container::Section => self.out.write_str("</section>")?,
                         Container::Div { .. } => self.out.write_str("</div>")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
