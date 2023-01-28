@@ -247,8 +247,6 @@ impl<'s> TreeParser<'s> {
     }
 
     fn parse_leaf(&mut self, l: Leaf, lines: &mut [Span], span: Span, indent: usize) {
-        self.tree.enter(Node::Leaf(l), span);
-
         if matches!(l, Leaf::CodeBlock) {
             for line in lines.iter_mut() {
                 let indent_line = line.len() - line.trim_start(self.src).len();
@@ -268,6 +266,7 @@ impl<'s> TreeParser<'s> {
             }
         }
 
+        self.tree.enter(Node::Leaf(l), span);
         lines.iter().for_each(|line| self.tree.inline(*line));
         self.tree.exit();
     }
