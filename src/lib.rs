@@ -318,7 +318,7 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Link definitions encountered during block parse, written once.
-    link_definitions: std::collections::HashMap<&'s str, CowStr<'s>>,
+    link_definitions: std::collections::HashMap<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
 
     /// Block tree cursor.
     tree: block::Tree,
@@ -347,17 +347,24 @@ impl<'s> Parser<'s> {
         let link_definitions = {
             let mut branch = tree.clone();
             let mut defs = std::collections::HashMap::new();
+            let mut attr_prev: Option<Span> = None;
             while let Some(e) = branch.next() {
                 if let tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) =
                     e.kind
                 {
                     let tag = e.span.of(src);
+                    let attrs =
+                        attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
                     let url = match branch.count_children() {
                         0 => "".into(),
                         1 => branch.take_inlines().next().unwrap().of(src).trim().into(),
                         _ => branch.take_inlines().map(|sp| sp.of(src).trim()).collect(),
                     };
-                    defs.insert(tag, url);
+                    defs.insert(tag, (url, attrs));
+                } else if let tree::EventKind::Atom(block::Atom::Attributes) = e.kind {
+                    attr_prev = Some(e.span);
+                } else {
+                    attr_prev = None;
                 }
             }
             defs
@@ -386,7 +393,7 @@ impl<'s> Parser<'s> {
             let mut inline = parser.next();
 
             let mut first_is_attr = false;
-            let attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
+            let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
                 if let inline::EventKind::Attributes = inl.kind {
                     first_is_attr = true;
                     attr::parse(self.inlines.slice(inl.span))
@@ -433,20 +440,19 @@ impl<'s> Parser<'s> {
                             },
                             SpanLinkType::Inline,
                         ),
-                        inline::Container::ReferenceLink => Container::Link(
-                            self.link_definitions
+                        inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
+                            let (url, attrs_def) = self
+                                .link_definitions
                                 .get(self.inlines.src(inline.span).replace('\n', " ").as_str())
                                 .cloned()
-                                .unwrap_or_else(|| "".into()),
-                            LinkType::Span(SpanLinkType::Reference),
-                        ),
-                        inline::Container::ReferenceImage => Container::Image(
-                            self.link_definitions
-                                .get(self.inlines.src(inline.span).replace('\n', " ").as_str())
-                                .cloned()
-                                .unwrap_or_else(|| "".into()),
-                            SpanLinkType::Reference,
-                        ),
+                                .unwrap_or_else(|| ("".into(), Attributes::new()));
+                            attributes.union(attrs_def);
+                            if matches!(c, inline::Container::ReferenceLink) {
+                                Container::Link(url, LinkType::Span(SpanLinkType::Reference))
+                            } else {
+                                Container::Image(url, SpanLinkType::Reference)
+                            }
+                        }
                         inline::Container::Autolink => todo!("{:?}", c),
                     };
                     if matches!(inline.kind, inline::EventKind::Enter(_)) {
@@ -918,6 +924,33 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Atom(Blankline),
+        );
+    }
+
+    #[test]
+    fn link_reference_attrs() {
+        test_parse!(
+            concat!(
+                "[text][tag]{b=c}\n",
+                "\n",
+                "{a=b}\n",
+                "[tag]: url\n",
+                "\n",
+                "para\n",
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                [("b", "c"), ("a", "b")].into_iter().collect(),
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            Atom(Blankline),
+            Atom(Blankline),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
         );
     }
 

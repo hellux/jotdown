@@ -58,6 +58,21 @@ impl<'s> Attributes<'s> {
         true
     }
 
+    /// Combine all attributes from both objects, prioritizing self on conflicts.
+    pub fn union(&mut self, other: Self) {
+        if let Some(attrs0) = &mut self.0 {
+            if let Some(mut attrs1) = other.0 {
+                for (attr, val) in attrs1.drain(..) {
+                    if !attrs0.iter().any(|(a, _)| *a == attr) {
+                        attrs0.push((attr, val));
+                    }
+                }
+            }
+        } else {
+            self.0 = other.0;
+        }
+    }
+
     fn add(&mut self, attr: &'s str, val: CowStr<'s>) {
         if self.0.is_none() {
             self.0 = Some(Vec::new().into());
