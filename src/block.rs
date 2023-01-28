@@ -238,7 +238,7 @@ impl<'s> TreeParser<'s> {
 
                 match kind {
                     Block::Atom(a) => self.tree.atom(a, span),
-                    Block::Leaf(l) => self.parse_leaf(l, lines, span),
+                    Block::Leaf(l) => self.parse_leaf(l, lines, span, indent),
                     Block::Container(Table) => self.parse_table(lines, span),
                     Block::Container(c) => self.parse_container(c, lines, span, indent),
                 }
@@ -248,11 +248,14 @@ impl<'s> TreeParser<'s> {
         )
     }
 
-    fn parse_leaf(&mut self, l: Leaf, lines: &mut [Span], span: Span) {
+    fn parse_leaf(&mut self, l: Leaf, lines: &mut [Span], span: Span, indent: usize) {
         self.tree.enter(Node::Leaf(l), span);
 
         if matches!(l, Leaf::CodeBlock) {
-            lines[0] = lines[0].trim_start(self.src);
+            for line in lines.iter_mut() {
+                let indent_line = line.len() - line.trim_start(self.src).len();
+                *line = line.skip(indent.min(indent_line));
+            }
         } else {
             // trim starting whitespace of each inline
             for line in lines.iter_mut() {
