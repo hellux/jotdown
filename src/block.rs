@@ -897,12 +897,12 @@ mod test {
     fn parse_heading_multi() {
         test_parse!(
             concat!(
-                    "# 2\n",
-                    "\n",
-                    " #   8\n",
-                    "  12\n",
-                    "15\n", //
-                ),
+                "# 2\n",
+                "\n",
+                " #   8\n",
+                "  12\n",
+                "15\n", //
+            ),
             (Enter(Container(Section)), "#"),
             (Enter(Leaf(Heading)), "#"),
             (Inline, "2"),
