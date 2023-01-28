@@ -187,12 +187,10 @@ impl<'s> TreeParser<'s> {
                     lines[0] = lines[0].skip(2);
                 }
 
-                // skip closing fence of code blocks / divs
-                let lines = if !truncated
-                    && matches!(kind, Block::Leaf(CodeBlock) | Block::Container(Div))
-                {
-                    let l = lines.len();
-                    &mut lines[..l - 1]
+                // skip fences of code blocks / divs
+                let lines = if matches!(kind, Block::Leaf(CodeBlock) | Block::Container(Div)) {
+                    let l = lines.len() - usize::from(!truncated);
+                    &mut lines[1..l]
                 } else {
                     lines
                 };
@@ -270,47 +268,34 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        // skip first inline if empty (e.g. code block)
-        let lines = if lines[0].is_empty() {
-            &mut lines[1..]
-        } else {
-            lines
-        };
-
         lines.iter().for_each(|line| self.tree.inline(*line));
         self.tree.exit();
     }
 
     fn parse_container(&mut self, c: Container, lines: &mut [Span], span: Span, indent: usize) {
-        let line_count_inner = lines.len() - usize::from(matches!(c, Div));
-
         // update spans, remove indentation / container prefix
-        lines
-            .iter_mut()
-            .skip(1)
-            .take(line_count_inner)
-            .for_each(|sp| {
-                let src = sp.of(self.src);
-                let src_t = src.trim();
-                let spaces = src.len() - src.trim_start().len();
-                let skip = match c {
-                    Blockquote => {
-                        if src_t == ">" {
-                            spaces + 1
-                        } else if src_t.starts_with("> ") {
-                            spaces + "> ".len()
-                        } else {
-                            0
-                        }
+        lines.iter_mut().skip(1).for_each(|sp| {
+            let src = sp.of(self.src);
+            let src_t = src.trim();
+            let spaces = src.len() - src.trim_start().len();
+            let skip = match c {
+                Blockquote => {
+                    if src_t == ">" {
+                        spaces + 1
+                    } else if src_t.starts_with("> ") {
+                        spaces + "> ".len()
+                    } else {
+                        0
                     }
-                    ListItem(..) | Footnote | Div => spaces.min(indent),
-                    List { .. } | DescriptionList | Table | TableRow { .. } => {
-                        panic!()
-                    }
-                };
-                let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
-                *sp = sp.skip(skip.min(len));
-            });
+                }
+                ListItem(..) | Footnote | Div => spaces.min(indent),
+                List { .. } | DescriptionList | Table | TableRow { .. } => {
+                    panic!()
+                }
+            };
+            let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
+            *sp = sp.skip(skip.min(len));
+        });
 
         if let Container::ListItem(ty) = c {
             if self
@@ -334,8 +319,8 @@ impl<'s> TreeParser<'s> {
 
         self.tree.enter(Node::Container(c), span);
         let mut l = 0;
-        while l < line_count_inner {
-            l += self.parse_block(&mut lines[l..line_count_inner]);
+        while l < lines.len() {
+            l += self.parse_block(&mut lines[l..]);
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
@@ -657,10 +642,11 @@ impl BlockParser {
                 empty || spaces > self.indent
             }
             Block::Container(Div) | Block::Leaf(CodeBlock) => {
-                let (fence, fence_length) = self.fence.unwrap();
-                let mut c = line.chars();
-                !((&mut c).take(fence_length).all(|c| c == fence)
-                    && c.next().map_or(true, char::is_whitespace))
+                let (fence_char, l0) = self.fence.unwrap();
+                let l1 = line_t.len();
+                let is_end_fence = line_t.chars().all(|c| c == fence_char)
+                    && (l0 == l1 || (l0 < l1 && matches!(self.kind, Block::Container(..))));
+                !is_end_fence
             }
             Block::Container(Table) if self.caption => !empty,
             Block::Container(Table) => {
@@ -1574,6 +1560,30 @@ mod test {
             "|-|-|",
             (Enter(Container(Table)), ""),
             (Exit(Container(Table)), "")
+        );
+    }
+
+    #[test]
+    fn parse_div() {
+        test_parse!(
+            concat!("::: cls\n", "abc\n", ":::\n",),
+            (Enter(Container(Div)), "cls"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "abc"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(Div)), "cls"),
+        );
+    }
+
+    #[test]
+    fn parse_div_no_class() {
+        test_parse!(
+            concat!(":::\n", "abc\n", ":::\n",),
+            (Enter(Container(Div)), ""),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "abc"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(Div)), ""),
         );
     }
 
