@@ -301,7 +301,10 @@ impl<'s> TreeParser<'s> {
         }
 
         self.tree.enter(Node::Leaf(leaf), span);
-        lines.iter().for_each(|line| self.tree.inline(*line));
+        lines
+            .iter()
+            .filter(|l| !l.is_empty())
+            .for_each(|line| self.tree.inline(*line));
         self.tree.exit();
     }
 
@@ -988,6 +991,21 @@ mod test {
             (Inline, "b"),
             (Exit(Leaf(Heading)), "##"),
             (Exit(Container(Section)), "##"),
+            (Exit(Container(Section)), "#"),
+        );
+    }
+
+    #[test]
+    fn parse_heading_empty_first_line() {
+        test_parse!(
+            concat!(
+                "#\n",
+                "heading\n", //
+            ),
+            (Enter(Container(Section)), "#"),
+            (Enter(Leaf(Heading)), "#"),
+            (Inline, "heading"),
+            (Exit(Leaf(Heading)), "#"),
             (Exit(Container(Section)), "#"),
         );
     }
