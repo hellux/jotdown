@@ -55,7 +55,7 @@ pub enum Container<'s> {
     /// A paragraph.
     Paragraph,
     /// A heading.
-    Heading { level: usize },
+    Heading { level: u16 },
     /// A cell element of row within a table.
     TableCell { alignment: Alignment, head: bool },
     /// A caption within a table.
@@ -560,7 +560,7 @@ impl<'s> Parser<'s> {
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
                                 block::Leaf::Heading => Container::Heading {
-                                    level: content.len(),
+                                    level: content.len().try_into().unwrap(),
                                 },
                                 block::Leaf::CodeBlock => {
                                     if let Some(format) = content.strip_prefix('=') {
