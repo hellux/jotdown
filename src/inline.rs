@@ -31,7 +31,6 @@ pub enum Container {
     Emphasis,
     Strong,
     Mark,
-    // Verbatim
     Verbatim,
     /// Span is the format.
     RawFormat,

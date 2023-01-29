@@ -331,6 +331,7 @@ pub struct Parser<'s> {
     /// Inline parser, recreated for each new inline.
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
 
+    /// Current table row is a head row.
     table_head_row: bool,
 
     /// Footnote references in the order they were encountered, without duplicates.

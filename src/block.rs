@@ -1674,6 +1674,16 @@ mod test {
     }
 
     #[test]
+    fn parse_table_escaped() {
+        test_parse!(
+            "|a\\|\n",
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "|a\\|"),
+            (Exit(Leaf(Paragraph)), ""),
+        );
+    }
+
+    #[test]
     fn parse_table_post() {
         test_parse!(
             "|a|\npara",
