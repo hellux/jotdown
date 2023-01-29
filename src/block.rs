@@ -293,6 +293,11 @@ impl<'s> TreeParser<'s> {
                 self.open_sections.push(*level);
                 self.tree.enter(Node::Container(Section), span);
             }
+
+            // trim '#' characters
+            for line in lines[1..].iter_mut() {
+                *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_whitespace());
+            }
         }
 
         self.tree.enter(Node::Leaf(leaf), span);
@@ -797,7 +802,10 @@ impl Kind {
                 ..
             } => false,
             Self::Blockquote => matches!(next, Self::Blockquote | Self::Paragraph),
-            Self::Heading { .. } => matches!(next, Self::Paragraph),
+            Self::Heading { level } => {
+                matches!(next, Self::Paragraph)
+                    || matches!(next, Self::Heading { level: l } if l == *level )
+            }
             Self::Paragraph | Self::Table { caption: true } => {
                 !matches!(next, Self::Atom(Blankline))
             }
@@ -965,6 +973,26 @@ mod test {
     }
 
     #[test]
+    fn parse_heading() {
+        test_parse!(
+            concat!(
+                "# a\n",
+                "## b\n", //
+            ),
+            (Enter(Container(Section)), "#"),
+            (Enter(Leaf(Heading)), "#"),
+            (Inline, "a"),
+            (Exit(Leaf(Heading)), "#"),
+            (Enter(Container(Section)), "##"),
+            (Enter(Leaf(Heading)), "##"),
+            (Inline, "b"),
+            (Exit(Leaf(Heading)), "##"),
+            (Exit(Container(Section)), "##"),
+            (Exit(Container(Section)), "#"),
+        );
+    }
+
+    #[test]
     fn parse_heading_multi() {
         test_parse!(
             concat!(
@@ -985,6 +1013,24 @@ mod test {
             (Inline, "8\n"),
             (Inline, "12\n"),
             (Inline, "15"),
+            (Exit(Leaf(Heading)), "#"),
+            (Exit(Container(Section)), "#"),
+        );
+    }
+
+    #[test]
+    fn parse_heading_multi_repeat() {
+        test_parse!(
+            concat!(
+                "# a\n",
+                "# b\n",
+                "c\n", //
+            ),
+            (Enter(Container(Section)), "#"),
+            (Enter(Leaf(Heading)), "#"),
+            (Inline, "a\n"),
+            (Inline, "b\n"),
+            (Inline, "c"),
             (Exit(Leaf(Heading)), "#"),
             (Exit(Container(Section)), "#"),
         );

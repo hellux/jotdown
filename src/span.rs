@@ -89,6 +89,10 @@ impl Span {
         &s[self.start()..self.end()]
     }
 
+    pub fn trim_start_matches<P: FnMut(char) -> bool>(self, s: &str, pat: P) -> Self {
+        Self::from_slice(s, self.of(s).trim_start_matches(pat))
+    }
+
     pub fn trim_start(self, s: &str) -> Self {
         Self::from_slice(s, self.of(s).trim_start())
     }
