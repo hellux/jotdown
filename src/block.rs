@@ -241,9 +241,9 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = false;
             }
 
-            match Block::from(&kind) {
+            match kind.block(top_level) {
                 Block::Atom(a) => self.tree.atom(a, span),
-                Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines, top_level),
+                Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines),
                 Block::Container(Table) => self.parse_table(lines, span),
                 Block::Container(c) => self.parse_container(c, &kind, span, lines),
             }
@@ -254,14 +254,7 @@ impl<'s> TreeParser<'s> {
         }
     }
 
-    fn parse_leaf(
-        &mut self,
-        mut leaf: Leaf,
-        k: &Kind,
-        span: Span,
-        lines: &mut [Span],
-        top_level: bool,
-    ) {
+    fn parse_leaf(&mut self, leaf: Leaf, k: &Kind, span: Span, lines: &mut [Span]) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = line.len() - line.trim_start(self.src).len();
@@ -283,7 +276,10 @@ impl<'s> TreeParser<'s> {
 
         if let Kind::Heading { level, .. } = k {
             // open and close sections
-            if top_level {
+            if let Leaf::Heading {
+                has_section: true, ..
+            } = leaf
+            {
                 let first_close = self
                     .open_sections
                     .iter()
@@ -300,10 +296,6 @@ impl<'s> TreeParser<'s> {
             for line in lines[1..].iter_mut() {
                 *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_whitespace());
             }
-        }
-
-        if let Leaf::Heading { has_section } = &mut leaf {
-            *has_section = top_level;
         }
 
         self.tree.enter(Node::Leaf(leaf), span);
@@ -574,31 +566,6 @@ struct IdentifiedBlock {
     span: Span,
 }
 
-impl From<&Kind> for Block {
-    fn from(kind: &Kind) -> Self {
-        match kind {
-            Kind::Atom(a) => Self::Atom(*a),
-            Kind::Paragraph => Self::Leaf(Paragraph),
-            Kind::Heading { .. } => Self::Leaf(Heading { has_section: false }),
-            Kind::Fenced {
-                kind: FenceKind::CodeBlock(..),
-                ..
-            } => Self::Leaf(CodeBlock),
-            Kind::Fenced {
-                kind: FenceKind::Div,
-                ..
-            } => Self::Container(Div),
-            Kind::Definition {
-                footnote: false, ..
-            } => Self::Leaf(LinkDefinition),
-            Kind::Definition { footnote: true, .. } => Self::Container(Footnote),
-            Kind::Blockquote => Self::Container(Blockquote),
-            Kind::ListItem { ty, .. } => Self::Container(ListItem(*ty)),
-            Kind::Table { .. } => Self::Container(Table),
-        }
-    }
-}
-
 impl IdentifiedBlock {
     fn new(line: &str) -> Self {
         let indent = line
@@ -861,6 +828,31 @@ impl Kind {
                     }
                 }
             }
+        }
+    }
+
+    fn block(&self, top_level: bool) -> Block {
+        match self {
+            Self::Atom(a) => Block::Atom(*a),
+            Self::Paragraph => Block::Leaf(Paragraph),
+            Self::Heading { .. } => Block::Leaf(Heading {
+                has_section: top_level,
+            }),
+            Self::Fenced {
+                kind: FenceKind::CodeBlock(..),
+                ..
+            } => Block::Leaf(CodeBlock),
+            Self::Fenced {
+                kind: FenceKind::Div,
+                ..
+            } => Block::Container(Div),
+            Self::Definition {
+                footnote: false, ..
+            } => Block::Leaf(LinkDefinition),
+            Self::Definition { footnote: true, .. } => Block::Container(Footnote),
+            Self::Blockquote => Block::Container(Blockquote),
+            Self::ListItem { ty, .. } => Block::Container(ListItem(*ty)),
+            Self::Table { .. } => Block::Container(Table),
         }
     }
 }
