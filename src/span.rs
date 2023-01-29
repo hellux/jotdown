@@ -89,10 +89,6 @@ impl Span {
         &s[self.start()..self.end()]
     }
 
-    pub fn from_slice(s: &str, slice: &str) -> Self {
-        Self::by_len(slice.as_ptr() as usize - s.as_ptr() as usize, slice.len())
-    }
-
     pub fn trim_start(self, s: &str) -> Self {
         Self::from_slice(s, self.of(s).trim_start())
     }
@@ -103,6 +99,10 @@ impl Span {
 
     pub fn trim(self, s: &str) -> Self {
         Self::from_slice(s, self.of(s).trim_start().trim_end())
+    }
+
+    fn from_slice(s: &str, slice: &str) -> Self {
+        Self::by_len(slice.as_ptr() as usize - s.as_ptr() as usize, slice.len())
     }
 }
 

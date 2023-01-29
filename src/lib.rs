@@ -589,23 +589,27 @@ impl<'s> Parser<'s> {
                                 attributes = Attributes::new();
                                 continue;
                             }
-                            block::Container::DescriptionList => Container::DescriptionList,
                             block::Container::List { ty, tight } => {
-                                let kind = match ty {
-                                    block::ListType::Unordered(..) => ListKind::Unordered,
-                                    block::ListType::Ordered(numbering, style) => {
-                                        let marker = ev.span.of(self.src);
-                                        let start =
-                                            numbering.parse_number(style.number(marker)).max(1);
-                                        ListKind::Ordered {
-                                            numbering,
-                                            style,
-                                            start,
+                                if matches!(ty, block::ListType::Description) {
+                                    Container::DescriptionList
+                                } else {
+                                    let kind = match ty {
+                                        block::ListType::Unordered(..) => ListKind::Unordered,
+                                        block::ListType::Task => ListKind::Task,
+                                        block::ListType::Ordered(numbering, style) => {
+                                            let start = numbering
+                                                .parse_number(style.number(content))
+                                                .max(1);
+                                            ListKind::Ordered {
+                                                numbering,
+                                                style,
+                                                start,
+                                            }
                                         }
-                                    }
-                                    block::ListType::Task => ListKind::Task,
-                                };
-                                Container::List { kind, tight }
+                                        block::ListType::Description => unreachable!(),
+                                    };
+                                    Container::List { kind, tight }
+                                }
                             }
                             block::Container::ListItem(ty) => {
                                 if matches!(ty, block::ListType::Task) {

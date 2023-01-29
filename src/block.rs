@@ -85,9 +85,6 @@ pub enum Container {
     /// Span is class specifier, possibly empty.
     Div,
 
-    /// Span is `:`.
-    DescriptionList,
-
     /// Span is the list marker of the first list item in the list.
     List { ty: ListType, tight: bool },
 
@@ -112,6 +109,7 @@ pub enum ListType {
     Unordered(u8),
     Ordered(crate::OrderedListNumbering, crate::OrderedListStyle),
     Task,
+    Description,
 }
 
 #[derive(Debug)]
@@ -136,7 +134,7 @@ struct TreeParser<'s> {
     /// Stack of currently open lists.
     open_lists: Vec<OpenList>,
     /// Stack of currently open sections.
-    open_sections: Vec<u32>,
+    open_sections: Vec<usize>,
     /// Alignments for each column in for the current table.
     alignments: Vec<Alignment>,
 }
@@ -176,97 +174,96 @@ impl<'s> TreeParser<'s> {
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
     fn parse_block(&mut self, lines: &mut [Span], top_level: bool) -> usize {
-        BlockParser::parse(lines.iter().map(|sp| sp.of(self.src))).map_or(
-            0,
-            |(indent, kind, span, line_count)| {
-                let truncated = line_count > lines.len();
-                let l = line_count.min(lines.len());
-                let lines = &mut lines[..l];
-                let span = span.translate(lines[0].start());
+        if let Some(MeteredBlock {
+            kind,
+            span,
+            line_count,
+        }) = MeteredBlock::new(lines.iter().map(|sp| sp.of(self.src)))
+        {
+            let lines = &mut lines[..line_count];
+            let span = span.translate(lines[0].start());
 
-                // skip part of first inline that is shared with the block span
-                lines[0] = lines[0].with_start(span.end());
+            // skip part of first inline that is shared with the block span
+            lines[0] = lines[0].with_start(span.end());
 
-                // remove junk from footnotes / link defs
-                if matches!(
-                    kind,
-                    Block::Leaf(LinkDefinition) | Block::Container(Footnote { .. })
-                ) {
-                    assert_eq!(&lines[0].of(self.src).chars().as_str()[0..2], "]:");
-                    lines[0] = lines[0].skip(2);
+            // remove "]:" from footnote / link def
+            if matches!(kind, Kind::Definition { .. }) {
+                assert_eq!(&lines[0].of(self.src).chars().as_str()[0..2], "]:");
+                lines[0] = lines[0].skip(2);
+            }
+
+            // skip opening and closing fence of code block / div
+            let lines = if let Kind::Fenced {
+                has_closing_fence, ..
+            } = kind
+            {
+                let l = lines.len() - usize::from(has_closing_fence);
+                &mut lines[1..l]
+            } else {
+                lines
+            };
+
+            // close list if a non list item or a list item of new type appeared
+            if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
+                assert!(usize::from(*depth) <= self.tree.depth());
+                if self.tree.depth() == (*depth).into()
+                    && !matches!(kind, Kind::ListItem{ ty: ty_new, .. } if *ty == ty_new)
+                {
+                    self.tree.exit(); // list
+                    self.open_lists.pop();
                 }
+            }
 
-                // skip fences of code blocks / divs
-                let lines = if matches!(kind, Block::Leaf(CodeBlock) | Block::Container(Div)) {
-                    let l = lines.len() - usize::from(!truncated);
-                    &mut lines[1..l]
-                } else {
-                    lines
-                };
-
-                // close list if a non list item or a list item of new type appeared
-                if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
-                    assert!(usize::from(*depth) <= self.tree.depth());
-                    if self.tree.depth() == (*depth).into()
-                        && !matches!(
-                            kind,
-                            Block::Container(Container::ListItem(ty_new)) if *ty == ty_new,
-                        )
-                    {
-                        self.tree.exit(); // list
-                        self.open_lists.pop();
-                    }
-                }
-
-                // set list to loose if blankline discovered
-                if matches!(kind, Block::Atom(Atom::Blankline)) {
-                    self.prev_blankline = true;
-                } else {
-                    if self.prev_blankline {
-                        for OpenList { node, depth, .. } in &self.open_lists {
-                            if usize::from(*depth) < self.tree.depth()
-                                && matches!(kind, Block::Container(Container::ListItem { .. }))
-                            {
-                                continue;
-                            }
-                            if let tree::Element::Container(Node::Container(Container::List {
-                                tight,
-                                ..
-                            })) = self.tree.elem(*node)
-                            {
-                                *tight = false;
-                            } else {
-                                panic!();
-                            }
+            // set list to loose if blankline discovered
+            if matches!(kind, Kind::Atom(Atom::Blankline)) {
+                self.prev_blankline = true;
+            } else {
+                if self.prev_blankline {
+                    for OpenList { node, depth, .. } in &self.open_lists {
+                        if usize::from(*depth) < self.tree.depth()
+                            && matches!(kind, Kind::ListItem { .. })
+                        {
+                            continue;
+                        }
+                        if let tree::Element::Container(Node::Container(Container::List {
+                            tight,
+                            ..
+                        })) = self.tree.elem(*node)
+                        {
+                            *tight = false;
+                        } else {
+                            panic!();
                         }
                     }
-                    self.prev_blankline = false;
                 }
+                self.prev_blankline = false;
+            }
 
-                match kind {
-                    Block::Atom(a) => self.tree.atom(a, span),
-                    Block::Leaf(l) => self.parse_leaf(l, lines, span, indent, top_level),
-                    Block::Container(Table) => self.parse_table(lines, span),
-                    Block::Container(c) => self.parse_container(c, lines, span, indent),
-                }
+            match Block::from(&kind) {
+                Block::Atom(a) => self.tree.atom(a, span),
+                Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines, top_level),
+                Block::Container(Table) => self.parse_table(lines, span),
+                Block::Container(c) => self.parse_container(c, &kind, span, lines),
+            }
 
-                line_count
-            },
-        )
+            line_count
+        } else {
+            0
+        }
     }
 
     fn parse_leaf(
         &mut self,
-        l: Leaf,
-        lines: &mut [Span],
+        leaf: Leaf,
+        k: &Kind,
         span: Span,
-        indent: usize,
+        lines: &mut [Span],
         top_level: bool,
     ) {
-        if matches!(l, Leaf::CodeBlock) {
+        if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = line.len() - line.trim_start(self.src).len();
-                *line = line.skip(indent.min(indent_line));
+                *line = line.skip((*indent).min(indent_line));
             }
         } else {
             // trim starting whitespace of each inline
@@ -282,33 +279,35 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        if matches!(l, Leaf::Heading) && top_level {
-            let level = u32::try_from(span.len()).unwrap();
-            let first_close = self
-                .open_sections
-                .iter()
-                .rposition(|l| *l < level)
-                .map_or(0, |i| i + 1);
-            self.open_sections.drain(first_close..).for_each(|_| {
-                self.tree.exit(); // section
-            });
-            self.open_sections.push(level);
-            self.tree.enter(Node::Container(Section), span);
+        if let Kind::Heading { level, .. } = k {
+            // open and close sections
+            if top_level {
+                let first_close = self
+                    .open_sections
+                    .iter()
+                    .rposition(|l| l < level)
+                    .map_or(0, |i| i + 1);
+                self.open_sections.drain(first_close..).for_each(|_| {
+                    self.tree.exit(); // section
+                });
+                self.open_sections.push(*level);
+                self.tree.enter(Node::Container(Section), span);
+            }
         }
 
-        self.tree.enter(Node::Leaf(l), span);
+        self.tree.enter(Node::Leaf(leaf), span);
         lines.iter().for_each(|line| self.tree.inline(*line));
         self.tree.exit();
     }
 
-    fn parse_container(&mut self, c: Container, lines: &mut [Span], span: Span, indent: usize) {
+    fn parse_container(&mut self, c: Container, k: &Kind, span: Span, lines: &mut [Span]) {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|sp| {
             let src = sp.of(self.src);
             let src_t = src.trim();
             let spaces = src.len() - src.trim_start().len();
-            let skip = match c {
-                Blockquote => {
+            let skip = match k {
+                Kind::Blockquote => {
                     if src_t == ">" {
                         spaces + 1
                     } else if src_t.starts_with("> ") {
@@ -317,16 +316,16 @@ impl<'s> TreeParser<'s> {
                         0
                     }
                 }
-                ListItem(..) | Footnote | Div => spaces.min(indent),
-                List { .. } | DescriptionList | Table | TableRow { .. } | Section => {
-                    panic!()
-                }
+                Kind::ListItem { indent, .. }
+                | Kind::Definition { indent, .. }
+                | Kind::Fenced { indent, .. } => spaces.min(*indent),
+                _ => panic!("non-container {:?}", k),
             };
             let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
             *sp = sp.skip(skip.min(len));
         });
 
-        if let Container::ListItem(ty) = c {
+        if let ListItem(ty) = c {
             if self
                 .open_lists
                 .last()
@@ -500,141 +499,201 @@ impl<'s> TreeParser<'s> {
 }
 
 /// Parser for a single block.
-struct BlockParser {
-    indent: usize,
-    kind: Block,
+struct MeteredBlock {
+    kind: Kind,
     span: Span,
-    fence: Option<(char, usize)>,
-    caption: bool,
+    line_count: usize,
 }
 
-impl BlockParser {
-    /// Parse a single block. Return number of lines the block uses.
-    fn parse<'s, I: Iterator<Item = &'s str>>(mut lines: I) -> Option<(usize, Block, Span, usize)> {
+impl MeteredBlock {
+    /// Identify and measure the line length of a single block.
+    fn new<'s, I: Iterator<Item = &'s str>>(mut lines: I) -> Option<Self> {
         lines.next().map(|l| {
-            let mut p = BlockParser::new(l);
-            let has_end_delimiter =
-                matches!(p.kind, Block::Leaf(CodeBlock) | Block::Container(Div));
-            let line_count_match = lines.take_while(|l| p.continues(l)).count();
-            let line_count = 1 + line_count_match + usize::from(has_end_delimiter);
-            (p.indent, p.kind, p.span, line_count)
+            let IdentifiedBlock { mut kind, span } = IdentifiedBlock::new(l);
+            let line_count = 1 + lines.take_while(|l| kind.continues(l)).count();
+            Self {
+                kind,
+                span,
+                line_count,
+            }
         })
     }
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FenceKind {
+    Div,
+    CodeBlock(u8),
+}
+
+#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Debug)]
+enum Kind {
+    Atom(Atom),
+    Paragraph,
+    Heading {
+        level: usize,
+    },
+    Fenced {
+        indent: usize,
+        fence_length: usize,
+        kind: FenceKind,
+        has_spec: bool,
+        has_closing_fence: bool,
+    },
+    Definition {
+        indent: usize,
+        footnote: bool,
+    },
+    Blockquote,
+    ListItem {
+        indent: usize,
+        ty: ListType,
+    },
+    Table {
+        caption: bool,
+    },
+}
+
+struct IdentifiedBlock {
+    kind: Kind,
+    span: Span,
+}
+
+impl From<&Kind> for Block {
+    fn from(kind: &Kind) -> Self {
+        match kind {
+            Kind::Atom(a) => Self::Atom(*a),
+            Kind::Paragraph => Self::Leaf(Paragraph),
+            Kind::Heading { .. } => Self::Leaf(Heading),
+            Kind::Fenced {
+                kind: FenceKind::CodeBlock(..),
+                ..
+            } => Self::Leaf(CodeBlock),
+            Kind::Fenced {
+                kind: FenceKind::Div,
+                ..
+            } => Self::Container(Div),
+            Kind::Definition {
+                footnote: false, ..
+            } => Self::Leaf(LinkDefinition),
+            Kind::Definition { footnote: true, .. } => Self::Container(Footnote),
+            Kind::Blockquote => Self::Container(Blockquote),
+            Kind::ListItem { ty, .. } => Self::Container(ListItem(*ty)),
+            Kind::Table { .. } => Self::Container(Table),
+        }
+    }
+}
+
+impl IdentifiedBlock {
     fn new(line: &str) -> Self {
-        let start = line
+        let indent = line
             .chars()
             .take_while(|c| *c != '\n' && c.is_whitespace())
             .map(char::len_utf8)
             .sum();
-        let line_t = &line[start..];
-        let mut chars = line_t.chars();
+        let line = &line[indent..];
+        let line_t = line.trim_end();
+        let l = line.len();
+        let lt = line_t.len();
 
-        let mut fence = None;
-        let (kind, span) = match chars.next().unwrap_or(EOF) {
-            EOF => Some((Block::Atom(Blankline), Span::empty_at(start))),
-            '\n' => Some((Block::Atom(Blankline), Span::by_len(start, 1))),
+        let mut chars = line.chars();
+        match chars.next().unwrap_or(EOF) {
+            EOF => Some((Kind::Atom(Blankline), Span::empty_at(indent))),
+            '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent, 1))),
             '#' => chars
                 .find(|c| *c != '#')
                 .map_or(true, char::is_whitespace)
                 .then(|| {
-                    (
-                        Block::Leaf(Heading),
-                        Span::by_len(start, line_t.len() - chars.as_str().len() - 1),
-                    )
+                    let level = l - chars.as_str().len() - 1;
+                    (Kind::Heading { level }, Span::by_len(indent, level))
                 }),
-            '>' => {
-                if let Some(c) = chars.next() {
-                    c.is_whitespace().then(|| {
-                        (
-                            Block::Container(Blockquote),
-                            Span::by_len(start, line_t.len() - chars.as_str().len() - 1),
-                        )
-                    })
-                } else {
-                    Some((
-                        Block::Container(Blockquote),
-                        Span::by_len(start, line_t.len() - chars.as_str().len()),
-                    ))
-                }
-            }
-            '{' => (attr::valid(line_t.chars()).0 == line_t.trim_end().len())
-                .then(|| (Block::Atom(Attributes), Span::by_len(start, line_t.len()))),
+            '>' => chars
+                .next()
+                .map_or(Some(false), |c| c.is_whitespace().then(|| true))
+                .map(|space_after| {
+                    let len = l - chars.as_str().len() - usize::from(space_after);
+                    (Kind::Blockquote, Span::by_len(indent, len))
+                }),
+            '{' => (attr::valid(line.chars()).0 == lt)
+                .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
             '|' => {
-                let l = line_t.trim_end().len();
                 // FIXME: last byte may be pipe but end of prefixed unicode char
-                (line_t.as_bytes()[l - 1] == b'|' && line_t.as_bytes()[l - 2] != b'\\')
-                    .then(|| (Block::Container(Table), Span::empty_at(start)))
+                (line.as_bytes()[lt - 1] == b'|' && line.as_bytes()[lt - 2] != b'\\')
+                    .then(|| (Kind::Table { caption: false }, Span::empty_at(indent)))
             }
             '[' => chars.as_str().find("]:").map(|l| {
                 let tag = &chars.as_str()[0..l];
-                let (tag, is_footnote) = if let Some(tag) = tag.strip_prefix('^') {
-                    (tag, true)
-                } else {
-                    (tag, false)
-                };
+                let footnote = tag.starts_with('^');
                 (
-                    if is_footnote {
-                        Block::Container(Footnote)
-                    } else {
-                        Block::Leaf(LinkDefinition)
-                    },
-                    Span::from_slice(line, tag),
+                    Kind::Definition { indent, footnote },
+                    Span::by_len(indent + 1, l).skip(usize::from(footnote)),
                 )
             }),
-            '-' | '*' if Self::is_thematic_break(chars.clone()) => Some((
-                Block::Atom(ThematicBreak),
-                Span::from_slice(line, line_t.trim()),
-            )),
+            '-' | '*' if Self::is_thematic_break(chars.clone()) => {
+                Some((Kind::Atom(ThematicBreak), Span::by_len(indent, lt)))
+            }
             b @ ('-' | '*' | '+') => chars.next().map_or(true, char::is_whitespace).then(|| {
                 let task_list = chars.next() == Some('[')
                     && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
                     && chars.next().map_or(true, char::is_whitespace);
                 if task_list {
-                    (Block::Container(ListItem(Task)), Span::by_len(start, 5))
+                    (Kind::ListItem { indent, ty: Task }, Span::by_len(indent, 5))
                 } else {
                     (
-                        Block::Container(ListItem(Unordered(b as u8))),
-                        Span::by_len(start, 1),
+                        Kind::ListItem {
+                            indent,
+                            ty: Unordered(b as u8),
+                        },
+                        Span::by_len(indent, 1),
                     )
                 }
             }),
-            ':' if chars.clone().next().map_or(true, char::is_whitespace) => {
-                Some((Block::Container(DescriptionList), Span::by_len(start, 1)))
-            }
+            ':' if chars.clone().next().map_or(true, char::is_whitespace) => Some((
+                Kind::ListItem {
+                    indent,
+                    ty: Description,
+                },
+                Span::by_len(indent, 1),
+            )),
             f @ ('`' | ':' | '~') => {
-                let fence_length = (&mut chars).take_while(|c| *c == f).count() + 1;
-                fence = Some((f, fence_length));
-                let lang = line_t[fence_length..].trim();
+                let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
+                let spec = &line_t[fence_length..].trim_start();
                 let valid_spec =
-                    !lang.chars().any(char::is_whitespace) && !lang.chars().any(|c| c == '`');
+                    !spec.chars().any(char::is_whitespace) && !spec.chars().any(|c| c == '`');
+                let skip = line_t.len() - spec.len();
                 (valid_spec && fence_length >= 3).then(|| {
                     (
-                        match f {
-                            ':' => Block::Container(Div),
-                            _ => Block::Leaf(CodeBlock),
+                        Kind::Fenced {
+                            indent,
+                            fence_length,
+                            kind: match f {
+                                ':' => FenceKind::Div,
+                                _ => FenceKind::CodeBlock(f as u8),
+                            },
+                            has_spec: !spec.is_empty(),
+                            has_closing_fence: false,
                         },
-                        Span::from_slice(line, lang),
+                        Span::by_len(indent + skip, spec.len()),
                     )
                 })
             }
-            c => Self::maybe_ordered_list_item(c, &mut chars).map(|(num, style, len)| {
+            c => Self::maybe_ordered_list_item(c, chars).map(|(num, style, len)| {
                 (
-                    Block::Container(ListItem(Ordered(num, style))),
-                    Span::by_len(start, len),
+                    Kind::ListItem {
+                        indent,
+                        ty: Ordered(num, style),
+                    },
+                    Span::by_len(indent, len),
                 )
             }),
         }
-        .unwrap_or((Block::Leaf(Paragraph), Span::new(0, 0)));
-
-        Self {
-            indent: start,
-            kind,
-            span,
-            fence,
-            caption: false,
-        }
+        .map(|(kind, span)| Self { kind, span })
+        .unwrap_or(Self {
+            kind: Kind::Paragraph,
+            span: Span::empty_at(indent),
+        })
     }
 
     fn is_thematic_break(chars: std::str::Chars) -> bool {
@@ -649,60 +708,9 @@ impl BlockParser {
         n >= 3
     }
 
-    /// Determine if this line continues the block.
-    fn continues(&mut self, line: &str) -> bool {
-        let line_t = line.trim();
-        let empty = line_t.is_empty();
-        match self.kind {
-            Block::Atom(..) => false,
-            Block::Leaf(Paragraph | Heading) | Block::Container(Blockquote) => !empty,
-            Block::Leaf(LinkDefinition) => line.starts_with(' ') && !empty,
-            Block::Container(ListItem(..)) => {
-                let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                empty
-                    || spaces > self.indent
-                    || matches!(
-                        Self::parse(std::iter::once(line)),
-                        Some((_, Block::Leaf(Leaf::Paragraph), _, _)),
-                    )
-            }
-            Block::Container(Footnote) => {
-                let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                empty || spaces > self.indent
-            }
-            Block::Container(Div) | Block::Leaf(CodeBlock) => {
-                let (fence_char, l0) = self.fence.unwrap();
-                let l1 = line_t.len();
-                let is_end_fence = line_t.chars().all(|c| c == fence_char)
-                    && (l0 == l1 || (l0 < l1 && matches!(self.kind, Block::Container(..))));
-                !is_end_fence
-            }
-            Block::Container(Table) if self.caption => !empty,
-            Block::Container(Table) => {
-                let l = line_t.len();
-                match l {
-                    0 => true,
-                    1..=2 => false,
-                    _ => {
-                        if line_t.starts_with("^ ") {
-                            self.caption = true;
-                            true
-                        } else {
-                            line_t.as_bytes()[l - 1] == b'|' && line_t.as_bytes()[l - 2] != b'\\'
-                        }
-                    }
-                }
-            }
-            Block::Container(List { .. } | DescriptionList | TableRow { .. } | Section)
-            | Block::Leaf(TableCell(..) | Caption) => {
-                panic!()
-            }
-        }
-    }
-
     fn maybe_ordered_list_item(
         mut first: char,
-        chars: &mut std::str::Chars,
+        mut chars: std::str::Chars,
     ) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
         fn is_roman_lower_digit(c: char) -> bool {
             matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
@@ -778,6 +786,68 @@ impl BlockParser {
     }
 }
 
+impl Kind {
+    /// Determine if a line continues the block.
+    fn continues(&mut self, line: &str) -> bool {
+        let IdentifiedBlock { kind: next, .. } = IdentifiedBlock::new(line);
+        match self {
+            Self::Atom(..)
+            | Self::Fenced {
+                has_closing_fence: true,
+                ..
+            } => false,
+            Self::Blockquote => matches!(next, Self::Blockquote | Self::Paragraph),
+            Self::Heading { .. } => matches!(next, Self::Paragraph),
+            Self::Paragraph | Self::Table { caption: true } => {
+                !matches!(next, Self::Atom(Blankline))
+            }
+            Self::ListItem { indent, .. } => {
+                let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
+                matches!(next, Self::Atom(Blankline))
+                    || spaces > *indent
+                    || matches!(next, Self::Paragraph)
+            }
+            Self::Definition { indent, footnote } => {
+                if *footnote {
+                    let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
+                    matches!(next, Self::Atom(Blankline)) || spaces > *indent
+                } else {
+                    line.starts_with(' ') && !matches!(next, Self::Atom(Blankline))
+                }
+            }
+            Self::Fenced {
+                fence_length,
+                kind,
+                has_closing_fence,
+                ..
+            } => {
+                if let Kind::Fenced {
+                    kind: k,
+                    fence_length: l,
+                    has_spec: false,
+                    ..
+                } = next
+                {
+                    *has_closing_fence = k == *kind
+                        && (l == *fence_length
+                            || (matches!(k, FenceKind::Div) && l > *fence_length));
+                }
+                true
+            }
+            Self::Table { caption } => {
+                matches!(next, Self::Table { .. } | Self::Atom(Blankline)) || {
+                    if line.trim().starts_with("^ ") {
+                        *caption = true;
+                        true
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -822,8 +892,9 @@ mod test {
     use crate::OrderedListStyle::*;
 
     use super::Atom::*;
-    use super::Block;
     use super::Container::*;
+    use super::FenceKind;
+    use super::Kind;
     use super::Leaf::*;
     use super::ListType::*;
     use super::Node::*;
@@ -1677,9 +1748,9 @@ mod test {
     macro_rules! test_block {
         ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
             let lines = super::lines($src).map(|sp| sp.of($src));
-            let (_indent, kind, sp, len) = super::BlockParser::parse(lines).unwrap();
+            let mb = super::MeteredBlock::new(lines).unwrap();
             assert_eq!(
-                (kind, sp.of($src), len),
+                (mb.kind, mb.span.of($src), mb.line_count),
                 ($kind, $str, $len),
                 "\n\n{}\n\n",
                 $src
@@ -1689,15 +1760,15 @@ mod test {
 
     #[test]
     fn block_blankline() {
-        test_block!("\n", Block::Atom(Blankline), "\n", 1);
-        test_block!(" \n", Block::Atom(Blankline), "\n", 1);
+        test_block!("\n", Kind::Atom(Blankline), "\n", 1);
+        test_block!(" \n", Kind::Atom(Blankline), "\n", 1);
     }
 
     #[test]
     fn block_multiline() {
         test_block!(
             "# heading\n spanning two lines\n",
-            Block::Leaf(Heading),
+            Kind::Heading { level: 1 },
             "#",
             2
         );
@@ -1713,7 +1784,7 @@ mod test {
                 ">\n",      //
                 "> c\n",    //
             ),
-            Block::Container(Blockquote),
+            Kind::Blockquote,
             ">",
             5,
         );
@@ -1721,14 +1792,14 @@ mod test {
 
     #[test]
     fn block_thematic_break() {
-        test_block!("---\n", Block::Atom(ThematicBreak), "---", 1);
+        test_block!("---\n", Kind::Atom(ThematicBreak), "---", 1);
         test_block!(
             concat!(
                 "   -*- -*-\n",
                 "\n",
                 "para", //
             ),
-            Block::Atom(ThematicBreak),
+            Kind::Atom(ThematicBreak),
             "-*- -*-",
             1
         );
@@ -1744,7 +1815,13 @@ mod test {
                 " l1\n",
                 "````", //
             ),
-            Block::Leaf(CodeBlock),
+            Kind::Fenced {
+                indent: 0,
+                kind: FenceKind::CodeBlock(b'`'),
+                fence_length: 4,
+                has_spec: true,
+                has_closing_fence: true,
+            },
             "lang",
             5,
         );
@@ -1757,7 +1834,13 @@ mod test {
                 "bbb\n", //
                 "```\n", //
             ),
-            Block::Leaf(CodeBlock),
+            Kind::Fenced {
+                indent: 0,
+                kind: FenceKind::CodeBlock(b'`'),
+                fence_length: 3,
+                has_spec: false,
+                has_closing_fence: true,
+            },
             "",
             3,
         );
@@ -1767,7 +1850,7 @@ mod test {
                 "l0\n",
                 "```\n", //
             ),
-            Block::Leaf(Paragraph),
+            Kind::Paragraph,
             "",
             3,
         );
@@ -1775,7 +1858,15 @@ mod test {
 
     #[test]
     fn block_link_definition() {
-        test_block!("[tag]: url\n", Block::Leaf(LinkDefinition), "tag", 1);
+        test_block!(
+            "[tag]: url\n",
+            Kind::Definition {
+                indent: 0,
+                footnote: false
+            },
+            "tag",
+            1
+        );
     }
 
     #[test]
@@ -1785,7 +1876,10 @@ mod test {
                 "[tag]: uuu\n",
                 " rl\n", //
             ),
-            Block::Leaf(LinkDefinition),
+            Kind::Definition {
+                indent: 0,
+                footnote: false
+            },
             "tag",
             2,
         );
@@ -1794,7 +1888,10 @@ mod test {
                 "[tag]: url\n",
                 "para\n", //
             ),
-            Block::Leaf(LinkDefinition),
+            Kind::Definition {
+                indent: 0,
+                footnote: false
+            },
             "tag",
             1,
         );
@@ -1802,12 +1899,28 @@ mod test {
 
     #[test]
     fn block_footnote_empty() {
-        test_block!("[^tag]:\n", Block::Container(Footnote), "tag", 1);
+        test_block!(
+            "[^tag]:\n",
+            Kind::Definition {
+                indent: 0,
+                footnote: true
+            },
+            "tag",
+            1
+        );
     }
 
     #[test]
     fn block_footnote_single() {
-        test_block!("[^tag]: a\n", Block::Container(Footnote), "tag", 1);
+        test_block!(
+            "[^tag]: a\n",
+            Kind::Definition {
+                indent: 0,
+                footnote: true
+            },
+            "tag",
+            1
+        );
     }
 
     #[test]
@@ -1817,7 +1930,10 @@ mod test {
                 "[^tag]: a\n",
                 " b\n", //
             ),
-            Block::Container(Footnote),
+            Kind::Definition {
+                indent: 0,
+                footnote: true
+            },
             "tag",
             2,
         );
@@ -1832,7 +1948,10 @@ mod test {
                 "\n",
                 "para\n", //
             ),
-            Block::Container(Footnote),
+            Kind::Definition {
+                indent: 0,
+                footnote: true
+            },
             "tag",
             3,
         );
@@ -1842,71 +1961,117 @@ mod test {
     fn block_list_bullet() {
         test_block!(
             "- abc\n",
-            Block::Container(ListItem(Unordered(b'-'))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Unordered(b'-')
+            },
             "-",
             1
         );
         test_block!(
             "+ abc\n",
-            Block::Container(ListItem(Unordered(b'+'))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Unordered(b'+')
+            },
             "+",
             1
         );
         test_block!(
             "* abc\n",
-            Block::Container(ListItem(Unordered(b'*'))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Unordered(b'*')
+            },
             "*",
             1
         );
     }
 
     #[test]
-    fn block_list_description() {
-        test_block!(": abc\n", Block::Container(DescriptionList), ":", 1);
-    }
-
-    #[test]
     fn block_list_task() {
-        test_block!("- [ ] abc\n", Block::Container(ListItem(Task)), "- [ ]", 1);
-        test_block!("+ [x] abc\n", Block::Container(ListItem(Task)), "+ [x]", 1);
-        test_block!("* [X] abc\n", Block::Container(ListItem(Task)), "* [X]", 1);
+        test_block!(
+            "- [ ] abc\n",
+            Kind::ListItem {
+                indent: 0,
+                ty: Task
+            },
+            "- [ ]",
+            1
+        );
+        test_block!(
+            "+ [x] abc\n",
+            Kind::ListItem {
+                indent: 0,
+                ty: Task
+            },
+            "+ [x]",
+            1
+        );
+        test_block!(
+            "* [X] abc\n",
+            Kind::ListItem {
+                indent: 0,
+                ty: Task
+            },
+            "* [X]",
+            1
+        );
     }
 
     #[test]
     fn block_list_ordered() {
         test_block!(
             "123. abc\n",
-            Block::Container(ListItem(Ordered(Decimal, Period))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(Decimal, Period)
+            },
             "123.",
             1
         );
         test_block!(
             "i. abc\n",
-            Block::Container(ListItem(Ordered(RomanLower, Period))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(RomanLower, Period)
+            },
             "i.",
             1
         );
         test_block!(
             "I. abc\n",
-            Block::Container(ListItem(Ordered(RomanUpper, Period))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(RomanUpper, Period)
+            },
             "I.",
             1
         );
         test_block!(
             "IJ. abc\n",
-            Block::Container(ListItem(Ordered(AlphaUpper, Period))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(AlphaUpper, Period)
+            },
             "IJ.",
             1
         );
         test_block!(
             "(a) abc\n",
-            Block::Container(ListItem(Ordered(AlphaLower, ParenParen))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(AlphaLower, ParenParen)
+            },
             "(a)",
             1
         );
         test_block!(
             "a) abc\n",
-            Block::Container(ListItem(Ordered(AlphaLower, Paren))),
+            Kind::ListItem {
+                indent: 0,
+                ty: Ordered(AlphaLower, Paren)
+            },
             "a)",
             1
         );
