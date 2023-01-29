@@ -392,9 +392,7 @@ impl<'s> Parser<'s> {
             inline_parser: None,
         }
     }
-}
 
-impl<'s> Parser<'s> {
     fn inline(&mut self) -> Option<Event<'s>> {
         self.inline_parser.as_mut().and_then(|parser| {
             let mut inline = parser.next();
