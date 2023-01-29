@@ -100,6 +100,11 @@ impl<'s> Attributes<'s> {
         }
     }
 
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&'s str, &str)> + '_ {
         self.0
             .iter()

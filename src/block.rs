@@ -59,7 +59,9 @@ pub enum Leaf {
 
     /// Span is `#` characters.
     /// Each inline is a line.
-    Heading,
+    Heading {
+        has_section: bool,
+    },
 
     /// Span is '|'.
     /// Has zero or one inline for the cell contents.
@@ -254,7 +256,7 @@ impl<'s> TreeParser<'s> {
 
     fn parse_leaf(
         &mut self,
-        leaf: Leaf,
+        mut leaf: Leaf,
         k: &Kind,
         span: Span,
         lines: &mut [Span],
@@ -298,6 +300,10 @@ impl<'s> TreeParser<'s> {
             for line in lines[1..].iter_mut() {
                 *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_whitespace());
             }
+        }
+
+        if let Leaf::Heading { has_section } = &mut leaf {
+            *has_section = top_level;
         }
 
         self.tree.enter(Node::Leaf(leaf), span);
@@ -573,7 +579,7 @@ impl From<&Kind> for Block {
         match kind {
             Kind::Atom(a) => Self::Atom(*a),
             Kind::Paragraph => Self::Leaf(Paragraph),
-            Kind::Heading { .. } => Self::Leaf(Heading),
+            Kind::Heading { .. } => Self::Leaf(Heading { has_section: false }),
             Kind::Fenced {
                 kind: FenceKind::CodeBlock(..),
                 ..
@@ -983,13 +989,13 @@ mod test {
                 "## b\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "a"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading)), "##"),
+            (Enter(Leaf(Heading { has_section: true })), "##"),
             (Inline, "b"),
-            (Exit(Leaf(Heading)), "##"),
+            (Exit(Leaf(Heading { has_section: true })), "##"),
             (Exit(Container(Section)), "##"),
             (Exit(Container(Section)), "#"),
         );
@@ -1003,9 +1009,9 @@ mod test {
                 "heading\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "heading"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1021,17 +1027,17 @@ mod test {
                 "15\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "2"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "#"),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "8\n"),
             (Inline, "12\n"),
             (Inline, "15"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1045,11 +1051,11 @@ mod test {
                 "c\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "a\n"),
             (Inline, "b\n"),
             (Inline, "c"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1071,39 +1077,39 @@ mod test {
                 "# b\n",
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "a"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading)), "##"),
+            (Enter(Leaf(Heading { has_section: true })), "##"),
             (Inline, "aa"),
-            (Exit(Leaf(Heading)), "##"),
+            (Exit(Leaf(Heading { has_section: true })), "##"),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "####"),
-            (Enter(Leaf(Heading)), "####"),
+            (Enter(Leaf(Heading { has_section: true })), "####"),
             (Inline, "aaaa"),
-            (Exit(Leaf(Heading)), "####"),
+            (Exit(Leaf(Heading { has_section: true })), "####"),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "####"),
             (Exit(Container(Section)), "##"),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading)), "##"),
+            (Enter(Leaf(Heading { has_section: true })), "##"),
             (Inline, "ab"),
-            (Exit(Leaf(Heading)), "##"),
+            (Exit(Leaf(Heading { has_section: true })), "##"),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "###"),
-            (Enter(Leaf(Heading)), "###"),
+            (Enter(Leaf(Heading { has_section: true })), "###"),
             (Inline, "aba"),
-            (Exit(Leaf(Heading)), "###"),
+            (Exit(Leaf(Heading { has_section: true })), "###"),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "###"),
             (Exit(Container(Section)), "##"),
             (Exit(Container(Section)), "#"),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading)), "#"),
+            (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "b"),
-            (Exit(Leaf(Heading)), "#"),
+            (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1141,9 +1147,9 @@ mod test {
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Enter(Leaf(Heading)), "##"),
+            (Enter(Leaf(Heading { has_section: false })), "##"),
             (Inline, "hl"),
-            (Exit(Leaf(Heading)), "##"),
+            (Exit(Leaf(Heading { has_section: false })), "##"),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),

@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 pub mod html;
 
 mod attr;
@@ -49,13 +51,17 @@ pub enum Container<'s> {
     /// A row element of a table.
     TableRow { head: bool },
     /// A section belonging to a top level heading.
-    Section,
+    Section { id: CowStr<'s> },
     /// A block-level divider element.
     Div { class: Option<&'s str> },
     /// A paragraph.
     Paragraph,
     /// A heading.
-    Heading { level: u16 },
+    Heading {
+        level: u16,
+        has_section: bool,
+        id: CowStr<'s>,
+    },
     /// A cell element of row within a table.
     TableCell { alignment: Alignment, head: bool },
     /// A caption within a table.
@@ -107,7 +113,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow { .. }
-            | Self::Section
+            | Self::Section { .. }
             | Self::Div { .. }
             | Self::Paragraph
             | Self::Heading { .. }
@@ -144,7 +150,7 @@ impl<'s> Container<'s> {
             | Self::Footnote { .. }
             | Self::Table
             | Self::TableRow { .. }
-            | Self::Section
+            | Self::Section { .. }
             | Self::Div { .. } => true,
             Self::Paragraph
             | Self::Heading { .. }
@@ -321,15 +327,12 @@ impl OrderedListStyle {
 pub struct Parser<'s> {
     src: &'s str,
 
-    /// Link definitions encountered during block parse, written once.
-    link_definitions: std::collections::HashMap<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
-
-    /// Block tree cursor.
+    /// Block tree parsed at first.
     tree: block::Tree,
-    /// Spans to the inlines in the block currently being parsed.
-    inlines: span::InlineSpans<'s>,
-    /// Inline parser, recreated for each new inline.
-    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+
+    /// Contents obtained by the prepass.
+    pre_pass: PrePass<'s>,
+
     /// Last parsed block attributes
     block_attributes: Attributes<'s>,
 
@@ -344,47 +347,168 @@ pub struct Parser<'s> {
     footnote_index: usize,
     /// Currently within a footnote.
     footnote_active: bool,
+
+    /// Spans to the inlines in the leaf block currently being parsed.
+    inlines: span::InlineSpans<'s>,
+    /// Inline parser, recreated for each new inline.
+    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+}
+
+struct Heading {
+    /// Location of heading in src.
+    location: usize,
+    /// Automatically generated id from heading text.
+    id_auto: String,
+    /// Overriding id from an explicit attribute on the heading.
+    id_override: Option<String>,
+}
+
+/// Because of potential future references, an initial pass is required to obtain all definitions.
+struct PrePass<'s> {
+    /// Link definitions and their attributes.
+    link_definitions: std::collections::HashMap<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
+    /// Cache of all heading ids.
+    headings: Vec<Heading>,
+    /// Indices to headings sorted lexicographically.
+    headings_lex: Vec<usize>,
+}
+
+impl<'s> PrePass<'s> {
+    #[must_use]
+    fn new(src: &'s str, mut tree: block::Tree) -> Self {
+        let mut link_definitions = std::collections::HashMap::new();
+        let mut headings: Vec<Heading> = Vec::new();
+
+        let mut inlines = span::InlineSpans::new(src);
+
+        let mut attr_prev: Option<Span> = None;
+        while let Some(e) = tree.next() {
+            match e.kind {
+                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) => {
+                    // All link definition tags have to be obtained initially, as references can
+                    // appear before the definition.
+                    let tag = e.span.of(src);
+                    let attrs =
+                        attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
+                    let url = match tree.count_children() {
+                        0 => "".into(),
+                        1 => tree.take_inlines().next().unwrap().of(src).trim().into(),
+                        _ => tree.take_inlines().map(|sp| sp.of(src).trim()).collect(),
+                    };
+                    link_definitions.insert(tag, (url, attrs));
+                }
+                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
+                    // All headings ids have to be obtained initially, as references can appear
+                    // before the heading. Additionally, determining the id requires inline parsing
+                    // as formatting must be removed.
+                    //
+                    // We choose to parse all headers twice instead of caching them.
+                    let attrs = attr_prev.map(|sp| attr::parse(sp.of(src)));
+                    let id_override = attrs
+                        .as_ref()
+                        .and_then(|attrs| attrs.get("id"))
+                        .map(ToString::to_string);
+
+                    inlines.set_spans(tree.take_inlines());
+                    let mut id_auto = String::new();
+                    inline::Parser::new(inlines.chars()).for_each(|ev| match ev.kind {
+                        inline::EventKind::Str => {
+                            let mut chars = inlines.slice(ev.span).chars().peekable();
+                            while let Some(c) = chars.next() {
+                                if c.is_whitespace() {
+                                    while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                                        chars.next();
+                                    }
+                                    if !id_auto.is_empty() {
+                                        id_auto.push('-');
+                                    }
+                                } else if !c.is_ascii_punctuation() || matches!(c, '-' | '_') {
+                                    id_auto.push(c);
+                                }
+                            }
+                        }
+                        inline::EventKind::Atom(inline::Atom::Softbreak) => {
+                            id_auto.push('-');
+                        }
+                        _ => {}
+                    });
+                    id_auto.drain(id_auto.trim_end_matches('-').len()..);
+
+                    // ensure id unique
+                    if headings.iter().any(|h| h.id_auto == id_auto) || id_auto.is_empty() {
+                        if id_auto.is_empty() {
+                            id_auto.push('s');
+                        }
+                        let mut num = 1;
+                        id_auto.push('-');
+                        let i_num = id_auto.len();
+                        write!(id_auto, "{}", num).unwrap();
+                        while headings.iter().any(|h| h.id_auto == id_auto) {
+                            num += 1;
+                            id_auto.drain(i_num..);
+                            write!(id_auto, "{}", num).unwrap();
+                        }
+                    }
+
+                    headings.push(Heading {
+                        location: e.span.start(),
+                        id_auto,
+                        id_override,
+                    });
+                }
+                tree::EventKind::Atom(block::Atom::Attributes) => {
+                    attr_prev = Some(e.span);
+                }
+                tree::EventKind::Enter(..)
+                | tree::EventKind::Exit(block::Node::Container(block::Container::Section {
+                    ..
+                })) => {}
+                _ => {
+                    attr_prev = None;
+                }
+            }
+        }
+
+        let mut headings_lex = (0..headings.len()).collect::<Vec<_>>();
+        headings_lex.sort_by_key(|i| &headings[*i].id_auto);
+
+        Self {
+            link_definitions,
+            headings,
+            headings_lex,
+        }
+    }
+
+    fn heading_id(&self, i: usize) -> &str {
+        let h = &self.headings[i];
+        h.id_override.as_ref().unwrap_or(&h.id_auto)
+    }
+
+    fn heading_id_by_location(&self, location: usize) -> Option<&str> {
+        self.headings
+            .binary_search_by_key(&location, |h| h.location)
+            .ok()
+            .map(|i| self.heading_id(i))
+    }
+
+    fn heading_id_by_tag(&self, tag: &str) -> Option<&str> {
+        self.headings_lex
+            .binary_search_by_key(&tag, |i| &self.headings[*i].id_auto)
+            .ok()
+            .map(|i| self.heading_id(i))
+    }
 }
 
 impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
         let tree = block::parse(src);
-
-        // All link definition tags have to be obtained initially, as references can appear before
-        // the definition.
-        let link_definitions = {
-            let mut branch = tree.clone();
-            let mut defs = std::collections::HashMap::new();
-            let mut attr_prev: Option<Span> = None;
-            while let Some(e) = branch.next() {
-                if let tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) =
-                    e.kind
-                {
-                    let tag = e.span.of(src);
-                    let attrs =
-                        attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
-                    let url = match branch.count_children() {
-                        0 => "".into(),
-                        1 => branch.take_inlines().next().unwrap().of(src).trim().into(),
-                        _ => branch.take_inlines().map(|sp| sp.of(src).trim()).collect(),
-                    };
-                    defs.insert(tag, (url, attrs));
-                } else if let tree::EventKind::Atom(block::Atom::Attributes) = e.kind {
-                    attr_prev = Some(e.span);
-                } else {
-                    attr_prev = None;
-                }
-            }
-            defs
-        };
-
-        let branch = tree.clone();
+        let pre_pass = PrePass::new(src, tree.clone());
 
         Self {
             src,
-            link_definitions,
-            tree: branch,
+            tree,
+            pre_pass,
             block_attributes: Attributes::new(),
             table_head_row: false,
             footnote_references: Vec::new(),
@@ -453,12 +577,18 @@ impl<'s> Parser<'s> {
                                 CowStr::Owned(s) => s.replace('\n', " ").into(),
                                 s @ CowStr::Borrowed(_) => s,
                             };
-                            let (url, attrs_def) = self
-                                .link_definitions
-                                .get(tag.as_ref())
-                                .cloned()
-                                .unwrap_or_else(|| ("".into(), Attributes::new()));
-                            attributes.union(attrs_def);
+                            let link_def =
+                                self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
+
+                            let url = if let Some((url, attrs_def)) = link_def {
+                                attributes.union(attrs_def);
+                                url
+                            } else {
+                                self.pre_pass
+                                    .heading_id_by_tag(tag.as_ref())
+                                    .map_or_else(|| "".into(), |id| format!("#{}", id).into())
+                            };
+
                             if matches!(c, inline::Container::ReferenceLink) {
                                 Container::Link(url, LinkType::Span(SpanLinkType::Reference))
                             } else {
@@ -561,8 +691,15 @@ impl<'s> Parser<'s> {
                             }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
-                                block::Leaf::Heading => Container::Heading {
+                                block::Leaf::Heading { has_section } => Container::Heading {
                                     level: content.len().try_into().unwrap(),
+                                    has_section,
+                                    id: self
+                                        .pre_pass
+                                        .heading_id_by_location(ev.span.start())
+                                        .unwrap_or_default()
+                                        .to_string()
+                                        .into(),
                                 },
                                 block::Leaf::CodeBlock => {
                                     if let Some(format) = content.strip_prefix('=') {
@@ -631,7 +768,14 @@ impl<'s> Parser<'s> {
                                 }
                                 Container::TableRow { head }
                             }
-                            block::Container::Section => Container::Section,
+                            block::Container::Section => Container::Section {
+                                id: self
+                                    .pre_pass
+                                    .heading_id_by_location(ev.span.start())
+                                    .unwrap_or_default()
+                                    .to_string()
+                                    .into(),
+                            },
                         },
                     };
                     if enter {
@@ -751,20 +895,49 @@ mod test {
     fn heading() {
         test_parse!(
             "#\n",
-            Start(Section, Attributes::new()),
-            Start(Heading { level: 1 }, Attributes::new()),
-            End(Heading { level: 1 }),
-            End(Section),
+            Start(Section { id: "s-1".into() }, Attributes::new()),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "s-1".into()
+                },
+                Attributes::new()
+            ),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "s-1".into()
+            }),
+            End(Section { id: "s-1".into() }),
         );
         test_parse!(
             "# abc\ndef\n",
-            Start(Section, Attributes::new()),
-            Start(Heading { level: 1 }, Attributes::new()),
+            Start(
+                Section {
+                    id: "abc-def".into()
+                },
+                Attributes::new()
+            ),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "abc-def".into()
+                },
+                Attributes::new()
+            ),
             Str("abc".into()),
             Atom(Softbreak),
             Str("def".into()),
-            End(Heading { level: 1 }),
-            End(Section),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "abc-def".into(),
+            }),
+            End(Section {
+                id: "abc-def".into()
+            }),
         );
     }
 
@@ -776,16 +949,41 @@ mod test {
                 "{a=b}\n",
                 "# def\n", //
             ),
-            Start(Section, Attributes::new()),
-            Start(Heading { level: 1 }, Attributes::new()),
+            Start(Section { id: "abc".into() }, Attributes::new()),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "abc".into()
+                },
+                Attributes::new()
+            ),
             Str("abc".into()),
-            End(Heading { level: 1 }),
-            End(Section),
-            Start(Section, [("a", "b")].into_iter().collect(),),
-            Start(Heading { level: 1 }, Attributes::new(),),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "abc".into(),
+            }),
+            End(Section { id: "abc".into() }),
+            Start(
+                Section { id: "def".into() },
+                [("a", "b")].into_iter().collect(),
+            ),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "def".into()
+                },
+                Attributes::new(),
+            ),
             Str("def".into()),
-            End(Heading { level: 1 }),
-            End(Section),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "def".into(),
+            }),
+            End(Section { id: "def".into() }),
         );
     }
 

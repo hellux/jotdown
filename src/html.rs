@@ -148,7 +148,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         }
                         Container::Table => self.out.write_str("<table")?,
                         Container::TableRow { .. } => self.out.write_str("<tr")?,
-                        Container::Section => self.out.write_str("<section")?,
+                        Container::Section { .. } => self.out.write_str("<section")?,
                         Container::Div { .. } => self.out.write_str("<div")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
@@ -156,7 +156,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             }
                             self.out.write_str("<p")?;
                         }
-                        Container::Heading { level } => write!(self.out, "<h{}", level)?,
+                        Container::Heading { level, .. } => write!(self.out, "<h{}", level)?,
                         Container::TableCell { head: false, .. } => self.out.write_str("<td")?,
                         Container::TableCell { head: true, .. } => self.out.write_str("<th")?,
                         Container::Caption => self.out.write_str("<caption")?,
@@ -194,6 +194,18 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
                         write!(self.out, r#" {}="{}""#, a, v)?;
+                    }
+
+                    if let Container::Heading {
+                        id,
+                        has_section: false,
+                        ..
+                    }
+                    | Container::Section { id } = &c
+                    {
+                        if !attrs.iter().any(|(a, _)| a == "id") {
+                            write!(self.out, r#" id="{}""#, id)?;
+                        }
                     }
 
                     if attrs.iter().any(|(a, _)| a == "class")
@@ -312,7 +324,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         }
                         Container::Table => self.out.write_str("</table>")?,
                         Container::TableRow { .. } => self.out.write_str("</tr>")?,
-                        Container::Section => self.out.write_str("</section>")?,
+                        Container::Section { .. } => self.out.write_str("</section>")?,
                         Container::Div { .. } => self.out.write_str("</div>")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
@@ -333,7 +345,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             }
                             self.out.write_str("</p>")?;
                         }
-                        Container::Heading { level } => write!(self.out, "</h{}>", level)?,
+                        Container::Heading { level, .. } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell { head: false, .. } => self.out.write_str("</td>")?,
                         Container::TableCell { head: true, .. } => self.out.write_str("</th>")?,
                         Container::Caption => self.out.write_str("</caption>")?,

@@ -302,7 +302,7 @@ impl<'s, 'i> DiscontinuousString<'s> for InlineSpansSlice<'s, 'i> {
     }
 }
 
-type InlineSpansSliceIter<'i> = std::iter::Chain<
+pub type InlineSpansSliceIter<'i> = std::iter::Chain<
     std::iter::Chain<std::iter::Once<Span>, std::iter::Copied<std::slice::Iter<'i, Span>>>,
     std::iter::Once<Span>,
 >;
