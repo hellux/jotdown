@@ -349,6 +349,8 @@ impl<'s> Parser<'s> {
     pub fn new(src: &'s str) -> Self {
         let tree = block::parse(src);
 
+        // All link definition tags have to be obtained initially, as references can appear before
+        // the definition.
         let link_definitions = {
             let mut branch = tree.clone();
             let mut defs = std::collections::HashMap::new();
