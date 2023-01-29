@@ -330,6 +330,8 @@ pub struct Parser<'s> {
     inlines: span::InlineSpans<'s>,
     /// Inline parser, recreated for each new inline.
     inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+    /// Last parsed block attributes
+    block_attributes: Attributes<'s>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -383,6 +385,7 @@ impl<'s> Parser<'s> {
             src,
             link_definitions,
             tree: branch,
+            block_attributes: Attributes::new(),
             table_head_row: false,
             footnote_references: Vec::new(),
             footnotes: std::collections::HashMap::new(),
@@ -528,7 +531,6 @@ impl<'s> Parser<'s> {
     }
 
     fn block(&mut self) -> Option<Event<'s>> {
-        let mut attributes = Attributes::new();
         while let Some(ev) = &mut self.tree.next() {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
@@ -536,7 +538,7 @@ impl<'s> Parser<'s> {
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
                     block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
                     block::Atom::Attributes => {
-                        attributes.parse(content);
+                        self.block_attributes.parse(content);
                         continue;
                     }
                 },
@@ -549,7 +551,7 @@ impl<'s> Parser<'s> {
                                 if enter {
                                     self.tree.take_inlines().last();
                                 }
-                                attributes = Attributes::new();
+                                self.block_attributes = Attributes::new();
                                 continue;
                             }
                             if enter {
@@ -587,7 +589,7 @@ impl<'s> Parser<'s> {
                             block::Container::Footnote => {
                                 assert!(enter);
                                 self.footnotes.insert(content, self.tree.take_branch());
-                                attributes = Attributes::new();
+                                self.block_attributes = Attributes::new();
                                 continue;
                             }
                             block::Container::List { ty, tight } => {
@@ -633,7 +635,7 @@ impl<'s> Parser<'s> {
                         },
                     };
                     if enter {
-                        Event::Start(cont, attributes)
+                        Event::Start(cont, self.block_attributes.take())
                     } else {
                         Event::End(cont)
                     }
@@ -760,6 +762,27 @@ mod test {
             Start(Heading { level: 1 }, Attributes::new()),
             Str("abc".into()),
             Atom(Softbreak),
+            Str("def".into()),
+            End(Heading { level: 1 }),
+            End(Section),
+        );
+    }
+
+    #[test]
+    fn heading_attr() {
+        test_parse!(
+            concat!(
+                "# abc\n",
+                "{a=b}\n",
+                "# def\n", //
+            ),
+            Start(Section, Attributes::new()),
+            Start(Heading { level: 1 }, Attributes::new()),
+            Str("abc".into()),
+            End(Heading { level: 1 }),
+            End(Section),
+            Start(Section, [("a", "b")].into_iter().collect(),),
+            Start(Heading { level: 1 }, Attributes::new(),),
             Str("def".into()),
             End(Heading { level: 1 }),
             End(Section),
