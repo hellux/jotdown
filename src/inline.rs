@@ -441,13 +441,14 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     self.openers.drain(o..);
 
                     if let Some(event_closer) = &mut event_closer {
-                        if event_closer.span.is_empty() {
-                            assert!(matches!(
+                        if event_closer.span.is_empty()
+                            && matches!(
                                 event_closer.kind,
                                 EventKind::Exit(
                                     Container::ReferenceLink | Container::ReferenceImage
                                 )
-                            ));
+                            )
+                        {
                             assert_eq!(self.events[e_opener].span, event_closer.span);
                             event_closer.span = inner_span;
                             self.events[e_opener].span = inner_span;
