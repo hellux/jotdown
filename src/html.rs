@@ -167,7 +167,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             if dst.is_empty() {
                                 self.out.write_str("<a")?;
                             } else {
-                                write!(self.out, r#"<a href="{}""#, dst)?;
+                                self.out.write_str(r#"<a href=""#)?;
+                                self.write_escape(dst)?;
+                                self.out.write_char('"')?;
                             }
                         }
                         Container::Image(..) => {
@@ -193,7 +195,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
-                        write!(self.out, r#" {}="{}""#, a, v)?;
+                        write!(self.out, r#" {}=""#, a)?;
+                        self.write_escape(v)?;
+                        self.out.write_char('"')?;
                     }
 
                     if let Container::Heading {
@@ -204,7 +208,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     | Container::Section { id } = &c
                     {
                         if !attrs.iter().any(|(a, _)| a == "id") {
-                            write!(self.out, r#" id="{}""#, id)?;
+                            self.out.write_str(r#" id=""#)?;
+                            self.write_escape(id)?;
+                            self.out.write_char('"')?;
                         }
                     }
 
@@ -271,7 +277,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         }
                         Container::CodeBlock { lang } => {
                             if let Some(l) = lang {
-                                write!(self.out, r#"><code class="language-{}">"#, l)?;
+                                self.out.write_str(r#"><code class="language-"#)?;
+                                self.write_escape(l)?;
+                                self.out.write_str(r#"">"#)?;
                             } else {
                                 self.out.write_str("><code>")?;
                             }
@@ -381,37 +389,11 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Mark => self.out.write_str("</mark>")?,
                     }
                 }
-                Event::Str(s) => {
-                    let mut s: &str = s.as_ref();
-                    match self.raw {
-                        Raw::None => {
-                            let mut ent = "";
-                            while let Some(i) = s.chars().position(|c| {
-                                if let Some(s) = match c {
-                                    '<' => Some("&lt;"),
-                                    '>' => Some("&gt;"),
-                                    '&' => Some("&amp;"),
-                                    _ => None,
-                                } {
-                                    ent = s;
-                                    true
-                                } else {
-                                    false
-                                }
-                            }) {
-                                self.out.write_str(&s[..i])?;
-                                self.out.write_str(ent)?;
-                                s = &s[i + 1..];
-                            }
-                            self.out.write_str(s)?;
-                        }
-                        Raw::Html => {
-                            self.out.write_str(s)?;
-                        }
-                        Raw::Other => {}
-                    }
-                }
-
+                Event::Str(s) => match self.raw {
+                    Raw::None => self.write_escape(&s)?,
+                    Raw::Html => self.out.write_str(&s)?,
+                    Raw::Other => {}
+                },
                 Event::Atom(a) => match a {
                     Atom::FootnoteReference(_tag, number) => {
                         write!(
@@ -440,5 +422,26 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
         }
         self.out.write_char('\n')?;
         Ok(())
+    }
+
+    fn write_escape(&mut self, mut s: &str) -> std::fmt::Result {
+        let mut ent = "";
+        while let Some(i) = s.find(|c| {
+            match c {
+                '<' => Some("&lt;"),
+                '>' => Some("&gt;"),
+                '&' => Some("&amp;"),
+                _ => None,
+            }
+            .map_or(false, |s| {
+                ent = s;
+                true
+            })
+        }) {
+            self.out.write_str(&s[..i])?;
+            self.out.write_str(ent)?;
+            s = &s[i + 1..];
+        }
+        self.out.write_str(s)
     }
 }
