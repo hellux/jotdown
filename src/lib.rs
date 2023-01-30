@@ -684,7 +684,7 @@ impl<'s> Parser<'s> {
                                 self.block_attributes = Attributes::new();
                                 continue;
                             }
-                            if enter {
+                            if enter && !matches!(l, block::Leaf::CodeBlock) {
                                 self.inlines.set_spans(self.tree.take_inlines());
                                 self.inline_parser =
                                     Some(inline::Parser::new(self.inlines.chars()));
@@ -784,7 +784,7 @@ impl<'s> Parser<'s> {
                         Event::End(cont)
                     }
                 }
-                tree::EventKind::Inline => unreachable!(),
+                tree::EventKind::Inline => Event::Str(content.into()), // verbatim
             };
             return Some(event);
         }
@@ -1065,8 +1065,7 @@ mod test {
         test_parse!(
             "``` =html\n<table>\n```",
             Start(RawBlock { format: "html" }, Attributes::new()),
-            Str("<table>".into()),
-            Atom(Softbreak),
+            Str("<table>\n".into()),
             End(RawBlock { format: "html" }),
         );
     }
