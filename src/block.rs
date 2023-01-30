@@ -301,7 +301,7 @@ impl<'s> TreeParser<'s> {
         self.tree.enter(Node::Leaf(leaf), span);
         lines
             .iter()
-            .filter(|l| !l.is_empty())
+            .filter(|l| !matches!(k, Kind::Heading { .. }) || !l.is_empty())
             .for_each(|line| self.tree.inline(*line));
         self.tree.exit();
     }
