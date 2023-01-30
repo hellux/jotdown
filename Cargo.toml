@@ -19,3 +19,4 @@ exclude = [
 
 [features]
 suite = [] # test suite
+suite_bench = [] # bench test suite

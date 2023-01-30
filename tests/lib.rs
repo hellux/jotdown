@@ -1,7 +1,9 @@
+#[cfg(feature = "suite_bench")]
+mod bench;
 #[cfg(feature = "suite")]
 mod suite;
 
-#[cfg(feature = "suite")]
+#[cfg(any(feature = "suite", feature = "suite_bench"))]
 #[macro_export]
 macro_rules! suite_test {
     ($src:expr, $expected:expr) => {
