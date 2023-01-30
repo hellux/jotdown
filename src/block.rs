@@ -805,12 +805,10 @@ impl Kind {
                 ..
             } => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                if matches!(next, Self::Atom(Blankline)) {
-                    *last_blankline = true;
-                    true
-                } else {
-                    spaces > *indent || (!*last_blankline && matches!(next, Self::Paragraph))
-                }
+                let para = !*last_blankline && matches!(next, Self::Paragraph);
+                let blankline = matches!(next, Self::Atom(Blankline));
+                *last_blankline = blankline;
+                blankline || spaces > *indent || para
             }
             Self::Definition { indent, footnote } => {
                 if *footnote {
