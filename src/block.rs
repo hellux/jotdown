@@ -257,7 +257,10 @@ impl<'s> TreeParser<'s> {
     fn parse_leaf(&mut self, leaf: Leaf, k: &Kind, span: Span, lines: &mut [Span]) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
-                let indent_line = line.len() - line.trim_start(self.src).len();
+                let indent_line = line.len()
+                    - line
+                        .trim_start_matches(self.src, |c| c != '\n' && c.is_whitespace())
+                        .len();
                 *line = line.skip((*indent).min(indent_line));
             }
         } else {
