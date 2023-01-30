@@ -558,6 +558,7 @@ enum Kind {
     ListItem {
         indent: usize,
         ty: ListType,
+        last_blankline: bool,
     },
     Table {
         caption: bool,
@@ -623,12 +624,20 @@ impl IdentifiedBlock {
                     && chars.next() == Some(']')
                     && chars.next().map_or(true, char::is_whitespace);
                 if task_list {
-                    (Kind::ListItem { indent, ty: Task }, Span::by_len(indent, 5))
+                    (
+                        Kind::ListItem {
+                            indent,
+                            ty: Task,
+                            last_blankline: false,
+                        },
+                        Span::by_len(indent, 5),
+                    )
                 } else {
                     (
                         Kind::ListItem {
                             indent,
                             ty: Unordered(b as u8),
+                            last_blankline: false,
                         },
                         Span::by_len(indent, 1),
                     )
@@ -638,6 +647,7 @@ impl IdentifiedBlock {
                 Kind::ListItem {
                     indent,
                     ty: Description,
+                    last_blankline: false,
                 },
                 Span::by_len(indent, 1),
             )),
@@ -668,6 +678,7 @@ impl IdentifiedBlock {
                     Kind::ListItem {
                         indent,
                         ty: Ordered(num, style),
+                        last_blankline: false,
                     },
                     Span::by_len(indent, len),
                 )
@@ -788,11 +799,18 @@ impl Kind {
             Self::Paragraph | Self::Table { caption: true } => {
                 !matches!(next, Self::Atom(Blankline))
             }
-            Self::ListItem { indent, .. } => {
+            Self::ListItem {
+                indent,
+                last_blankline,
+                ..
+            } => {
                 let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                matches!(next, Self::Atom(Blankline))
-                    || spaces > *indent
-                    || matches!(next, Self::Paragraph)
+                if matches!(next, Self::Atom(Blankline)) {
+                    *last_blankline = true;
+                    true
+                } else {
+                    spaces > *indent || (!*last_blankline && matches!(next, Self::Paragraph))
+                }
             }
             Self::Definition { indent, footnote } => {
                 if *footnote {
@@ -1541,6 +1559,7 @@ mod test {
                 "- a\n",   //
                 "\n",      //
                 "  * b\n", //
+                "\n",      //
                 "cd\n",    //
             ),
             (
@@ -1564,9 +1583,9 @@ mod test {
             ),
             (Enter(Container(ListItem(Unordered(42)))), "*"),
             (Enter(Leaf(Paragraph)), ""),
-            (Inline, "b\n"),
-            (Inline, "cd"),
+            (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
             (Exit(Container(ListItem(Unordered(42)))), "*"),
             (
                 Exit(Container(List {
@@ -1583,8 +1602,12 @@ mod test {
                 })),
                 "-"
             ),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "cd"),
+            (Exit(Leaf(Paragraph)), ""),
         );
     }
+
     #[test]
     fn parse_list_mixed() {
         test_parse!(
@@ -2038,7 +2061,8 @@ mod test {
             "- abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Unordered(b'-')
+                ty: Unordered(b'-'),
+                last_blankline: false,
             },
             "-",
             1
@@ -2047,7 +2071,8 @@ mod test {
             "+ abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Unordered(b'+')
+                ty: Unordered(b'+'),
+                last_blankline: false,
             },
             "+",
             1
@@ -2056,7 +2081,8 @@ mod test {
             "* abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Unordered(b'*')
+                ty: Unordered(b'*'),
+                last_blankline: false,
             },
             "*",
             1
@@ -2069,7 +2095,8 @@ mod test {
             "- [ ] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task
+                ty: Task,
+                last_blankline: false,
             },
             "- [ ]",
             1
@@ -2078,7 +2105,8 @@ mod test {
             "+ [x] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task
+                ty: Task,
+                last_blankline: false,
             },
             "+ [x]",
             1
@@ -2087,7 +2115,8 @@ mod test {
             "* [X] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task
+                ty: Task,
+                last_blankline: false,
             },
             "* [X]",
             1
@@ -2100,7 +2129,8 @@ mod test {
             "123. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(Decimal, Period)
+                ty: Ordered(Decimal, Period),
+                last_blankline: false,
             },
             "123.",
             1
@@ -2109,7 +2139,8 @@ mod test {
             "i. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(RomanLower, Period)
+                ty: Ordered(RomanLower, Period),
+                last_blankline: false,
             },
             "i.",
             1
@@ -2118,7 +2149,8 @@ mod test {
             "I. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(RomanUpper, Period)
+                ty: Ordered(RomanUpper, Period),
+                last_blankline: false,
             },
             "I.",
             1
@@ -2127,7 +2159,8 @@ mod test {
             "IJ. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(AlphaUpper, Period)
+                ty: Ordered(AlphaUpper, Period),
+                last_blankline: false,
             },
             "IJ.",
             1
@@ -2136,7 +2169,8 @@ mod test {
             "(a) abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(AlphaLower, ParenParen)
+                ty: Ordered(AlphaLower, ParenParen),
+                last_blankline: false,
             },
             "(a)",
             1
@@ -2145,7 +2179,8 @@ mod test {
             "a) abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(AlphaLower, Paren)
+                ty: Ordered(AlphaLower, Paren),
+                last_blankline: false,
             },
             "a)",
             1
