@@ -378,6 +378,7 @@ impl<'s> PrePass<'s> {
     fn new(src: &'s str, mut tree: block::Tree) -> Self {
         let mut link_definitions = std::collections::HashMap::new();
         let mut headings: Vec<Heading> = Vec::new();
+        let mut used_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
         let mut inlines = span::InlineSpans::new(src);
 
@@ -435,7 +436,7 @@ impl<'s> PrePass<'s> {
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
                     // ensure id unique
-                    if headings.iter().any(|h| h.id_auto == id_auto) || id_auto.is_empty() {
+                    if used_ids.contains::<str>(&id_auto) || id_auto.is_empty() {
                         if id_auto.is_empty() {
                             id_auto.push('s');
                         }
@@ -443,13 +444,19 @@ impl<'s> PrePass<'s> {
                         id_auto.push('-');
                         let i_num = id_auto.len();
                         write!(id_auto, "{}", num).unwrap();
-                        while headings.iter().any(|h| h.id_auto == id_auto) {
+                        while used_ids.contains::<str>(&id_auto) {
                             num += 1;
                             id_auto.drain(i_num..);
                             write!(id_auto, "{}", num).unwrap();
                         }
                     }
 
+                    // SAFETY: used_ids is dropped before the id_auto strings in headings. even if
+                    // the strings move due to headings reallocating, the string data on the heap
+                    // will not move
+                    used_ids.insert(unsafe {
+                        std::mem::transmute::<&str, &'static str>(id_auto.as_ref())
+                    });
                     headings.push(Heading {
                         location: e.span.start(),
                         id_auto,
