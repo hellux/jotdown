@@ -262,11 +262,11 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 }
 
-fn is_name_start(c: char) -> bool {
+pub fn is_name_start(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | ':')
 }
 
-fn is_name(c: char) -> bool {
+pub fn is_name(c: char) -> bool {
     is_name_start(c) || c.is_ascii_digit() || matches!(c, '-')
 }
 

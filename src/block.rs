@@ -654,8 +654,12 @@ impl IdentifiedBlock {
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
                 let spec = &line_t[fence_length..].trim_start();
-                let valid_spec =
-                    !spec.chars().any(char::is_whitespace) && !spec.chars().any(|c| c == '`');
+                let valid_spec = if f == ':' && !spec.starts_with('=') {
+                    spec.chars().next().map_or(true, attr::is_name_start)
+                        && spec.chars().skip(1).all(attr::is_name)
+                } else {
+                    !spec.chars().any(char::is_whitespace) && !spec.chars().any(|c| c == '`')
+                };
                 let skip = line_t.len() - spec.len();
                 (valid_spec && fence_length >= 3).then(|| {
                     (
