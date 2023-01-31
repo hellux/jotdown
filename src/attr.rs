@@ -16,7 +16,7 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     for e in &mut p {
         match e {
             Element::Class(..) | Element::Identifier(..) | Element::Attribute(..) => {
-                has_attr = true
+                has_attr = true;
             }
             Element::Invalid => return (0, false),
         }
