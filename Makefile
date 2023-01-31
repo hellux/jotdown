@@ -18,6 +18,13 @@ suite_bench:
 	(cd tests/bench && make)
 	cargo test --features suite_bench
 
+.PHONY: bench
+bench:
+	git submodule update --init modules/djot.js
+	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
+		ln -fs ../modules/djot.js/bench/$$f benches/$$f; \
+	done
+
 clean:
 	cargo clean
 	git submodule deinit -f --all
@@ -25,3 +32,4 @@ clean:
 	(cd tests/suite && make clean)
 	rm -f tests/bench/*.dj
 	(cd tests/bench && make clean)
+	rm -f benches/*.dj
