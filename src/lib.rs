@@ -203,7 +203,7 @@ pub enum ListKind {
     Ordered {
         numbering: OrderedListNumbering,
         style: OrderedListStyle,
-        start: u32,
+        start: u64,
     },
     Task,
 }
@@ -265,11 +265,11 @@ pub enum Atom<'s> {
 }
 
 impl OrderedListNumbering {
-    fn parse_number(self, n: &str) -> u32 {
+    fn parse_number(self, n: &str) -> u64 {
         match self {
             Self::Decimal => n.parse().unwrap(),
             Self::AlphaLower | Self::AlphaUpper => {
-                let d0 = u32::from(if matches!(self, Self::AlphaLower) {
+                let d0 = u64::from(if matches!(self, Self::AlphaLower) {
                     b'a'
                 } else {
                     b'A'
@@ -283,13 +283,13 @@ impl OrderedListNumbering {
                     .iter()
                     .rev()
                     .copied()
-                    .map(u32::from)
+                    .map(u64::from)
                     .zip(weights)
                     .map(|(d, w)| w * (d - d0 + 1))
                     .sum()
             }
             Self::RomanLower | Self::RomanUpper => {
-                fn value(d: char) -> u32 {
+                fn value(d: char) -> u64 {
                     match d {
                         'i' | 'I' => 1,
                         'v' | 'V' => 5,
