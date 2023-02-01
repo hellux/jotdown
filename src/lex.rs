@@ -1,5 +1,3 @@
-use crate::EOF;
-
 use Delimiter::*;
 use Kind::*;
 use Sequence::*;
@@ -124,11 +122,11 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         current
     }
 
-    fn peek_char_n(&mut self, n: usize) -> char {
-        self.chars.clone().nth(n).unwrap_or(EOF)
+    fn peek_char_n(&mut self, n: usize) -> Option<char> {
+        self.chars.clone().nth(n)
     }
 
-    fn peek_char(&mut self) -> char {
+    fn peek_char(&mut self) -> Option<char> {
         self.peek_char_n(0)
     }
 
@@ -139,8 +137,12 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 
     fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
-        while predicate(self.peek_char()) {
-            self.eat_char();
+        while let Some(c) = self.peek_char() {
+            if predicate(c) {
+                self.eat_char();
+            } else {
+                break;
+            }
         }
     }
 
@@ -165,8 +167,10 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             _ if escape => Text,
 
             '\\' => {
-                let next = self.peek_char();
-                if next.is_whitespace() || next.is_ascii_punctuation() {
+                if self
+                    .peek_char()
+                    .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
+                {
                     self.escape = true;
                     Escape
                 } else {
@@ -184,15 +188,15 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             ']' => Close(Bracket),
             '{' => {
                 let explicit = match self.peek_char() {
-                    '*' => Some(Open(BraceAsterisk)),
-                    '^' => Some(Open(BraceCaret)),
-                    '=' => Some(Open(BraceEqual)),
-                    '-' => Some(Open(BraceHyphen)),
-                    '+' => Some(Open(BracePlus)),
-                    '~' => Some(Open(BraceTilde)),
-                    '_' => Some(Open(BraceUnderscore)),
-                    '\'' => Some(Open(BraceQuote1)),
-                    '"' => Some(Open(BraceQuote2)),
+                    Some('*') => Some(Open(BraceAsterisk)),
+                    Some('^') => Some(Open(BraceCaret)),
+                    Some('=') => Some(Open(BraceEqual)),
+                    Some('-') => Some(Open(BraceHyphen)),
+                    Some('+') => Some(Open(BracePlus)),
+                    Some('~') => Some(Open(BraceTilde)),
+                    Some('_') => Some(Open(BraceUnderscore)),
+                    Some('\'') => Some(Open(BraceQuote1)),
+                    Some('"') => Some(Open(BraceQuote2)),
                     _ => None,
                 };
                 if let Some(exp) = explicit {
@@ -211,18 +215,18 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
             '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
             '-' => {
-                if self.peek_char() == '}' {
+                if self.peek_char() == Some('}') {
                     self.eat_char();
                     Close(BraceHyphen)
                 } else {
-                    while self.peek_char() == '-' && self.peek_char_n(1) != '}' {
+                    while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}') {
                         self.eat_char();
                     }
                     Seq(Hyphen)
                 }
             }
 
-            '!' if self.peek_char() == '[' => {
+            '!' if self.peek_char() == Some('[') => {
                 self.eat_char();
                 Sym(ExclaimBracket)
             }
@@ -252,7 +256,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 
     fn maybe_eat_close_brace(&mut self, kind: Kind, d: Delimiter) -> Kind {
-        if self.peek_char() == '}' {
+        if self.peek_char() == Some('}') {
             self.eat_char();
             Close(d)
         } else {

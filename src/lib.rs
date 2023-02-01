@@ -16,8 +16,6 @@ pub use attr::Attributes;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
-const EOF: char = '\0';
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event<'s> {
     /// Start of a container.

@@ -2,7 +2,6 @@ use crate::Alignment;
 use crate::OrderedListNumbering::*;
 use crate::OrderedListStyle::*;
 use crate::Span;
-use crate::EOF;
 
 use crate::attr;
 use crate::lex;
@@ -583,8 +582,17 @@ impl IdentifiedBlock {
         let lt = line_t.len();
 
         let mut chars = line.chars();
-        match chars.next().unwrap_or(EOF) {
-            EOF => Some((Kind::Atom(Blankline), Span::empty_at(indent))),
+
+        let first = if let Some(c) = chars.next() {
+            c
+        } else {
+            return Self {
+                kind: Kind::Atom(Blankline),
+                span: Span::empty_at(indent),
+            };
+        };
+
+        match first {
             '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent, 1))),
             '#' => chars
                 .find(|c| *c != '#')
@@ -722,7 +730,11 @@ impl IdentifiedBlock {
 
         let start_paren = first == '(';
         if start_paren {
-            first = chars.next().unwrap_or(EOF);
+            first = if let Some(c) = chars.next() {
+                c
+            } else {
+                return None;
+            };
         }
 
         let numbering = if first.is_ascii_digit() {
