@@ -195,7 +195,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 };
                                 !end && !c.is_whitespace()
                             })
-                            .count();
+                            .map(char::len_utf8)
+                            .sum();
                         if len > 0 && end {
                             let tok = self.eat();
                             debug_assert_eq!(
@@ -323,7 +324,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     }
                     !end && !c.is_whitespace()
                 })
-                .count();
+                .map(char::len_utf8)
+                .sum();
             (end && is_url).then(|| {
                 self.lexer = lex::Lexer::new(ahead);
                 self.span = self.span.after(len);
@@ -376,7 +378,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     };
                     !end && *c != '\n'
                 })
-                .count();
+                .map(char::len_utf8)
+                .sum();
             end.then(|| {
                 self.lexer = lex::Lexer::new(ahead);
                 self.span = self.span.after(len);
@@ -557,7 +560,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         };
                         !end
                     })
-                    .count();
+                    .map(char::len_utf8)
+                    .sum();
                 end.then(|| {
                     let span = self.span.after(len).translate(1);
                     (kind, span)

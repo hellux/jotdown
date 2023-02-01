@@ -254,11 +254,12 @@ impl<'s> TreeParser<'s> {
     fn parse_leaf(&mut self, leaf: Leaf, k: &Kind, span: Span, lines: &mut [Span]) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
-                let indent_line = line.len()
-                    - line
-                        .trim_start_matches(self.src, |c| c != '\n' && c.is_whitespace())
-                        .len();
-                *line = line.skip((*indent).min(indent_line));
+                let indent_line = line
+                    .of(self.src)
+                    .chars()
+                    .take_while(|c| *c != '\n' && c.is_whitespace())
+                    .count();
+                *line = line.skip_chars((*indent).min(indent_line), self.src);
             }
         } else {
             // trim starting whitespace of each inline
@@ -380,7 +381,9 @@ impl<'s> TreeParser<'s> {
             .position(|sp| sp.of(self.src).trim_start().starts_with('^'))
             .map_or(lines.len(), |caption_line| {
                 self.tree.enter(Node::Leaf(Caption), span);
-                lines[caption_line] = lines[caption_line].trim_start(self.src).skip("^ ".len());
+                lines[caption_line] = lines[caption_line]
+                    .trim_start(self.src)
+                    .skip_chars(2, self.src);
                 lines[lines.len() - 1] = lines[lines.len() - 1].trim_end(self.src);
                 for line in &lines[caption_line..] {
                     self.tree.inline(*line);
@@ -577,6 +580,7 @@ impl IdentifiedBlock {
             .take_while(|c| *c != '\n' && c.is_whitespace())
             .count();
         (&mut chars).take(indent).last();
+        let indent_bytes = line.len() - chars.as_str().len();
         let line = chars.as_str();
         let line_t = line.trim_end();
         let l = line.len();
@@ -587,46 +591,47 @@ impl IdentifiedBlock {
         } else {
             return Self {
                 kind: Kind::Atom(Blankline),
-                span: Span::empty_at(indent),
+                span: Span::empty_at(indent_bytes),
             };
         };
 
         match first {
-            '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent, 1))),
+            '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent_bytes, 1))),
             '#' => chars
                 .find(|c| *c != '#')
                 .map_or(true, char::is_whitespace)
                 .then(|| {
-                    let level = l - chars.as_str().len() - 1;
-                    (Kind::Heading { level }, Span::by_len(indent, level))
+                    let level = line.chars().take_while(|c| *c == '#').count();
+                    (Kind::Heading { level }, Span::by_len(indent_bytes, level))
                 }),
             '>' => {
                 if chars.next().map_or(true, char::is_whitespace) {
-                    Some((Kind::Blockquote, Span::by_len(indent, 1)))
+                    Some((Kind::Blockquote, Span::by_len(indent_bytes, 1)))
                 } else {
                     None
                 }
             }
             '{' => (attr::valid(line.chars()).0 == lt)
-                .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
+                .then(|| (Kind::Atom(Attributes), Span::by_len(indent_bytes, l))),
             '|' => {
-                // FIXME: last byte may be pipe but end of prefixed unicode char
-                ((lt >= 2 && line.as_bytes()[lt - 1] == b'|')
-                    && !((lt >= 3) && line.as_bytes()[lt - 2] == b'\\'))
-                    .then(|| (Kind::Table { caption: false }, Span::empty_at(indent)))
+                if lt >= 2 && line_t.ends_with('|') && !line_t.ends_with("\\|") {
+                    Some((Kind::Table { caption: false }, Span::empty_at(indent_bytes)))
+                } else {
+                    None
+                }
             }
             '[' => chars.as_str().find("]:").map(|l| {
                 let tag = &chars.as_str()[0..l];
                 let footnote = tag.starts_with('^');
                 (
                     Kind::Definition { indent, footnote },
-                    Span::by_len(indent + 1, l).skip(usize::from(footnote)),
+                    Span::by_len(indent_bytes + 1, l).skip(usize::from(footnote)),
                 )
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
-                Some((Kind::Atom(ThematicBreak), Span::by_len(indent, lt)))
+                Some((Kind::Atom(ThematicBreak), Span::by_len(indent_bytes, lt)))
             }
-            b @ ('-' | '*' | '+') => chars.next().map_or(true, char::is_whitespace).then(|| {
+            b @ ('-' | '*' | '+') => chars.next().map_or(true, |c| c == ' ').then(|| {
                 let task_list = chars.next() == Some('[')
                     && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
@@ -638,7 +643,7 @@ impl IdentifiedBlock {
                             ty: Task,
                             last_blankline: false,
                         },
-                        Span::by_len(indent, 5),
+                        Span::by_len(indent_bytes, 5),
                     )
                 } else {
                     (
@@ -647,7 +652,7 @@ impl IdentifiedBlock {
                             ty: Unordered(b as u8),
                             last_blankline: false,
                         },
-                        Span::by_len(indent, 1),
+                        Span::by_len(indent_bytes, 1),
                     )
                 }
             }),
@@ -657,7 +662,7 @@ impl IdentifiedBlock {
                     ty: Description,
                     last_blankline: false,
                 },
-                Span::by_len(indent, 1),
+                Span::by_len(indent_bytes, 1),
             )),
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
@@ -681,7 +686,7 @@ impl IdentifiedBlock {
                             has_spec: !spec.is_empty(),
                             has_closing_fence: false,
                         },
-                        Span::by_len(indent + skip, spec.len()),
+                        Span::by_len(indent_bytes + skip, spec.len()),
                     )
                 })
             }
@@ -692,14 +697,14 @@ impl IdentifiedBlock {
                         ty: Ordered(num, style),
                         last_blankline: false,
                     },
-                    Span::by_len(indent, len),
+                    Span::by_len(indent_bytes, len),
                 )
             }),
         }
         .map(|(kind, span)| Self { kind, span })
         .unwrap_or(Self {
             kind: Kind::Paragraph,
-            span: Span::empty_at(indent),
+            span: Span::empty_at(indent_bytes),
         })
     }
 
