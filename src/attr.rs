@@ -24,28 +24,30 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     (p.pos, has_attr)
 }
 
+/// A collection of attributes, i.e. a key-value map.
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
 // indirection instead of always 24 bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Attributes<'s>(Option<Box<Vec<(&'s str, CowStr<'s>)>>>);
 
 impl<'s> Attributes<'s> {
+    /// Create an empty collection.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     #[must_use]
-    pub fn take(&mut self) -> Self {
+    pub(crate) fn take(&mut self) -> Self {
         Self(self.0.take())
     }
 
     pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
         for elem in Parser::new(input.chars()) {
             match elem {
-                Element::Class(c) => self.add("class", input.src(c)),
-                Element::Identifier(i) => self.add("id", input.src(i)),
-                Element::Attribute(a, v) => self.add(
+                Element::Class(c) => self.insert("class", input.src(c)),
+                Element::Identifier(i) => self.insert("id", input.src(i)),
+                Element::Attribute(a, v) => self.insert(
                     match input.src(a) {
                         CowStr::Owned(_) => panic!(),
                         CowStr::Borrowed(s) => s,
@@ -59,7 +61,7 @@ impl<'s> Attributes<'s> {
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
-    pub fn union(&mut self, other: Self) {
+    pub(crate) fn union(&mut self, other: Self) {
         if let Some(attrs0) = &mut self.0 {
             if let Some(mut attrs1) = other.0 {
                 for (key, val) in attrs1.drain(..) {
@@ -73,38 +75,40 @@ impl<'s> Attributes<'s> {
         }
     }
 
-    fn add(&mut self, attr: &'s str, val: CowStr<'s>) {
+    /// Insert an attribute. If the attribute already exists, the previous value will be
+    /// overwritten, unless it is a "class" attribute. In that case the provided value will be
+    /// appended to the existing value.
+    pub fn insert(&mut self, key: &'s str, val: CowStr<'s>) {
         if self.0.is_none() {
             self.0 = Some(Vec::new().into());
         };
 
         let attrs = self.0.as_mut().unwrap();
-        if let Some(i) = attrs.iter().position(|(a, _)| *a == attr) {
+        if let Some(i) = attrs.iter().position(|(k, _)| *k == key) {
             let prev = &mut attrs[i].1;
-            if attr == "class" {
+            if key == "class" {
                 *prev = format!("{} {}", prev, val).into();
             } else {
                 *prev = val;
             }
         } else {
-            attrs.push((attr, val));
+            attrs.push((key, val));
         }
     }
 
+    /// Returns true if the collection contains no attributes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        if let Some(v) = &self.0 {
-            v.is_empty()
-        } else {
-            true
-        }
+        self.0.as_ref().map_or(true, |v| v.is_empty())
     }
 
+    /// Returns a reference to the value corresponding to the attribute key.
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&str> {
         self.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
     }
 
+    /// Returns an iterator over the attributes in undefined order.
     pub fn iter(&self) -> impl Iterator<Item = (&'s str, &str)> + '_ {
         self.0
             .iter()
@@ -147,6 +151,7 @@ enum State {
 struct Parser<I> {
     chars: I,
     pos: usize,
+    pos_prev: usize,
     state: State,
 }
 
@@ -155,12 +160,14 @@ impl<I: Iterator<Item = char>> Parser<I> {
         Parser {
             chars,
             pos: 0,
+            pos_prev: 0,
             state: Start,
         }
     }
 
     fn step_char(&mut self) -> Option<State> {
         self.chars.next().map(|c| {
+            self.pos_prev = self.pos;
             self.pos += c.len_utf8();
             match self.state {
                 Start => match c {
@@ -236,7 +243,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 
     fn step(&mut self) -> (State, Span) {
-        let start = self.pos.saturating_sub(1);
+        let start = self.pos_prev;
 
         if self.state == Done {
             return (Done, Span::empty_at(start));
@@ -250,14 +257,14 @@ impl<I: Iterator<Item = char>> Parser<I> {
             if self.state != state_next {
                 return (
                     std::mem::replace(&mut self.state, state_next),
-                    Span::new(start, self.pos - 1),
+                    Span::new(start, self.pos_prev),
                 );
             }
         }
 
         (
             if self.state == Done { Done } else { Invalid },
-            Span::new(start, self.pos.saturating_sub(1)),
+            Span::new(start, self.pos_prev),
         )
     }
 }
@@ -342,6 +349,13 @@ mod test {
             ("class", "some_class"),
             ("id", "some_id"),
         );
+        test_attr!("{.a .b}", ("class", "a b"));
+        test_attr!("{#a #b}", ("id", "b"));
+    }
+
+    #[test]
+    fn unicode_whitespace() {
+        test_attr!("{.a .b}", ("class", "a b"));
     }
 
     #[test]
