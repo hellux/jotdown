@@ -409,12 +409,20 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     Atom::Ellipsis => self.out.write_str("&hellip;")?,
                     Atom::EnDash => self.out.write_str("&ndash;")?,
                     Atom::EmDash => self.out.write_str("&mdash;")?,
-                    Atom::ThematicBreak => self.out.write_str("\n<hr>")?,
                     Atom::NonBreakingSpace => self.out.write_str("&nbsp;")?,
                     Atom::Hardbreak => self.out.write_str("<br>\n")?,
                     Atom::Softbreak => self.out.write_char('\n')?,
                     Atom::Escape | Atom::Blankline => unreachable!("filtered out"),
                 },
+                Event::ThematicBreak(attrs) => {
+                    self.out.write_str("\n<hr")?;
+                    for (a, v) in attrs.iter() {
+                        write!(self.out, r#" {}=""#, a)?;
+                        self.write_escape(v)?;
+                        self.out.write_char('"')?;
+                    }
+                    self.out.write_str(">")?;
+                }
             }
         }
         if self.encountered_footnote {

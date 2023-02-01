@@ -26,6 +26,8 @@ pub enum Event<'s> {
     Str(CowStr<'s>),
     /// An atomic element.
     Atom(Atom<'s>),
+    /// A thematic break, typically a horizontal rule.
+    ThematicBreak(Attributes<'s>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -248,8 +250,6 @@ pub enum Atom<'s> {
     EnDash,
     /// An em dash.
     EmDash,
-    /// A thematic break, typically a horizontal rule.
-    ThematicBreak,
     /// A space that must not break a line.
     NonBreakingSpace,
     /// A newline that may or may not break a line in the output.
@@ -674,7 +674,9 @@ impl<'s> Parser<'s> {
             let event = match ev.kind {
                 tree::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => Event::Atom(Atom::Blankline),
-                    block::Atom::ThematicBreak => Event::Atom(Atom::ThematicBreak),
+                    block::Atom::ThematicBreak => {
+                        Event::ThematicBreak(self.block_attributes.take())
+                    }
                     block::Atom::Attributes => {
                         self.block_attributes.parse(content);
                         continue;
