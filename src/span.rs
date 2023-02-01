@@ -236,8 +236,10 @@ impl<'s> InlineSpans<'s> {
                         return CowStr::Borrowed(&sp.of(src)[span.start() - a..span.end() - a]);
                     }
                     (span.start() - a)..sp.len()
-                } else {
+                } else if a <= span.end() {
                     0..sp.len().min(span.end() - a)
+                } else {
+                    break;
                 };
                 s.push_str(&sp.of(src)[r]);
             }
