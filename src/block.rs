@@ -401,8 +401,8 @@ impl<'s> TreeParser<'s> {
             let row_node = self
                 .tree
                 .enter(Node::Container(TableRow { head: false }), row.with_len(1));
-            let rem = row.skip(1);
-            let lex = lex::Lexer::new(row.skip(1).of(self.src).chars());
+            let rem = row.skip(1); // |
+            let lex = lex::Lexer::new(rem.of(self.src).chars());
             let mut pos = rem.start();
             let mut cell_start = pos;
             let mut separator_row = true;
@@ -454,7 +454,7 @@ impl<'s> TreeParser<'s> {
                 pos += len;
             }
 
-            if separator_row {
+            if separator_row && verbatim.is_none() {
                 self.alignments.clear();
                 self.alignments.extend(
                     self.tree
@@ -500,9 +500,8 @@ impl<'s> TreeParser<'s> {
                 }
             } else {
                 self.tree.exit(); // table row
+                last_row_node = Some(row_node);
             }
-
-            last_row_node = Some(row_node);
         }
 
         self.tree.exit(); // table
