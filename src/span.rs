@@ -89,6 +89,11 @@ impl Span {
         &s[self.start()..self.end()]
     }
 
+    pub fn skip_chars(self, n: usize, s: &str) -> Self {
+        let n_bytes: usize = self.of(s).chars().take(n).map(char::len_utf8).sum();
+        Self::new(self.start() + n_bytes, self.end())
+    }
+
     pub fn trim_start_matches<P: FnMut(char) -> bool>(self, s: &str, pat: P) -> Self {
         Self::from_slice(s, self.of(s).trim_start_matches(pat))
     }

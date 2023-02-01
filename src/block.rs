@@ -313,13 +313,15 @@ impl<'s> TreeParser<'s> {
         lines.iter_mut().skip(1).for_each(|sp| {
             let src = sp.of(self.src);
             let src_t = src.trim();
-            let spaces = src.len() - src.trim_start().len();
+            let spaces = src.chars().take_while(|c| c.is_whitespace()).count();
             let skip = match k {
                 Kind::Blockquote => {
                     if src_t == ">" {
                         spaces + 1
-                    } else if src_t.starts_with("> ") {
-                        spaces + "> ".len()
+                    } else if src_t.starts_with('>')
+                        && src_t.chars().nth(1).map_or(false, char::is_whitespace)
+                    {
+                        spaces + 1 + usize::from(src_t.len() > 1)
                     } else {
                         0
                     }
@@ -329,8 +331,8 @@ impl<'s> TreeParser<'s> {
                 | Kind::Fenced { indent, .. } => spaces.min(*indent),
                 _ => panic!("non-container {:?}", k),
             };
-            let len = sp.len() - usize::from(sp.of(self.src).ends_with('\n'));
-            *sp = sp.skip(skip.min(len));
+            let count = sp.of(self.src).chars().take_while(|c| *c != '\n').count();
+            *sp = sp.skip_chars(skip.min(count), self.src);
         });
 
         if let ListItem(ty) = c {
@@ -571,17 +573,16 @@ struct IdentifiedBlock {
 
 impl IdentifiedBlock {
     fn new(line: &str) -> Self {
-        let indent = line
-            .chars()
+        let mut chars = line.chars();
+        let indent = chars
+            .clone()
             .take_while(|c| *c != '\n' && c.is_whitespace())
-            .map(char::len_utf8)
-            .sum();
-        let line = &line[indent..];
+            .count();
+        (&mut chars).take(indent).last();
+        let line = chars.as_str();
         let line_t = line.trim_end();
         let l = line.len();
         let lt = line_t.len();
-
-        let mut chars = line.chars();
 
         let first = if let Some(c) = chars.next() {
             c
