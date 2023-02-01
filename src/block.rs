@@ -604,7 +604,8 @@ impl IdentifiedBlock {
                 .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
             '|' => {
                 // FIXME: last byte may be pipe but end of prefixed unicode char
-                (line.as_bytes()[lt - 1] == b'|' && line.as_bytes()[lt - 2] != b'\\')
+                ((lt >= 2 && line.as_bytes()[lt - 1] == b'|')
+                    && ((lt >= 3) && line.as_bytes()[lt - 2] != b'\\'))
                     .then(|| (Kind::Table { caption: false }, Span::empty_at(indent)))
             }
             '[' => chars.as_str().find("]:").map(|l| {
