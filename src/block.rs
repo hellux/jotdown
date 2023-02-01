@@ -58,9 +58,7 @@ pub enum Leaf {
 
     /// Span is `#` characters.
     /// Each inline is a line.
-    Heading {
-        has_section: bool,
-    },
+    Heading { has_section: bool },
 
     /// Span is '|'.
     /// Has zero or one inline for the cell contents.
@@ -189,8 +187,8 @@ impl<'s> TreeParser<'s> {
 
             // remove "]:" from footnote / link def
             if matches!(kind, Kind::Definition { .. }) {
-                assert_eq!(&lines[0].of(self.src).chars().as_str()[0..2], "]:");
-                lines[0] = lines[0].skip(2);
+                assert_eq!(&lines[0].of(self.src)[0..2], "]:");
+                lines[0] = lines[0].skip("]:".len());
             }
 
             // skip opening and closing fence of code block / div
@@ -602,13 +600,13 @@ impl IdentifiedBlock {
                     let level = l - chars.as_str().len() - 1;
                     (Kind::Heading { level }, Span::by_len(indent, level))
                 }),
-            '>' => chars
-                .next()
-                .map_or(Some(false), |c| c.is_whitespace().then(|| true))
-                .map(|space_after| {
-                    let len = l - chars.as_str().len() - usize::from(space_after);
-                    (Kind::Blockquote, Span::by_len(indent, len))
-                }),
+            '>' => {
+                if chars.next().map_or(true, char::is_whitespace) {
+                    Some((Kind::Blockquote, Span::by_len(indent, 1)))
+                } else {
+                    None
+                }
+            }
             '{' => (attr::valid(line.chars()).0 == lt)
                 .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
             '|' => {
