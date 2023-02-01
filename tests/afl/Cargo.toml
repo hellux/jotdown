@@ -1,0 +1,12 @@
+[package]
+name = "jotdown-afl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+afl = "0.11"
+jotdown = { path = "../../" }
+
+[[bin]]
+name = "gen"
+path = "src/gen.rs"

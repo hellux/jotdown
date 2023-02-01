@@ -18,6 +18,11 @@ exclude = [
     "tests",
 ]
 
+[workspace]
+members = [
+    "tests/afl",
+]
+
 [features]
 suite = [] # test suite
 suite_bench = [] # bench test suite

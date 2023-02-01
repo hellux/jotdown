@@ -25,6 +25,35 @@ bench:
 		ln -fs ../modules/djot.js/bench/$$f benches/$$f; \
 	done
 
+AFL_TARGET?=gen
+AFL_JOBS?=1
+AFL_TARGET_CRASH?=crashes
+
+afl:
+	rm -rf tests/afl/out
+	(cd tests/afl && \
+		cargo afl build --release --config profile.release.debug-assertions=true && \
+		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm ../../target/release/${AFL_TARGET} &) && \
+		for i in $$(seq $$((${AFL_JOBS} - 1))); do \
+			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i ../../target/release/${AFL_TARGET} & \
+		done; \
+		trap - EXIT;\
+		cat) # keep process alive for trap
+
+afl_crash:
+	set +e; \
+	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
+		echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
+		out=$$(cat $$f | RUST_BACKTRACE=1 cargo run 2>&1); \
+		if [ $$? -ne 0 ]; then \
+			echo; \
+			echo "FAIL"; \
+			echo "$$out"; \
+			echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
+			exit 1; \
+		fi; \
+	done
+
 clean:
 	cargo clean
 	git submodule deinit -f --all
@@ -33,3 +62,4 @@ clean:
 	rm -f tests/bench/*.dj
 	(cd tests/bench && make clean)
 	rm -f benches/*.dj
+	rm -rf tests/afl/out
