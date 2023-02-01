@@ -316,6 +316,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             let mut is_url = false;
             let len = (&mut ahead)
                 .take_while(|c| {
+                    if *c == '<' {
+                        return false;
+                    }
                     if *c == '>' {
                         end = true;
                     };
