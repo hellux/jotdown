@@ -282,7 +282,7 @@ impl<'s, 'i> InlineSpansSlice<'s, 'i> {
         } else {
             (
                 Span::new(self.spans[0].start() + self.first_skip, self.spans[0].end()),
-                1..self.spans.len().saturating_sub(2),
+                1..1 + self.spans.len().saturating_sub(2),
                 Span::by_len(self.spans[self.spans.len() - 1].start(), self.last_len),
             )
         };
