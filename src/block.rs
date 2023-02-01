@@ -733,11 +733,7 @@ impl IdentifiedBlock {
 
         let start_paren = first == '(';
         if start_paren {
-            first = if let Some(c) = chars.next() {
-                c
-            } else {
-                return None;
-            };
+            first = chars.next()?;
         }
 
         let numbering = if first.is_ascii_digit() {
