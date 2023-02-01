@@ -769,6 +769,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
 
         self.events.pop_front().and_then(|e| {
             match e.kind {
+                EventKind::Str if e.span.is_empty() => self.next(),
                 EventKind::Str | EventKind::Whitespace => {
                     // merge str events
                     let mut span = e.span;
