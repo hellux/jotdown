@@ -412,6 +412,7 @@ impl<'s> PrePass<'s> {
 
                     inlines.set_spans(tree.take_inlines());
                     let mut id_auto = String::new();
+                    let mut last_whitespace = true;
                     inline::Parser::new(inlines.chars()).for_each(|ev| match ev.kind {
                         inline::EventKind::Str => {
                             let mut chars = inlines.slice(ev.span).chars().peekable();
@@ -420,11 +421,13 @@ impl<'s> PrePass<'s> {
                                     while chars.peek().map_or(false, |c| c.is_whitespace()) {
                                         chars.next();
                                     }
-                                    if !id_auto.is_empty() {
+                                    if !last_whitespace {
+                                        last_whitespace = true;
                                         id_auto.push('-');
                                     }
                                 } else if !c.is_ascii_punctuation() || matches!(c, '-' | '_') {
                                     id_auto.push(c);
+                                    last_whitespace = false;
                                 }
                             }
                         }
