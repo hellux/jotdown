@@ -322,6 +322,16 @@ impl OrderedListStyle {
     }
 }
 
+#[cfg(not(feature = "deterministic"))]
+type Map<K, V> = std::collections::HashMap<K, V>;
+#[cfg(feature = "deterministic")]
+type Map<K, V> = std::collections::BTreeMap<K, V>;
+
+#[cfg(not(feature = "deterministic"))]
+type Set<T> = std::collections::HashSet<T>;
+#[cfg(feature = "deterministic")]
+type Set<T> = std::collections::BTreeSet<T>;
+
 pub struct Parser<'s> {
     src: &'s str,
 
@@ -340,7 +350,7 @@ pub struct Parser<'s> {
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
-    footnotes: std::collections::HashMap<&'s str, block::Tree>,
+    footnotes: Map<&'s str, block::Tree>,
     /// Next or current footnote being parsed and emitted.
     footnote_index: usize,
     /// Currently within a footnote.
@@ -364,7 +374,7 @@ struct Heading {
 /// Because of potential future references, an initial pass is required to obtain all definitions.
 struct PrePass<'s> {
     /// Link definitions and their attributes.
-    link_definitions: std::collections::HashMap<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
+    link_definitions: Map<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
     /// Cache of all heading ids.
     headings: Vec<Heading>,
     /// Indices to headings sorted lexicographically.
@@ -374,9 +384,9 @@ struct PrePass<'s> {
 impl<'s> PrePass<'s> {
     #[must_use]
     fn new(src: &'s str, mut tree: block::Tree) -> Self {
-        let mut link_definitions = std::collections::HashMap::new();
+        let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
-        let mut used_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut used_ids: Set<&str> = Set::new();
 
         let mut inlines = span::InlineSpans::new(src);
 
@@ -520,7 +530,7 @@ impl<'s> Parser<'s> {
             block_attributes: Attributes::new(),
             table_head_row: false,
             footnote_references: Vec::new(),
-            footnotes: std::collections::HashMap::new(),
+            footnotes: Map::new(),
             footnote_index: 0,
             footnote_active: false,
             inlines: span::InlineSpans::new(src),

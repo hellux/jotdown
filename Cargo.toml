@@ -26,3 +26,4 @@ members = [
 [features]
 suite = [] # test suite
 suite_bench = [] # bench test suite
+deterministic = [] # for stable fuzzing
