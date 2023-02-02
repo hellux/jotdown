@@ -25,6 +25,9 @@ bench:
 		ln -fs ../modules/djot.js/bench/$$f benches/$$f; \
 	done
 
+cov: suite suite_bench
+	LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov --features=suite,suite_bench --workspace --html --ignore-run-fail
+
 AFL_TARGET?=gen
 AFL_JOBS?=1
 AFL_TARGET_CRASH?=crashes
