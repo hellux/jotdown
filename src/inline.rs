@@ -11,6 +11,7 @@ use Container::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
     FootnoteReference,
+    Symbol,
     Softbreak,
     Hardbreak,
     Escape,
@@ -115,6 +116,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             self.parse_verbatim(&first)
                 .or_else(|| self.parse_attributes(&first))
                 .or_else(|| self.parse_autolink(&first))
+                .or_else(|| self.parse_symbol(&first))
                 .or_else(|| self.parse_footnote_reference(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
@@ -344,6 +346,37 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 Event {
                     kind: EventKind::Exit(Autolink),
                     span: self.span,
+                }
+            })
+        } else {
+            None
+        }
+    }
+
+    fn parse_symbol(&mut self, first: &lex::Token) -> Option<Event> {
+        if first.kind == lex::Kind::Sym(Symbol::Colon) {
+            let mut ahead = self.lexer.chars();
+            let mut end = false;
+            let mut valid = true;
+            let len = (&mut ahead)
+                .take_while(|c| {
+                    if *c == ':' {
+                        end = true;
+                    } else if !c.is_ascii_alphanumeric() && !matches!(c, '-' | '+' | '_') {
+                        valid = false;
+                    }
+                    !end && !c.is_whitespace()
+                })
+                .map(char::len_utf8)
+                .sum();
+            (end && valid).then(|| {
+                self.lexer = lex::Lexer::new(ahead);
+                self.span = self.span.after(len);
+                let span = self.span;
+                self.span = self.span.after(1);
+                Event {
+                    kind: EventKind::Atom(Symbol),
+                    span,
                 }
             })
         } else {

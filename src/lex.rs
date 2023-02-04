@@ -49,6 +49,7 @@ pub enum Symbol {
     Quote2,
     Tilde,
     Underscore,
+    Colon,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,6 +233,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             }
             '<' => Sym(Lt),
             '|' => Sym(Pipe),
+            ':' => Sym(Colon),
 
             '`' => self.eat_seq(Backtick),
             '$' => self.eat_seq(Dollar),

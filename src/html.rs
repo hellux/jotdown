@@ -402,6 +402,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             number, number, number
                         )?;
                     }
+                    Atom::Symbol(sym) => write!(self.out, ":{}:", sym)?,
                     Atom::LeftSingleQuote => self.out.write_str("&lsquo;")?,
                     Atom::RightSingleQuote => self.out.write_str("&rsquo;")?,
                     Atom::LeftDoubleQuote => self.out.write_str("&ldquo;")?,

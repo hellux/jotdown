@@ -236,6 +236,8 @@ pub enum OrderedListStyle {
 pub enum Atom<'s> {
     /// A footnote reference.
     FootnoteReference(&'s str, usize),
+    /// A symbol, by default rendered literally but may be treated specially.
+    Symbol(CowStr<'s>),
     /// Left single quotation mark.
     LeftSingleQuote,
     /// Right double quotation mark.
@@ -654,6 +656,7 @@ impl<'s> Parser<'s> {
                             number,
                         )
                     }
+                    inline::Atom::Symbol => Atom::Symbol(self.inlines.src(inline.span)),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Atom::LeftSingleQuote,
                         (inline::QuoteType::Single, false) => Atom::RightSingleQuote,
@@ -1085,6 +1088,18 @@ mod test {
             Start(RawBlock { format: "html" }, Attributes::new()),
             Str("<table>\n".into()),
             End(RawBlock { format: "html" }),
+        );
+    }
+
+    #[test]
+    fn symbol() {
+        test_parse!(
+            "abc :+1: def",
+            Start(Paragraph, Attributes::new()),
+            Str("abc ".into()),
+            Atom(Symbol("+1".into())),
+            Str(" def".into()),
+            End(Paragraph),
         );
     }
 
