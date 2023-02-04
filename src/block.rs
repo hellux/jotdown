@@ -459,9 +459,9 @@ impl<'s> TreeParser<'s> {
                 self.alignments.extend(
                     self.tree
                         .children(row_node)
-                        .filter(|(kind, _)| matches!(kind, tree::Element::Inline))
-                        .map(|(_, sp)| {
-                            let cell = sp.of(self.src);
+                        .filter(|n| matches!(n.elem, tree::Element::Inline))
+                        .map(|n| {
+                            let cell = n.span.of(self.src);
                             let l = cell.as_bytes()[0] == b':';
                             let r = cell.as_bytes()[cell.len() - 1] == b':';
                             match (l, r) {
@@ -476,8 +476,8 @@ impl<'s> TreeParser<'s> {
                 if let Some(head_row) = last_row_node {
                     self.tree
                         .children(head_row)
-                        .filter(|(e, _sp)| {
-                            matches!(e, tree::Element::Container(Node::Leaf(TableCell(..))))
+                        .filter(|n| {
+                            matches!(n.elem, tree::Element::Container(Node::Leaf(TableCell(..))))
                         })
                         .zip(
                             self.alignments
@@ -485,8 +485,10 @@ impl<'s> TreeParser<'s> {
                                 .copied()
                                 .chain(std::iter::repeat(Alignment::Unspecified)),
                         )
-                        .for_each(|((e, _), new_align)| {
-                            if let tree::Element::Container(Node::Leaf(TableCell(alignment))) = e {
+                        .for_each(|(n, new_align)| {
+                            if let tree::Element::Container(Node::Leaf(TableCell(alignment))) =
+                                n.elem
+                            {
                                 *alignment = new_align;
                             }
                         });

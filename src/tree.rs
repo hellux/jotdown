@@ -8,6 +8,14 @@ pub enum EventKind<C, A> {
     Atom(A),
 }
 
+#[derive(Debug)]
+pub struct Node<'a, C, A> {
+    pub index: NodeIndex,
+    pub elem: Element<'a, C, A>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub enum Element<'a, C, A> {
     Container(&'a mut C),
     Atom(&'a mut A),
@@ -22,7 +30,7 @@ pub struct Event<C, A> {
 
 #[derive(Clone)]
 pub struct Tree<C: 'static, A: 'static> {
-    nodes: std::rc::Rc<[Node<C, A>]>,
+    nodes: std::rc::Rc<[InternalNode<C, A>]>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
 }
@@ -103,11 +111,8 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
             };
             Some(Event { kind, span: n.span })
         } else if let Some(block_ni) = self.branch.pop() {
-            let Node { next, kind, span } = &self.nodes[block_ni.index()];
-            let kind = match kind {
-                NodeKind::Container(c, _) => EventKind::Exit(c.clone()),
-                _ => panic!(),
-            };
+            let InternalNode { next, kind, span } = &self.nodes[block_ni.index()];
+            let kind = EventKind::Exit(kind.container().unwrap().clone());
             self.head = *next;
             Some(Event { kind, span: *span })
         } else {
@@ -143,7 +148,7 @@ enum NodeKind<C, A> {
 }
 
 #[derive(Debug, Clone)]
-struct Node<C, A> {
+struct InternalNode<C, A> {
     span: Span,
     kind: NodeKind<C, A>,
     next: Option<NodeIndex>,
@@ -151,10 +156,36 @@ struct Node<C, A> {
 
 #[derive(Clone)]
 pub struct Builder<C, A> {
-    nodes: Vec<Node<C, A>>,
+    nodes: Vec<InternalNode<C, A>>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
     depth: usize,
+}
+
+impl<C, A> NodeKind<C, A> {
+    fn child(&self) -> Option<NodeIndex> {
+        if let NodeKind::Container(_, child) = self {
+            *child
+        } else {
+            None
+        }
+    }
+
+    fn child_mut(&mut self) -> &mut Option<NodeIndex> {
+        if let NodeKind::Container(_, child) = self {
+            child
+        } else {
+            panic!()
+        }
+    }
+
+    fn container(&self) -> Option<&C> {
+        if let NodeKind::Container(c, _) = self {
+            Some(c)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, C, A> From<&'a mut NodeKind<C, A>> for Element<'a, C, A> {
@@ -168,10 +199,10 @@ impl<'a, C, A> From<&'a mut NodeKind<C, A>> for Element<'a, C, A> {
     }
 }
 
-impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
+impl<C, A> Builder<C, A> {
     pub(super) fn new() -> Self {
         Builder {
-            nodes: vec![Node {
+            nodes: vec![InternalNode {
                 span: Span::default(),
                 kind: NodeKind::Root,
                 next: None,
@@ -183,7 +214,7 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
     }
 
     pub(super) fn atom(&mut self, a: A, span: Span) {
-        self.add_node(Node {
+        self.add_node(InternalNode {
             span,
             kind: NodeKind::Atom(a),
             next: None,
@@ -191,7 +222,7 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
     }
 
     pub(super) fn inline(&mut self, span: Span) {
-        self.add_node(Node {
+        self.add_node(InternalNode {
             span,
             kind: NodeKind::Inline,
             next: None,
@@ -200,7 +231,7 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
 
     pub(super) fn enter(&mut self, c: C, span: Span) -> NodeIndex {
         self.depth += 1;
-        self.add_node(Node {
+        self.add_node(InternalNode {
             span,
             kind: NodeKind::Container(c, None),
             next: None,
@@ -224,12 +255,29 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
         self.exit();
         let exited = self.branch.pop().unwrap();
         self.nodes.drain(exited.index()..);
-        let (ni, has_parent) = self.relink(exited, None);
+        let (prev, has_parent) = self.replace(exited, None);
         if has_parent {
-            self.head = Some(ni);
+            self.head = Some(prev);
         } else {
-            self.branch.push(ni);
+            self.branch.push(prev);
         }
+    }
+
+    /// Swap the node and its children with either its parent or the node before.
+    pub fn swap_prev(&mut self, node: NodeIndex) {
+        let next = self.nodes[node.index()].next;
+        if let Some(n) = next {
+            self.replace(n, None);
+        }
+        let (prev, _) = self.replace(node, next);
+        self.replace(prev, Some(node));
+        self.nodes[node.index()].next = Some(prev);
+    }
+
+    /// Remove the specified node and its children.
+    pub fn remove(&mut self, node: NodeIndex) {
+        let next = self.nodes[node.index()].next;
+        self.replace(node, next);
     }
 
     pub(super) fn depth(&self) -> usize {
@@ -245,21 +293,24 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
         }
     }
 
-    /// Retrieve all children nodes for the specified node. Order is in the order they were added.
-    pub(super) fn children(
-        &mut self,
-        node: NodeIndex,
-    ) -> impl Iterator<Item = (Element<C, A>, Span)> {
-        assert!(matches!(
-            self.nodes[node.index()].kind,
-            NodeKind::Container(..)
-        ));
-        let end = self.nodes[node.index()]
-            .next
-            .map_or(self.nodes.len(), NodeIndex::index);
-        self.nodes[node.index()..end]
-            .iter_mut()
-            .map(|n| (Element::from(&mut n.kind), n.span))
+    /// Retrieve all children nodes for the specified node, in the order that they were added.
+    pub(super) fn children(&mut self, node: NodeIndex) -> impl Iterator<Item = Node<C, A>> {
+        // XXX assumes no modifications
+        let n = &self.nodes[node.index()];
+        let range = if let Some(start) = n.kind.child() {
+            start.index()..n.next.map_or(self.nodes.len(), NodeIndex::index)
+        } else {
+            0..0
+        };
+        range
+            .clone()
+            .map(NodeIndex::new)
+            .zip(self.nodes[range].iter_mut())
+            .map(|(index, n)| Node {
+                index,
+                elem: Element::from(&mut n.kind),
+                span: n.span,
+            })
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
@@ -272,7 +323,7 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
         }
     }
 
-    fn add_node(&mut self, node: Node<C, A>) -> NodeIndex {
+    fn add_node(&mut self, node: InternalNode<C, A>) -> NodeIndex {
         let ni = NodeIndex::new(self.nodes.len());
         self.nodes.push(node);
         if let Some(head_ni) = &mut self.head {
@@ -301,23 +352,20 @@ impl<C: std::fmt::Debug, A: std::fmt::Debug> Builder<C, A> {
         ni
     }
 
-    /// Remove the link from the node that points to the specified node. Return the pointer node
-    /// and whether it is a container or not.
-    fn relink(&mut self, prev: NodeIndex, next: Option<NodeIndex>) -> (NodeIndex, bool) {
+    /// Remove the link from the node that points to the specified node. Optionally replace the
+    /// node with another node. Return the pointer node and whether it is a container or not.
+    fn replace(&mut self, node: NodeIndex, next: Option<NodeIndex>) -> (NodeIndex, bool) {
         for (i, n) in self.nodes.iter_mut().enumerate().rev() {
             let ni = NodeIndex::new(i);
-            if n.next == Some(prev) {
+            if n.next == Some(node) {
                 n.next = next;
                 return (ni, false);
-            } else if let NodeKind::Container(kind, child) = &mut n.kind {
-                if *child == Some(prev) {
-                    dbg!(kind, next);
-                    *child = next;
-                    return (ni, true);
-                }
+            } else if n.kind.child() == Some(node) {
+                *n.kind.child_mut() = next;
+                return (ni, true);
             }
         }
-        panic!()
+        panic!("node is never linked to")
     }
 }
 
