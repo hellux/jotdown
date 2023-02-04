@@ -27,7 +27,7 @@ pub fn parse(src: &str) -> Tree {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Block {
+enum Block {
     /// An atomic block, containing no children elements.
     Atom(Atom),
 
