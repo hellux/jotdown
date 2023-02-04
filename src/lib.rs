@@ -1,3 +1,39 @@
+//! A pull parser for [Djot](https://djot.net).
+//!
+//! The main entry is through [`Parser`] which implements an [`Iterator`] of [`Event`]s. The events
+//! can then be used to traverse the document structure in order to e.g. construct an AST or
+//! directly generate to some output format. This crate provides an [`html`] module that can be
+//! used to render the events to HTML.
+//!
+//! # Examples
+//!
+//! Generate HTML from Djot input:
+//!
+//! ```
+//! let djot_input = "hello *world*!";
+//! let events = jotdown::Parser::new(djot_input);
+//! let mut html = String::new();
+//! jotdown::html::push(events, &mut html);
+//! assert_eq!(html, "<p>hello <strong>world</strong>!</p>\n");
+//! ```
+//!
+//! Apply some filter to a specific type of element:
+//!
+//! ```
+//! # use jotdown::Event;
+//! # use jotdown::Container::Link;
+//! let events =
+//!     jotdown::Parser::new("a [link](https://example.com)").map(|e| match e {
+//!         Event::Start(Link(dst, ty), attrs) => {
+//!             Event::Start(Link(dst.replace(".com", ".net").into(), ty), attrs)
+//!         }
+//!         e => e,
+//!     });
+//! let mut html = String::new();
+//! jotdown::html::push(events, &mut html);
+//! assert_eq!(html, "<p>a <a href=\"https://example.net\">link</a></p>\n");
+//! ```
+
 use std::fmt::Write;
 
 pub mod html;
@@ -16,6 +52,12 @@ pub use attr::Attributes;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
+/// A Djot event.
+///
+/// A Djot document is represented by a sequence of events. An element may consist of one or
+/// multiple events. [`Container`] elements are represented by a [`Event::Start`] followed by
+/// events representing its content, and finally a [`Event::End`]. Atomic elements without any
+/// inside elements are represented by a single event.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event<'s> {
     /// Start of a container.
@@ -56,6 +98,13 @@ pub enum Event<'s> {
     ThematicBreak(Attributes<'s>),
 }
 
+/// A container that may contain other elements.
+///
+/// There are three types of containers:
+///
+/// - inline, may only contain inline elements,
+/// - block leaf, may only contain inline elements,
+/// - block container, may contain any block-level elements.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Container<'s> {
     /// A blockquote element.
@@ -202,6 +251,7 @@ impl<'s> Container<'s> {
     }
 }
 
+/// Alignment of a table column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alignment {
     Unspecified,
@@ -210,30 +260,42 @@ pub enum Alignment {
     Right,
 }
 
+/// The type of an inline span link.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SpanLinkType {
+    /// E.g. `[text](url)`
     Inline,
+    /// In the form `[text][tag]` or `[tag][]`.
     Reference,
 }
 
+/// The type of an inline link.
 #[derive(Debug, PartialEq, Eq)]
 pub enum LinkType {
+    /// E.g. `[text](url)`.
     Span(SpanLinkType),
+    /// In the form `<url>`.
     AutoLink,
+    /// In the form `<address>`.
     Email,
 }
 
+/// The type of a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
+    /// A bullet list.
     Unordered,
+    /// An enumerated list.
     Ordered {
         numbering: OrderedListNumbering,
         style: OrderedListStyle,
         start: u64,
     },
+    /// A task list.
     Task,
 }
 
+/// Numbering type of an ordered list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderedListNumbering {
     /// Decimal numbering, e.g. `1)`.
@@ -248,6 +310,7 @@ pub enum OrderedListNumbering {
     RomanUpper,
 }
 
+/// Style of an ordered list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderedListStyle {
     /// Number is followed by a period, e.g. `1.`.
@@ -328,6 +391,12 @@ type Set<T> = std::collections::HashSet<T>;
 #[cfg(feature = "deterministic")]
 type Set<T> = std::collections::BTreeSet<T>;
 
+/// A parser that generates [`Event`]s from a Djot document.
+///
+/// When created, it will perform an initial pass and build up a tree of the document's block
+/// structure that will be kept for the duration of the parser's lifetime. Then, when the iterator
+/// is advanced, the parser will start from the beginning of the document and parse inline elements
+/// and emit [`Event`]s.
 pub struct Parser<'s> {
     src: &'s str,
 
