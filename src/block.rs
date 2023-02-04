@@ -1228,13 +1228,13 @@ mod test {
         test_parse!(
             "> \n",
             (Enter(Container(Blockquote)), ">"),
-            (EventKind::Atom(Blankline), "\n"),
+            (Atom(Blankline), "\n"),
             (Exit(Container(Blockquote)), ">"),
         );
         test_parse!(
             ">",
             (Enter(Container(Blockquote)), ">"),
-            (EventKind::Atom(Blankline), ""),
+            (Atom(Blankline), ""),
             (Exit(Container(Blockquote)), ">"),
         );
     }
