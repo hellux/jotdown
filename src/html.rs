@@ -1,3 +1,5 @@
+//! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
+
 use crate::Alignment;
 use crate::Atom;
 use crate::Container;
@@ -5,18 +7,18 @@ use crate::Event;
 use crate::ListKind;
 use crate::OrderedListNumbering::*;
 
-/// Generate HTML from parsed events and push it to a unicode-accepting buffer or stream.
-pub fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(out: W, events: I) {
+/// Generate HTML and push it to a unicode-accepting buffer or stream.
+pub fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(events: I, out: W) {
     Writer::new(events, out).write().unwrap();
 }
 
-/// Generate HTML from parsed events and write it to a byte sink, encoded as UTF-8.
+/// Generate HTML and write it to a byte sink, encoded as UTF-8.
 ///
 /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
 /// [`std::io::BufWriter`].
 pub fn write<'s, I: Iterator<Item = Event<'s>>, W: std::io::Write>(
-    mut out: W,
     events: I,
+    mut out: W,
 ) -> std::io::Result<()> {
     struct Adapter<'a, T: ?Sized + 'a> {
         inner: &'a mut T,

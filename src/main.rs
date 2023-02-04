@@ -6,7 +6,7 @@ fn main() {
         .read_to_string(&mut src)
         .expect("failed to read utf-8 file");
 
-    let p = jotdown::Parser::new(&src);
+    let events = jotdown::Parser::new(&src);
     let mut out = std::io::BufWriter::new(std::io::stdout());
-    jotdown::html::write(&mut out, p).unwrap();
+    jotdown::html::write(events, &mut out).unwrap();
 }
