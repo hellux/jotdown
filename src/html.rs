@@ -78,6 +78,7 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
     encountered_footnote: bool,
     footnote_number: Option<std::num::NonZeroUsize>,
     footnote_backlink_written: bool,
+    first_line: bool,
 }
 
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
@@ -91,6 +92,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             encountered_footnote: false,
             footnote_number: None,
             footnote_backlink_written: false,
+            first_line: true,
         }
     }
 
@@ -98,7 +100,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
         while let Some(e) = self.events.next() {
             match e {
                 Event::Start(c, attrs) => {
-                    if c.is_block() {
+                    if c.is_block() && !self.first_line {
                         self.out.write_char('\n')?;
                     }
                     if self.text_only && !matches!(c, Container::Image(..)) {
@@ -427,6 +429,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     self.out.write_str(">")?;
                 }
             }
+            self.first_line = false;
         }
         if self.encountered_footnote {
             self.out.write_str("\n</ol>\n</section>")?;
