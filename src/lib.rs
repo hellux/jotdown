@@ -261,7 +261,7 @@ pub enum Alignment {
 }
 
 /// The type of an inline span link.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpanLinkType {
     /// E.g. `[text](url)`
     Inline,
@@ -270,7 +270,7 @@ pub enum SpanLinkType {
 }
 
 /// The type of an inline link.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkType {
     /// E.g. `[text](url)`.
     Span(SpanLinkType),

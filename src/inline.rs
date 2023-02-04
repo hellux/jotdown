@@ -55,7 +55,7 @@ pub enum QuoteType {
     Double,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventKind {
     Enter(Container),
     Exit(Container),
@@ -66,7 +66,7 @@ pub enum EventKind {
     Placeholder,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
     pub kind: EventKind,
     pub span: Span,
