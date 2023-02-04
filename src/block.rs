@@ -60,6 +60,9 @@ pub enum Leaf {
     /// Each inline is a line.
     Heading { has_section: bool },
 
+    /// Span is empty.
+    DescriptionTerm,
+
     /// Span is '|'.
     /// Has zero or one inline for the cell contents.
     TableCell(Alignment),
@@ -354,10 +357,37 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        self.tree.enter(Node::Container(c), span);
+        let dt = if let ListItem(Description) = c {
+            let dt = self
+                .tree
+                .enter(Node::Leaf(DescriptionTerm), span.empty_after());
+            self.tree.exit();
+            Some(dt)
+        } else {
+            None
+        };
+
+        let node = self.tree.enter(Node::Container(c), span);
         let mut l = 0;
         while l < lines.len() {
             l += self.parse_block(&mut lines[l..], false);
+        }
+
+        if let Some(node_dt) = dt {
+            let node_child = if let Some(node_child) = self.tree.children(node).next() {
+                if let tree::Element::Container(Node::Leaf(l @ Paragraph)) = node_child.elem {
+                    *l = DescriptionTerm;
+                    Some(node_child.index)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(node_child) = node_child {
+                self.tree.swap_prev(node_child);
+                self.tree.remove(node_dt);
+            }
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
@@ -1680,6 +1710,40 @@ mod test {
                     tight: true
                 })),
                 "+"
+            ),
+        );
+    }
+
+    #[test]
+    fn parse_description_list() {
+        test_parse!(
+            concat!(
+                ": term\n",         //
+                "\n",               //
+                "   description\n", //
+            ),
+            (
+                Enter(Container(List {
+                    ty: Description,
+                    tight: false
+                })),
+                ":"
+            ),
+            (Enter(Leaf(DescriptionTerm)), ""),
+            (Inline, "term"),
+            (Exit(Leaf(DescriptionTerm)), ""),
+            (Enter(Container(ListItem(Description))), ":"),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "description"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Description))), ":"),
+            (
+                Exit(Container(List {
+                    ty: Description,
+                    tight: false
+                })),
+                ":"
             ),
         );
     }

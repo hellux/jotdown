@@ -721,6 +721,7 @@ impl<'s> Parser<'s> {
                                         .to_string()
                                         .into(),
                                 },
+                                block::Leaf::DescriptionTerm => Container::DescriptionTerm,
                                 block::Leaf::CodeBlock => {
                                     if let Some(format) = content.strip_prefix('=') {
                                         Container::RawBlock { format }
@@ -771,16 +772,13 @@ impl<'s> Parser<'s> {
                                     Container::List { kind, tight }
                                 }
                             }
-                            block::Container::ListItem(ty) => {
-                                if matches!(ty, block::ListType::Task) {
-                                    let marker = ev.span.of(self.src);
-                                    Container::TaskListItem {
-                                        checked: marker.as_bytes()[3] != b' ',
-                                    }
-                                } else {
-                                    Container::ListItem
-                                }
-                            }
+                            block::Container::ListItem(ty) => match ty {
+                                block::ListType::Task => Container::TaskListItem {
+                                    checked: content.as_bytes()[3] != b' ',
+                                },
+                                block::ListType::Description => Container::DescriptionDetails,
+                                _ => Container::ListItem,
+                            },
                             block::Container::Table => Container::Table,
                             block::Container::TableRow { head } => {
                                 if enter {
