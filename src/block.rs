@@ -967,7 +967,6 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
-    use crate::tree::EventKind;
     use crate::tree::EventKind::*;
     use crate::Alignment;
     use crate::OrderedListNumbering::*;
