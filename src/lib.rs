@@ -24,8 +24,34 @@ pub enum Event<'s> {
     End(Container<'s>),
     /// A string object, text only.
     Str(CowStr<'s>),
-    /// An atomic element.
-    Atom(Atom<'s>),
+    /// A footnote reference.
+    FootnoteReference(&'s str, usize),
+    /// A symbol, by default rendered literally but may be treated specially.
+    Symbol(CowStr<'s>),
+    /// Left single quotation mark.
+    LeftSingleQuote,
+    /// Right double quotation mark.
+    RightSingleQuote,
+    /// Left single quotation mark.
+    LeftDoubleQuote,
+    /// Right double quotation mark.
+    RightDoubleQuote,
+    /// A horizontal ellipsis, i.e. a set of three periods.
+    Ellipsis,
+    /// An en dash.
+    EnDash,
+    /// An em dash.
+    EmDash,
+    /// A space that must not break a line.
+    NonBreakingSpace,
+    /// A newline that may or may not break a line in the output.
+    Softbreak,
+    /// A newline that must break a line in the output.
+    Hardbreak,
+    /// An escape character, not visible in output.
+    Escape,
+    /// A blank line, not visible in output.
+    Blankline,
     /// A thematic break, typically a horizontal rule.
     ThematicBreak(Attributes<'s>),
 }
@@ -230,38 +256,6 @@ pub enum OrderedListStyle {
     Paren,
     /// Number is enclosed by parentheses, e.g. `(1)`.
     ParenParen,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Atom<'s> {
-    /// A footnote reference.
-    FootnoteReference(&'s str, usize),
-    /// A symbol, by default rendered literally but may be treated specially.
-    Symbol(CowStr<'s>),
-    /// Left single quotation mark.
-    LeftSingleQuote,
-    /// Right double quotation mark.
-    RightSingleQuote,
-    /// Left single quotation mark.
-    LeftDoubleQuote,
-    /// Right double quotation mark.
-    RightDoubleQuote,
-    /// A horizontal ellipsis, i.e. a set of three periods.
-    Ellipsis,
-    /// An en dash.
-    EnDash,
-    /// An em dash.
-    EmDash,
-    /// A space that must not break a line.
-    NonBreakingSpace,
-    /// A newline that may or may not break a line in the output.
-    Softbreak,
-    /// A newline that must break a line in the output.
-    Hardbreak,
-    /// An escape character, not visible in output.
-    Escape,
-    /// A blank line, not visible in output.
-    Blankline,
 }
 
 impl OrderedListNumbering {
@@ -631,7 +625,7 @@ impl<'s> Parser<'s> {
                         Event::End(t)
                     }
                 }
-                inline::EventKind::Atom(a) => Event::Atom(match a {
+                inline::EventKind::Atom(a) => match a {
                     inline::Atom::FootnoteReference => {
                         let tag = match self.inlines.src(inline.span) {
                             CowStr::Borrowed(s) => s,
@@ -648,7 +642,7 @@ impl<'s> Parser<'s> {
                                 },
                                 |i| i + 1,
                             );
-                        Atom::FootnoteReference(
+                        Event::FootnoteReference(
                             match self.inlines.src(inline.span) {
                                 CowStr::Borrowed(s) => s,
                                 CowStr::Owned(..) => panic!(),
@@ -656,21 +650,21 @@ impl<'s> Parser<'s> {
                             number,
                         )
                     }
-                    inline::Atom::Symbol => Atom::Symbol(self.inlines.src(inline.span)),
+                    inline::Atom::Symbol => Event::Symbol(self.inlines.src(inline.span)),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
-                        (inline::QuoteType::Single, true) => Atom::LeftSingleQuote,
-                        (inline::QuoteType::Single, false) => Atom::RightSingleQuote,
-                        (inline::QuoteType::Double, true) => Atom::LeftDoubleQuote,
-                        (inline::QuoteType::Double, false) => Atom::RightDoubleQuote,
+                        (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
+                        (inline::QuoteType::Single, false) => Event::RightSingleQuote,
+                        (inline::QuoteType::Double, true) => Event::LeftDoubleQuote,
+                        (inline::QuoteType::Double, false) => Event::RightDoubleQuote,
                     },
-                    inline::Atom::Ellipsis => Atom::Ellipsis,
-                    inline::Atom::EnDash => Atom::EnDash,
-                    inline::Atom::EmDash => Atom::EmDash,
-                    inline::Atom::Nbsp => Atom::NonBreakingSpace,
-                    inline::Atom::Softbreak => Atom::Softbreak,
-                    inline::Atom::Hardbreak => Atom::Hardbreak,
-                    inline::Atom::Escape => Atom::Escape,
-                }),
+                    inline::Atom::Ellipsis => Event::Ellipsis,
+                    inline::Atom::EnDash => Event::EnDash,
+                    inline::Atom::EmDash => Event::EmDash,
+                    inline::Atom::Nbsp => Event::NonBreakingSpace,
+                    inline::Atom::Softbreak => Event::Softbreak,
+                    inline::Atom::Hardbreak => Event::Hardbreak,
+                    inline::Atom::Escape => Event::Escape,
+                },
                 inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
                 inline::EventKind::Whitespace
                 | inline::EventKind::Attributes
@@ -686,7 +680,7 @@ impl<'s> Parser<'s> {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
                 tree::EventKind::Atom(a) => match a {
-                    block::Atom::Blankline => Event::Atom(Atom::Blankline),
+                    block::Atom::Blankline => Event::Blankline,
                     block::Atom::ThematicBreak => {
                         Event::ThematicBreak(self.block_attributes.take())
                     }
@@ -853,7 +847,6 @@ impl<'s> Iterator for Parser<'s> {
 
 #[cfg(test)]
 mod test {
-    use super::Atom::*;
     use super::Attributes;
     use super::Container::*;
     use super::Event::*;
@@ -949,7 +942,7 @@ mod test {
                 Attributes::new()
             ),
             Str("abc".into()),
-            Atom(Softbreak),
+            Softbreak,
             Str("def".into()),
             End(Heading {
                 level: 1,
@@ -1013,7 +1006,7 @@ mod test {
         test_parse!(
             ">\n",
             Start(Blockquote, Attributes::new()),
-            Atom(Blankline),
+            Blankline,
             End(Blockquote),
         );
     }
@@ -1037,7 +1030,7 @@ mod test {
             Start(Paragraph, Attributes::new()),
             Str("para0".into()),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(Paragraph, Attributes::new()),
             Str("para1".into()),
             End(Paragraph),
@@ -1097,7 +1090,7 @@ mod test {
             "abc :+1: def",
             Start(Paragraph, Attributes::new()),
             Str("abc ".into()),
-            Atom(Symbol("+1".into())),
+            Symbol("+1".into()),
             Str(" def".into()),
             End(Paragraph),
         );
@@ -1150,7 +1143,7 @@ mod test {
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
         );
         test_parse!(
             concat!(
@@ -1166,7 +1159,7 @@ mod test {
             Str("text".into()),
             End(Image("url".into(), SpanLinkType::Reference)),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
         );
     }
 
@@ -1187,7 +1180,7 @@ mod test {
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
         );
         test_parse!(
             concat!(
@@ -1204,7 +1197,7 @@ mod test {
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
         );
     }
 
@@ -1226,7 +1219,7 @@ mod test {
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(Paragraph, Attributes::new()),
             Str("para".into()),
             End(Paragraph),
@@ -1238,9 +1231,9 @@ mod test {
         test_parse!(
             "[^a][^b][^c]",
             Start(Paragraph, Attributes::new()),
-            Atom(FootnoteReference("a", 1)),
-            Atom(FootnoteReference("b", 2)),
-            Atom(FootnoteReference("c", 3)),
+            FootnoteReference("a", 1),
+            FootnoteReference("b", 2),
+            FootnoteReference("c", 3),
             End(Paragraph),
             Start(
                 Footnote {
@@ -1283,9 +1276,9 @@ mod test {
         test_parse!(
             "[^a]\n\n[^a]: a\n",
             Start(Paragraph, Attributes::new()),
-            Atom(FootnoteReference("a", 1)),
+            FootnoteReference("a", 1),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(
                 Footnote {
                     tag: "a",
@@ -1314,9 +1307,9 @@ mod test {
                 " def", //
             ),
             Start(Paragraph, Attributes::new()),
-            Atom(FootnoteReference("a", 1)),
+            FootnoteReference("a", 1),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(
                 Footnote {
                     tag: "a",
@@ -1327,7 +1320,7 @@ mod test {
             Start(Paragraph, Attributes::new()),
             Str("abc".into()),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(Paragraph, Attributes::new()),
             Str("def".into()),
             End(Paragraph),
@@ -1348,9 +1341,9 @@ mod test {
                 "para\n", //
             ),
             Start(Paragraph, Attributes::new()),
-            Atom(FootnoteReference("a", 1)),
+            FootnoteReference("a", 1),
             End(Paragraph),
-            Atom(Blankline),
+            Blankline,
             Start(Paragraph, Attributes::new()),
             Str("para".into()),
             End(Paragraph),

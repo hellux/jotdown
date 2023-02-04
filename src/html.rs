@@ -1,7 +1,6 @@
 //! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
 
 use crate::Alignment;
-use crate::Atom;
 use crate::Container;
 use crate::Event;
 use crate::ListKind;
@@ -62,7 +61,7 @@ impl<'s, I: Iterator<Item = Event<'s>>> Iterator for FilteredEvents<I> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut ev = self.events.next();
-        while matches!(ev, Some(Event::Atom(Atom::Blankline | Atom::Escape))) {
+        while matches!(ev, Some(Event::Blankline | Event::Escape)) {
             ev = self.events.next();
         }
         ev
@@ -398,27 +397,25 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     Raw::Html => self.out.write_str(&s)?,
                     Raw::Other => {}
                 },
-                Event::Atom(a) => match a {
-                    Atom::FootnoteReference(_tag, number) => {
-                        write!(
-                            self.out,
-                            r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
-                            number, number, number
-                        )?;
-                    }
-                    Atom::Symbol(sym) => write!(self.out, ":{}:", sym)?,
-                    Atom::LeftSingleQuote => self.out.write_str("&lsquo;")?,
-                    Atom::RightSingleQuote => self.out.write_str("&rsquo;")?,
-                    Atom::LeftDoubleQuote => self.out.write_str("&ldquo;")?,
-                    Atom::RightDoubleQuote => self.out.write_str("&rdquo;")?,
-                    Atom::Ellipsis => self.out.write_str("&hellip;")?,
-                    Atom::EnDash => self.out.write_str("&ndash;")?,
-                    Atom::EmDash => self.out.write_str("&mdash;")?,
-                    Atom::NonBreakingSpace => self.out.write_str("&nbsp;")?,
-                    Atom::Hardbreak => self.out.write_str("<br>\n")?,
-                    Atom::Softbreak => self.out.write_char('\n')?,
-                    Atom::Escape | Atom::Blankline => unreachable!("filtered out"),
-                },
+                Event::FootnoteReference(_tag, number) => {
+                    write!(
+                        self.out,
+                        r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
+                        number, number, number
+                    )?;
+                }
+                Event::Symbol(sym) => write!(self.out, ":{}:", sym)?,
+                Event::LeftSingleQuote => self.out.write_str("&lsquo;")?,
+                Event::RightSingleQuote => self.out.write_str("&rsquo;")?,
+                Event::LeftDoubleQuote => self.out.write_str("&ldquo;")?,
+                Event::RightDoubleQuote => self.out.write_str("&rdquo;")?,
+                Event::Ellipsis => self.out.write_str("&hellip;")?,
+                Event::EnDash => self.out.write_str("&ndash;")?,
+                Event::EmDash => self.out.write_str("&mdash;")?,
+                Event::NonBreakingSpace => self.out.write_str("&nbsp;")?,
+                Event::Hardbreak => self.out.write_str("<br>\n")?,
+                Event::Softbreak => self.out.write_char('\n')?,
+                Event::Escape | Event::Blankline => unreachable!("filtered out"),
                 Event::ThematicBreak(attrs) => {
                     self.out.write_str("\n<hr")?;
                     for (a, v) in attrs.iter() {
