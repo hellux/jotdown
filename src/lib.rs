@@ -5,21 +5,30 @@
 //! directly generate to some output format. This crate provides an [`html`] module that can be
 //! used to render the events to HTML.
 //!
+//! # Feature flags
+//!
+//! - `html` (default): build the html module and a binary that converts djot to HTML.
+//!
 //! # Examples
 //!
 //! Generate HTML from Djot input:
 //!
 //! ```
+//! # #[cfg(feature = "html")]
+//! # {
 //! let djot_input = "hello *world*!";
 //! let events = jotdown::Parser::new(djot_input);
 //! let mut html = String::new();
 //! jotdown::html::push(events, &mut html);
 //! assert_eq!(html, "<p>hello <strong>world</strong>!</p>\n");
+//! # }
 //! ```
 //!
 //! Apply some filter to a specific type of element:
 //!
 //! ```
+//! # #[cfg(feature = "html")]
+//! # {
 //! # use jotdown::Event;
 //! # use jotdown::Container::Link;
 //! let events =
@@ -32,10 +41,12 @@
 //! let mut html = String::new();
 //! jotdown::html::push(events, &mut html);
 //! assert_eq!(html, "<p>a <a href=\"https://example.net\">link</a></p>\n");
+//! # }
 //! ```
 
 use std::fmt::Write;
 
+#[cfg(feature = "html")]
 pub mod html;
 
 mod attr;

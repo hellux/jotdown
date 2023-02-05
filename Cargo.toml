@@ -24,7 +24,14 @@ members = [
     "tests/afl",
 ]
 
+[[bin]]
+name = "jotdown"
+required-features = ["html"]
+doc = false
+
 [features]
+default = ["html"]
+html = [] # html renderer and minimal cli binary
 suite = [] # test suite
 suite_bench = [] # bench test suite
 deterministic = [] # for stable fuzzing
