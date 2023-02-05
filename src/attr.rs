@@ -62,9 +62,9 @@ impl<'s> Attributes<'s> {
     pub fn union(&mut self, other: Self) {
         if let Some(attrs0) = &mut self.0 {
             if let Some(mut attrs1) = other.0 {
-                for (attr, val) in attrs1.drain(..) {
-                    if !attrs0.iter().any(|(a, _)| *a == attr) {
-                        attrs0.push((attr, val));
+                for (key, val) in attrs1.drain(..) {
+                    if !attrs0.iter().any(|(k, _)| *k == key) {
+                        attrs0.push((key, val));
                     }
                 }
             }
