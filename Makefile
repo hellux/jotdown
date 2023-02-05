@@ -66,3 +66,4 @@ clean:
 	(cd tests/bench && make clean)
 	rm -f benches/*.dj
 	rm -rf tests/afl/out
+	(cd examples/jotdown_wasm && make clean)

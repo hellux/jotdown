@@ -1,0 +1,33 @@
+<select id="fmt"><option value="preview">preview</option><option value="html">html</option></select>
+<div id="jotdown" style="display:flex;">
+  <script type="module">
+    import init, { jotdown_render } from './pkg/jotdown_wasm.js';
+    await init();
+
+    let output = document.getElementById("output");
+    let input = document.getElementById("input");
+    let fmt = document.getElementById("fmt");
+
+    function render() {
+        let html = jotdown_render(input.innerText);
+        console.log(fmt.value);
+        if (fmt.value == "html") {
+            output.classList.add("verbatim")
+            output.innerText = html;
+        } else if (fmt.value == "preview") {
+            output.classList.remove("verbatim")
+            output.innerHTML = html;
+        }
+    }
+
+    render()
+
+    input.onkeyup = render;
+    fmt.onchange = render;
+
+    // auto focus on input on load
+    setTimeout(() => { input.focus(); }, 0);
+  </script>
+  <pre id="input" contenteditable="true" placeholder="Input djot here" style="width:50%;height:100%;min-height:8em;max-height:20em;resize:none;margin:0">*Hello world!*</pre>
+  <pre id="output" readonly style="width:50%;height:100%;margin:0;min-height:8em;max-height:20em"></div></pre>
+</div>
