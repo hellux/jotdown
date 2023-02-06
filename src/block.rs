@@ -139,6 +139,7 @@ struct TreeParser<'s> {
 
     /// The previous block element was a blank line.
     prev_blankline: bool,
+    prev_loose: bool,
     /// Stack of currently open lists.
     open_lists: Vec<OpenList>,
     /// Stack of currently open sections.
@@ -154,6 +155,7 @@ impl<'s> TreeParser<'s> {
             src,
             tree: TreeBuilder::new(),
             prev_blankline: false,
+            prev_loose: false,
             open_lists: Vec::new(),
             alignments: Vec::new(),
             open_sections: Vec::new(),
@@ -171,8 +173,8 @@ impl<'s> TreeParser<'s> {
             }
             line_pos += line_count;
         }
-        for _ in self.open_lists.drain(..) {
-            self.tree.exit(); // list
+        while let Some(l) = self.open_lists.pop() {
+            self.close_list(l);
         }
         for _ in self.open_sections.drain(..) {
             self.tree.exit(); // section
@@ -217,8 +219,8 @@ impl<'s> TreeParser<'s> {
                 if self.tree.depth() == (*depth).into()
                     && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
                 {
-                    self.tree.exit(); // list
-                    self.open_lists.pop();
+                    let l = self.open_lists.pop().unwrap();
+                    self.close_list(l);
                 }
             }
 
@@ -226,14 +228,19 @@ impl<'s> TreeParser<'s> {
             if matches!(kind, Kind::Atom(Atom::Blankline)) {
                 self.prev_blankline = true;
             } else {
+                self.prev_loose = false;
                 if self.prev_blankline {
-                    for OpenList { node, depth, .. } in &self.open_lists {
-                        if usize::from(*depth) < self.tree.depth()
-                            && matches!(kind, Kind::ListItem { .. })
+                    if let Some(OpenList { node, depth, .. }) = self.open_lists.last() {
+                        if usize::from(*depth) >= self.tree.depth()
+                            || !matches!(kind, Kind::ListItem { .. })
                         {
-                            continue;
+                            let mut elem = self.tree.elem(*node);
+                            let ListKind { tight, .. } = elem.list_mut().unwrap();
+                            if *tight {
+                                self.prev_loose = true;
+                                *tight = false;
+                            }
                         }
-                        self.tree.elem(*node).list_mut().unwrap().tight = false;
                     }
                 }
                 self.prev_blankline = false;
@@ -401,8 +408,9 @@ impl<'s> TreeParser<'s> {
             assert!(usize::from(*depth) <= self.tree.depth());
             if self.tree.depth() == (*depth).into() {
                 self.prev_blankline = false;
-                self.tree.exit(); // list
-                self.open_lists.pop();
+                self.prev_loose = false;
+                let l = self.open_lists.pop().unwrap();
+                self.close_list(l);
             }
         }
 
@@ -544,6 +552,17 @@ impl<'s> TreeParser<'s> {
         }
 
         self.tree.exit(); // table
+    }
+
+    fn close_list(&mut self, list: OpenList) {
+        if self.prev_loose {
+            let mut elem = self.tree.elem(list.node);
+            let ListKind { tight, .. } = elem.list_mut().unwrap();
+            // ignore blankline at end
+            *tight = true;
+        }
+
+        self.tree.exit(); // list
     }
 }
 
@@ -1486,6 +1505,68 @@ mod test {
     }
 
     #[test]
+    fn parse_list_tight_loose() {
+        test_parse!(
+            concat!(
+                "- a\n",    //
+                "- b\n",    //
+                "\n",       //
+                "   - c\n", //
+                "\n",       //
+                "     d\n", //
+            ),
+            (
+                Enter(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                }))),
+                "-"
+            ),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "b"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (
+                Enter(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: false,
+                }))),
+                "-"
+            ),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "c"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "d"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Exit(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: false,
+                }))),
+                "-"
+            ),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Exit(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                }))),
+                "-"
+            ),
+        );
+    }
+
+    #[test]
     fn parse_list_tight_nest() {
         test_parse!(
             concat!(
@@ -1545,6 +1626,58 @@ mod test {
                     tight: true,
                 }))),
                 "-"
+            ),
+        );
+        test_parse!(
+            concat!(
+                "1. a\n",  //
+                "\n",      //
+                "  - b\n", //
+                "\n",      //
+                " c\n",    //
+            ),
+            (
+                Enter(Container(List(ListKind {
+                    ty: Ordered(Decimal, Period),
+                    tight: true,
+                }))),
+                "1.",
+            ),
+            (Enter(Container(ListItem(Ordered(Decimal, Period)))), "1."),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (
+                Enter(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                }))),
+                "-",
+            ),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "b"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Exit(Container(List(ListKind {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                }))),
+                "-",
+            ),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "c"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Ordered(Decimal, Period)))), "1."),
+            (
+                Exit(Container(List(ListKind {
+                    ty: Ordered(Decimal, Period),
+                    tight: true,
+                }))),
+                "1.",
             ),
         );
     }
@@ -1742,7 +1875,7 @@ mod test {
             (
                 Enter(Container(List(ListKind {
                     ty: Description,
-                    tight: false,
+                    tight: true,
                 }))),
                 ":"
             ),
@@ -1758,7 +1891,7 @@ mod test {
             (
                 Exit(Container(List(ListKind {
                     ty: Description,
-                    tight: false,
+                    tight: true,
                 }))),
                 ":"
             ),
