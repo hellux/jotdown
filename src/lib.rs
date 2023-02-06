@@ -827,7 +827,7 @@ impl<'s> Parser<'s> {
                                 self.block_attributes = Attributes::new();
                                 continue;
                             }
-                            block::Container::List { ty, tight } => {
+                            block::Container::List(block::ListKind { ty, tight }) => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
                                 } else {
