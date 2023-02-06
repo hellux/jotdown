@@ -7,7 +7,7 @@ suite:
 		ln -fs ../../modules/djot.js/test/$$f tests/suite/$$f; \
 	done
 	(cd tests/suite && make)
-	cargo test --features suite
+	cargo test --features suite suite::
 
 .PHONY: suite_bench
 suite_bench:
