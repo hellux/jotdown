@@ -185,14 +185,14 @@ impl<'s> TreeParser<'s> {
             let lines = &mut lines[..line_count];
             let span = span.translate(lines[0].start());
 
-            // skip part of first inline that is shared with the block span
-            lines[0] = lines[0].with_start(span.end());
+            // part of first inline that is from the outer block
+            let outer = Span::new(
+                lines[0].start(),
+                span.end() + "]:".len() * usize::from(matches!(kind, Kind::Definition { .. })),
+            );
 
-            // remove "]:" from footnote / link def
-            if matches!(kind, Kind::Definition { .. }) {
-                assert_eq!(&lines[0].of(self.src)[0..2], "]:");
-                lines[0] = lines[0].skip("]:".len());
-            }
+            // skip outer block part for inner content
+            lines[0] = lines[0].skip(outer.len());
 
             // skip opening and closing fence of code block / div
             let lines = if let Kind::Fenced {
@@ -245,7 +245,7 @@ impl<'s> TreeParser<'s> {
                 Block::Atom(a) => self.tree.atom(a, span),
                 Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines),
                 Block::Container(Table) => self.parse_table(lines, span),
-                Block::Container(c) => self.parse_container(c, &kind, span, lines),
+                Block::Container(c) => self.parse_container(c, &kind, span, outer, lines),
             }
 
             line_count
@@ -310,7 +310,14 @@ impl<'s> TreeParser<'s> {
         self.tree.exit();
     }
 
-    fn parse_container(&mut self, c: Container, k: &Kind, span: Span, lines: &mut [Span]) {
+    fn parse_container(
+        &mut self,
+        c: Container,
+        k: &Kind,
+        span: Span,
+        outer: Span,
+        lines: &mut [Span],
+    ) {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|sp| {
             let src = sp.of(self.src);
@@ -328,9 +335,10 @@ impl<'s> TreeParser<'s> {
                         0
                     }
                 }
-                Kind::ListItem { indent, .. }
-                | Kind::Definition { indent, .. }
-                | Kind::Fenced { indent, .. } => spaces.min(*indent),
+                Kind::ListItem { .. } | Kind::Definition { .. } => {
+                    spaces.min(outer.of(self.src).chars().count())
+                }
+                Kind::Fenced { indent, .. } => spaces.min(*indent),
                 _ => panic!("non-container {:?}", k),
             };
             let count = sp.of(self.src).chars().take_while(|c| *c != '\n').count();
@@ -1925,6 +1933,56 @@ mod test {
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Div)), ""),
+        );
+    }
+
+    #[test]
+    fn parse_inner_indent() {
+        test_parse!(
+            concat!(
+                "- - a\n",
+                "  - b\n", //
+            ),
+            (
+                Enter(Container(List {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                })),
+                "-"
+            ),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Enter(Container(List {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                })),
+                "-"
+            ),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "a"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "b"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Exit(Container(List {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                })),
+                "-"
+            ),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (
+                Exit(Container(List {
+                    ty: Unordered(b'-'),
+                    tight: true,
+                })),
+                "-"
+            ),
         );
     }
 
