@@ -16,7 +16,7 @@ suite_bench:
 		ln -fs ../../modules/djot.js/bench/$$f tests/bench/$$f; \
 	done
 	(cd tests/bench && make)
-	cargo test --features suite_bench
+	cargo test --features suite_bench bench::
 
 .PHONY: bench
 bench:
