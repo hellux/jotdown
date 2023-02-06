@@ -209,7 +209,7 @@ impl<'s> TreeParser<'s> {
             if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
                 assert!(usize::from(*depth) <= self.tree.depth());
                 if self.tree.depth() == (*depth).into()
-                    && !matches!(kind, Kind::ListItem{ ty: ty_new, .. } if *ty == ty_new)
+                    && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
                 {
                     self.tree.exit(); // list
                     self.open_lists.pop();
