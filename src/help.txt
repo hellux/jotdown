@@ -1,0 +1,10 @@
+usage: jotdown [option] [file]
+
+arguments:
+    file            a djot source file. use a dash (`-`) or no argument
+                    to read from stdin
+
+options:
+    -h --help       show this text
+    -v --version    show the version number
+    -o --output     a file to write the output to. stdout if omitted
