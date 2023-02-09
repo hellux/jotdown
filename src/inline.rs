@@ -94,6 +94,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         }
     }
 
+    pub fn reset(&mut self, chars: I) {
+        self.lexer = lex::Lexer::new(chars);
+        self.span = Span::new(0, 0);
+        self.openers.clear();
+        debug_assert!(self.events.is_empty());
+    }
+
     fn eat(&mut self) -> Option<lex::Token> {
         let tok = self.lexer.next();
         if let Some(t) = &tok {

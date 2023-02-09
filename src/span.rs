@@ -170,6 +170,12 @@ impl<'s, I: Iterator<Item = Span>> Iterator for InlineChars<'s, I> {
 
 pub type InlineCharsIter<'s> = InlineChars<'s, std::iter::Copied<std::slice::Iter<'static, Span>>>;
 
+impl<'s> InlineCharsIter<'s> {
+    pub fn empty(src: &'s str) -> Self {
+        InlineChars::new(src, [].iter().copied())
+    }
+}
+
 /// Discontinuous slices of a [`&str`].
 #[derive(Default, Debug)]
 pub struct InlineSpans<'s> {

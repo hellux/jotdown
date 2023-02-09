@@ -492,7 +492,7 @@ pub struct Parser<'s> {
     /// Spans to the inlines in the leaf block currently being parsed.
     inlines: span::InlineSpans<'s>,
     /// Inline parser, recreated for each new inline.
-    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+    inline_parser: inline::Parser<span::InlineCharsIter<'s>>,
 }
 
 struct Heading {
@@ -667,148 +667,147 @@ impl<'s> Parser<'s> {
             footnote_index: 0,
             footnote_active: false,
             inlines: span::InlineSpans::new(src),
-            inline_parser: None,
+            inline_parser: inline::Parser::new(span::InlineChars::empty(src)),
         }
     }
 
     fn inline(&mut self) -> Option<Event<'s>> {
-        self.inline_parser.as_mut().and_then(|parser| {
-            let mut inline = parser.next();
+        let mut inline = self.inline_parser.next();
 
-            let mut first_is_attr = false;
-            let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
-                if let inline::EventKind::Attributes = inl.kind {
-                    first_is_attr = true;
-                    attr::parse(self.inlines.slice(inl.span))
-                } else {
-                    Attributes::new()
-                }
-            });
+        inline.as_ref()?;
 
-            if first_is_attr {
-                inline = parser.next();
+        let mut first_is_attr = false;
+        let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
+            if let inline::EventKind::Attributes = inl.kind {
+                first_is_attr = true;
+                attr::parse(self.inlines.slice(inl.span))
+            } else {
+                Attributes::new()
             }
+        });
 
-            inline.map(|inline| match inline.kind {
-                inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
-                    let t = match c {
-                        inline::Container::Span => Container::Span,
-                        inline::Container::Verbatim => Container::Verbatim,
-                        inline::Container::InlineMath => Container::Math { display: false },
-                        inline::Container::DisplayMath => Container::Math { display: true },
-                        inline::Container::RawFormat => Container::RawInline {
-                            format: match self.inlines.src(inline.span) {
-                                CowStr::Owned(_) => panic!(),
-                                CowStr::Borrowed(s) => s,
-                            },
+        if first_is_attr {
+            inline = self.inline_parser.next();
+        }
+
+        inline.map(|inline| match inline.kind {
+            inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
+                let t = match c {
+                    inline::Container::Span => Container::Span,
+                    inline::Container::Verbatim => Container::Verbatim,
+                    inline::Container::InlineMath => Container::Math { display: false },
+                    inline::Container::DisplayMath => Container::Math { display: true },
+                    inline::Container::RawFormat => Container::RawInline {
+                        format: match self.inlines.src(inline.span) {
+                            CowStr::Owned(_) => panic!(),
+                            CowStr::Borrowed(s) => s,
                         },
-                        inline::Container::Subscript => Container::Subscript,
-                        inline::Container::Superscript => Container::Superscript,
-                        inline::Container::Insert => Container::Insert,
-                        inline::Container::Delete => Container::Delete,
-                        inline::Container::Emphasis => Container::Emphasis,
-                        inline::Container::Strong => Container::Strong,
-                        inline::Container::Mark => Container::Mark,
-                        inline::Container::InlineLink => Container::Link(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', "").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            },
-                            LinkType::Span(SpanLinkType::Inline),
-                        ),
-                        inline::Container::InlineImage => Container::Image(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', "").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            },
-                            SpanLinkType::Inline,
-                        ),
-                        inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
-                            let tag = match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', " ").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            };
-                            let link_def =
-                                self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
-
-                            let url = if let Some((url, attrs_def)) = link_def {
-                                attributes.union(attrs_def);
-                                url
-                            } else {
-                                self.pre_pass
-                                    .heading_id_by_tag(tag.as_ref())
-                                    .map_or_else(|| "".into(), |id| format!("#{}", id).into())
-                            };
-
-                            if matches!(c, inline::Container::ReferenceLink) {
-                                Container::Link(url, LinkType::Span(SpanLinkType::Reference))
-                            } else {
-                                Container::Image(url, SpanLinkType::Reference)
-                            }
-                        }
-                        inline::Container::Autolink => {
-                            let url = self.inlines.src(inline.span);
-                            let url = if url.contains('@') {
-                                format!("mailto:{}", url).into()
-                            } else {
-                                url
-                            };
-                            Container::Link(url, LinkType::AutoLink)
-                        }
-                    };
-                    if matches!(inline.kind, inline::EventKind::Enter(_)) {
-                        Event::Start(t, attributes)
-                    } else {
-                        Event::End(t)
-                    }
-                }
-                inline::EventKind::Atom(a) => match a {
-                    inline::Atom::FootnoteReference => {
+                    },
+                    inline::Container::Subscript => Container::Subscript,
+                    inline::Container::Superscript => Container::Superscript,
+                    inline::Container::Insert => Container::Insert,
+                    inline::Container::Delete => Container::Delete,
+                    inline::Container::Emphasis => Container::Emphasis,
+                    inline::Container::Strong => Container::Strong,
+                    inline::Container::Mark => Container::Mark,
+                    inline::Container::InlineLink => Container::Link(
+                        match self.inlines.src(inline.span) {
+                            CowStr::Owned(s) => s.replace('\n', "").into(),
+                            s @ CowStr::Borrowed(_) => s,
+                        },
+                        LinkType::Span(SpanLinkType::Inline),
+                    ),
+                    inline::Container::InlineImage => Container::Image(
+                        match self.inlines.src(inline.span) {
+                            CowStr::Owned(s) => s.replace('\n', "").into(),
+                            s @ CowStr::Borrowed(_) => s,
+                        },
+                        SpanLinkType::Inline,
+                    ),
+                    inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
                         let tag = match self.inlines.src(inline.span) {
+                            CowStr::Owned(s) => s.replace('\n', " ").into(),
+                            s @ CowStr::Borrowed(_) => s,
+                        };
+                        let link_def = self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
+
+                        let url = if let Some((url, attrs_def)) = link_def {
+                            attributes.union(attrs_def);
+                            url
+                        } else {
+                            self.pre_pass
+                                .heading_id_by_tag(tag.as_ref())
+                                .map_or_else(|| "".into(), |id| format!("#{}", id).into())
+                        };
+
+                        if matches!(c, inline::Container::ReferenceLink) {
+                            Container::Link(url, LinkType::Span(SpanLinkType::Reference))
+                        } else {
+                            Container::Image(url, SpanLinkType::Reference)
+                        }
+                    }
+                    inline::Container::Autolink => {
+                        let url = self.inlines.src(inline.span);
+                        let url = if url.contains('@') {
+                            format!("mailto:{}", url).into()
+                        } else {
+                            url
+                        };
+                        Container::Link(url, LinkType::AutoLink)
+                    }
+                };
+                if matches!(inline.kind, inline::EventKind::Enter(_)) {
+                    Event::Start(t, attributes)
+                } else {
+                    Event::End(t)
+                }
+            }
+            inline::EventKind::Atom(a) => match a {
+                inline::Atom::FootnoteReference => {
+                    let tag = match self.inlines.src(inline.span) {
+                        CowStr::Borrowed(s) => s,
+                        CowStr::Owned(..) => panic!(),
+                    };
+                    let number = self
+                        .footnote_references
+                        .iter()
+                        .position(|t| *t == tag)
+                        .map_or_else(
+                            || {
+                                self.footnote_references.push(tag);
+                                self.footnote_references.len()
+                            },
+                            |i| i + 1,
+                        );
+                    Event::FootnoteReference(
+                        match self.inlines.src(inline.span) {
                             CowStr::Borrowed(s) => s,
                             CowStr::Owned(..) => panic!(),
-                        };
-                        let number = self
-                            .footnote_references
-                            .iter()
-                            .position(|t| *t == tag)
-                            .map_or_else(
-                                || {
-                                    self.footnote_references.push(tag);
-                                    self.footnote_references.len()
-                                },
-                                |i| i + 1,
-                            );
-                        Event::FootnoteReference(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Borrowed(s) => s,
-                                CowStr::Owned(..) => panic!(),
-                            },
-                            number,
-                        )
-                    }
-                    inline::Atom::Symbol => Event::Symbol(self.inlines.src(inline.span)),
-                    inline::Atom::Quote { ty, left } => match (ty, left) {
-                        (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
-                        (inline::QuoteType::Single, false) => Event::RightSingleQuote,
-                        (inline::QuoteType::Double, true) => Event::LeftDoubleQuote,
-                        (inline::QuoteType::Double, false) => Event::RightDoubleQuote,
-                    },
-                    inline::Atom::Ellipsis => Event::Ellipsis,
-                    inline::Atom::EnDash => Event::EnDash,
-                    inline::Atom::EmDash => Event::EmDash,
-                    inline::Atom::Nbsp => Event::NonBreakingSpace,
-                    inline::Atom::Softbreak => Event::Softbreak,
-                    inline::Atom::Hardbreak => Event::Hardbreak,
-                    inline::Atom::Escape => Event::Escape,
-                },
-                inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
-                inline::EventKind::Whitespace
-                | inline::EventKind::Attributes
-                | inline::EventKind::Placeholder => {
-                    panic!("{:?}", inline)
+                        },
+                        number,
+                    )
                 }
-            })
+                inline::Atom::Symbol => Event::Symbol(self.inlines.src(inline.span)),
+                inline::Atom::Quote { ty, left } => match (ty, left) {
+                    (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
+                    (inline::QuoteType::Single, false) => Event::RightSingleQuote,
+                    (inline::QuoteType::Double, true) => Event::LeftDoubleQuote,
+                    (inline::QuoteType::Double, false) => Event::RightDoubleQuote,
+                },
+                inline::Atom::Ellipsis => Event::Ellipsis,
+                inline::Atom::EnDash => Event::EnDash,
+                inline::Atom::EmDash => Event::EmDash,
+                inline::Atom::Nbsp => Event::NonBreakingSpace,
+                inline::Atom::Softbreak => Event::Softbreak,
+                inline::Atom::Hardbreak => Event::Hardbreak,
+                inline::Atom::Escape => Event::Escape,
+            },
+            inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
+            inline::EventKind::Whitespace
+            | inline::EventKind::Attributes
+            | inline::EventKind::Placeholder => {
+                panic!("{:?}", inline)
+            }
         })
     }
 
@@ -840,8 +839,7 @@ impl<'s> Parser<'s> {
                             }
                             if enter && !matches!(l, block::Leaf::CodeBlock) {
                                 self.inlines.set_spans(self.tree.take_inlines());
-                                self.inline_parser =
-                                    Some(inline::Parser::new(self.inlines.chars()));
+                                self.inline_parser.reset(self.inlines.chars());
                             }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
