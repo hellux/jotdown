@@ -604,8 +604,8 @@ pub struct Parser<'s> {
 
     /// Spans to the inlines in the leaf block currently being parsed.
     inlines: span::InlineSpans<'s>,
-    /// Inline parser, recreated for each new inline.
-    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+    /// Inline parser.
+    inline_parser: inline::Parser<span::InlineCharsIter<'s>>,
 }
 
 struct Heading {
@@ -629,7 +629,11 @@ struct PrePass<'s> {
 
 impl<'s> PrePass<'s> {
     #[must_use]
-    fn new(src: &'s str, mut tree: block::Tree) -> Self {
+    fn new(
+        src: &'s str,
+        mut tree: block::Tree,
+        inline_parser: &mut inline::Parser<span::InlineCharsIter<'s>>,
+    ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<&str> = Set::new();
@@ -667,7 +671,8 @@ impl<'s> PrePass<'s> {
                     inlines.set_spans(tree.take_inlines());
                     let mut id_auto = String::new();
                     let mut last_whitespace = true;
-                    inline::Parser::new(inlines.chars()).for_each(|ev| match ev.kind {
+                    inline_parser.reset(inlines.chars());
+                    inline_parser.for_each(|ev| match ev.kind {
                         inline::EventKind::Str => {
                             let mut chars = inlines.slice(ev.span).chars().peekable();
                             while let Some(c) = chars.next() {
@@ -767,7 +772,8 @@ impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
         let tree = block::parse(src);
-        let pre_pass = PrePass::new(src, tree.clone());
+        let mut inline_parser = inline::Parser::new(span::InlineChars::empty(src));
+        let pre_pass = PrePass::new(src, tree.clone(), &mut inline_parser);
 
         Self {
             src,
@@ -780,29 +786,32 @@ impl<'s> Parser<'s> {
             footnote_index: 0,
             footnote_active: false,
             inlines: span::InlineSpans::new(src),
-            inline_parser: None,
+            inline_parser,
         }
     }
 
     fn inline(&mut self) -> Option<Event<'s>> {
-        self.inline_parser.as_mut().and_then(|parser| {
-            let mut inline = parser.next();
+        let mut inline = self.inline_parser.next();
 
-            let mut first_is_attr = false;
-            let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
-                if let inline::EventKind::Attributes = inl.kind {
-                    first_is_attr = true;
-                    attr::parse(self.inlines.slice(inl.span))
-                } else {
-                    Attributes::new()
-                }
-            });
+        inline.as_ref()?;
 
-            if first_is_attr {
-                inline = parser.next();
+        let mut first_is_attr = false;
+        let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
+            if let inline::EventKind::Attributes = inl.kind {
+                first_is_attr = true;
+                attr::parse(self.inlines.slice(inl.span))
+            } else {
+                Attributes::new()
             }
+        });
 
-            inline.map(|inline| match inline.kind {
+        if first_is_attr {
+            inline = self.inline_parser.next();
+        }
+
+        inline.map(|inline| {
+            let enter = matches!(inline.kind, inline::EventKind::Enter(_));
+            match inline.kind {
                 inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                     let t = match c {
                         inline::Container::Span => Container::Span,
@@ -870,7 +879,7 @@ impl<'s> Parser<'s> {
                             Container::Link(url, ty)
                         }
                     };
-                    if matches!(inline.kind, inline::EventKind::Enter(_)) {
+                    if enter {
                         Event::Start(t, attributes)
                     } else {
                         Event::End(t)
@@ -922,7 +931,7 @@ impl<'s> Parser<'s> {
                 | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
-            })
+            }
         })
     }
 
@@ -954,8 +963,7 @@ impl<'s> Parser<'s> {
                             }
                             if enter && !matches!(l, block::Leaf::CodeBlock) {
                                 self.inlines.set_spans(self.tree.take_inlines());
-                                self.inline_parser =
-                                    Some(inline::Parser::new(self.inlines.chars()));
+                                self.inline_parser.reset(self.inlines.chars());
                             }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
