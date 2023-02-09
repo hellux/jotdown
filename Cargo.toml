@@ -19,6 +19,8 @@ exclude = [
 
 [workspace]
 members = [
+    "bench/criterion",
+    "bench/input",
     "examples/jotdown_wasm",
 ]
 exclude = [

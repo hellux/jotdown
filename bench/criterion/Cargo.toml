@@ -1,0 +1,14 @@
+[package]
+name = "bench-crit"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+criterion = { version = "0.4", default-features = false }
+bench-input = { path = "../input" }
+jotdown = { path = "../../" }
+
+[[bench]]
+name = "criterion"
+path = "main.rs"
+harness = false
