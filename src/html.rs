@@ -7,17 +7,19 @@
 //! Push to a [`String`] (implements [`std::fmt::Write`]):
 //!
 //! ```
+//! # use jotdown::Render;
 //! # let events = std::iter::empty();
 //! let mut html = String::new();
-//! jotdown::html::push(events, &mut html);
+//! jotdown::html::Renderer.push(events, &mut html);
 //! ```
 //!
 //! Write to standard output with buffering ([`std::io::Stdout`] implements [`std::io::Write`]):
 //!
 //! ```
+//! # use jotdown::Render;
 //! # let events = std::iter::empty();
 //! let mut out = std::io::BufWriter::new(std::io::stdout());
-//! jotdown::html::write(events, &mut out).unwrap();
+//! jotdown::html::Renderer.write(events, &mut out).unwrap();
 //! ```
 
 use crate::Alignment;
@@ -25,45 +27,18 @@ use crate::Container;
 use crate::Event;
 use crate::ListKind;
 use crate::OrderedListNumbering::*;
+use crate::Render;
 
-/// Generate HTML and push it to a unicode-accepting buffer or stream.
-pub fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(events: I, out: W) {
-    Writer::new(events, out).write().unwrap();
-}
+pub struct Renderer;
 
-/// Generate HTML and write it to a byte sink, encoded as UTF-8.
-///
-/// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
-/// [`std::io::BufWriter`].
-pub fn write<'s, I: Iterator<Item = Event<'s>>, W: std::io::Write>(
-    events: I,
-    mut out: W,
-) -> std::io::Result<()> {
-    struct Adapter<'a, T: ?Sized + 'a> {
-        inner: &'a mut T,
-        error: std::io::Result<()>,
+impl Render for Renderer {
+    fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(
+        &self,
+        events: I,
+        out: W,
+    ) -> std::fmt::Result {
+        Writer::new(events, out).write()
     }
-
-    impl<T: std::io::Write + ?Sized> std::fmt::Write for Adapter<'_, T> {
-        fn write_str(&mut self, s: &str) -> std::fmt::Result {
-            match self.inner.write_all(s.as_bytes()) {
-                Ok(()) => Ok(()),
-                Err(e) => {
-                    self.error = Err(e);
-                    Err(std::fmt::Error)
-                }
-            }
-        }
-    }
-
-    let mut output = Adapter {
-        inner: &mut out,
-        error: Ok(()),
-    };
-
-    Writer::new(events, &mut output)
-        .write()
-        .map_err(|_| output.error.unwrap_err())
 }
 
 enum Raw {

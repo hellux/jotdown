@@ -16,10 +16,11 @@
 //! ```
 //! # #[cfg(feature = "html")]
 //! # {
+//! use jotdown::Render;
 //! let djot_input = "hello *world*!";
 //! let events = jotdown::Parser::new(djot_input);
 //! let mut html = String::new();
-//! jotdown::html::push(events, &mut html);
+//! jotdown::html::Renderer.push(events, &mut html);
 //! assert_eq!(html, "<p>hello <strong>world</strong>!</p>\n");
 //! # }
 //! ```
@@ -31,6 +32,7 @@
 //! # {
 //! # use jotdown::Event;
 //! # use jotdown::Container::Link;
+//! # use jotdown::Render;
 //! let events =
 //!     jotdown::Parser::new("a [link](https://example.com)").map(|e| match e {
 //!         Event::Start(Link(dst, ty), attrs) => {
@@ -39,7 +41,7 @@
 //!         e => e,
 //!     });
 //! let mut html = String::new();
-//! jotdown::html::push(events, &mut html);
+//! jotdown::html::Renderer.push(events, &mut html);
 //! assert_eq!(html, "<p>a <a href=\"https://example.net\">link</a></p>\n");
 //! # }
 //! ```
