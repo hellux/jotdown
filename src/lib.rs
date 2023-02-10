@@ -44,7 +44,9 @@
 //! # }
 //! ```
 
-use std::fmt::Write;
+use std::fmt;
+use std::fmt::Write as FmtWrite;
+use std::io;
 
 #[cfg(feature = "html")]
 pub mod html;
@@ -62,6 +64,55 @@ use span::Span;
 pub use attr::Attributes;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
+
+pub trait Render {
+    /// Push [`Event`]s to a unicode-accepting buffer or stream.
+    fn push<'s, I: Iterator<Item = Event<'s>>, W: fmt::Write>(
+        &self,
+        events: I,
+        out: W,
+    ) -> fmt::Result;
+
+    /// Write [`Event`]s to a byte sink, encoded as UTF-8.
+    ///
+    /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
+    /// [`std::io::BufWriter`].
+    fn write<'s, I: Iterator<Item = Event<'s>>, W: io::Write>(
+        &self,
+        events: I,
+        out: W,
+    ) -> io::Result<()> {
+        struct Adapter<T: io::Write> {
+            inner: T,
+            error: io::Result<()>,
+        }
+
+        impl<T: io::Write> fmt::Write for Adapter<T> {
+            fn write_str(&mut self, s: &str) -> fmt::Result {
+                match self.inner.write_all(s.as_bytes()) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        self.error = Err(e);
+                        Err(fmt::Error)
+                    }
+                }
+            }
+        }
+
+        let mut out = Adapter {
+            inner: out,
+            error: Ok(()),
+        };
+
+        match self.push(events, &mut out) {
+            Ok(()) => Ok(()),
+            Err(_) => match out.error {
+                Err(_) => out.error,
+                _ => Err(io::Error::new(io::ErrorKind::Other, "formatter error")),
+            },
+        }
+    }
+}
 
 /// A Djot event.
 ///
