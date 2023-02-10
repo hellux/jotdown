@@ -1,3 +1,4 @@
+use jotdown::Render;
 use std::io::Read;
 
 fn main() {
@@ -8,5 +9,6 @@ fn main() {
 
     let events = jotdown::Parser::new(&src);
     let mut out = std::io::BufWriter::new(std::io::stdout());
-    jotdown::html::write(events, &mut out).unwrap();
+    let html = jotdown::html::Renderer;
+    html.write(events, &mut out).unwrap();
 }
