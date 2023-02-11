@@ -1,3 +1,3 @@
 [submodule "jgm/djot.js"]
     path = modules/djot.js
-    url = git@github.com:jgm/djot.js.git
+    url = https://github.com/jgm/djot.js.git
