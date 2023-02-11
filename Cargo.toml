@@ -21,6 +21,8 @@ exclude = [
 [workspace]
 members = [
     "examples/jotdown_wasm",
+]
+exclude = [
     "tests/afl",
 ]
 

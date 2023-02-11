@@ -61,9 +61,9 @@ afl:
 	rm -rf tests/afl/out
 	(cd tests/afl && \
 		cargo afl build --release --config profile.release.debug-assertions=true && \
-		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm ../../target/release/${AFL_TARGET} &) && \
+		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm target/release/${AFL_TARGET} &) && \
 		for i in $$(seq $$((${AFL_JOBS} - 1))); do \
-			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i ../../target/release/${AFL_TARGET} & \
+			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i target/release/${AFL_TARGET} & \
 		done; \
 		trap - EXIT;\
 		cat) # keep process alive for trap
