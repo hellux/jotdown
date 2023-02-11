@@ -7,11 +7,12 @@ mod suite;
 #[macro_export]
 macro_rules! suite_test {
     ($src:expr, $expected:expr) => {
+        use jotdown::Render;
         let src = $src;
         let expected = $expected;
         let p = jotdown::Parser::new(src);
         let mut actual = String::new();
-        jotdown::html::push(p, &mut actual);
+        jotdown::html::Renderer.push(p, &mut actual).unwrap();
         assert_eq!(
             actual.trim(),
             expected.trim(),
