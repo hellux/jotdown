@@ -4,6 +4,8 @@ use std::io::BufWriter;
 use std::io::Read;
 use std::process::exit;
 
+use jotdown::Render;
+
 #[derive(Default)]
 struct App {
     input: Option<OsString>,
@@ -66,10 +68,11 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     let parser = jotdown::Parser::new(&content);
+    let html = jotdown::html::Renderer;
 
     match app.output {
-        Some(path) => jotdown::html::write(parser, File::create(path)?)?,
-        None => jotdown::html::write(parser, BufWriter::new(std::io::stdout()))?,
+        Some(path) => html.write(parser, File::create(path)?)?,
+        None => html.write(parser, BufWriter::new(std::io::stdout()))?,
     }
 
     Ok(())
