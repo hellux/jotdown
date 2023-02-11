@@ -27,6 +27,7 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
 /// A collection of attributes, i.e. a key-value map.
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
 // indirection instead of always 24 bytes.
+#[allow(clippy::box_vec)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Attributes<'s>(Option<Box<Vec<(&'s str, CowStr<'s>)>>>);
 

@@ -442,11 +442,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     if matches!(dir, Dir::Open) {
                         return None;
                     }
-                    if matches!(dir, Dir::Both)
-                        && self.events.back().map_or(false, |ev| {
-                            matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
-                        })
-                    {
+                    let whitespace_after = self.events.back().map_or(false, |ev| {
+                        matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
+                    });
+                    if matches!(dir, Dir::Both) && whitespace_after {
                         return None;
                     }
 
@@ -791,6 +790,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
+        #[allow(clippy::blocks_in_if_conditions)]
         while self.events.is_empty()
             || !self.openers.is_empty()
             || self // for merge or attributes
@@ -813,12 +813,13 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
                 EventKind::Str | EventKind::Whitespace => {
                     // merge str events
                     let mut span = e.span;
-                    while self.events.front().map_or(false, |e| {
+                    let should_merge = |e: &Event, span: Span| {
                         matches!(
                             e.kind,
                             EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
                         ) && span.end() == e.span.start()
-                    }) {
+                    };
+                    while self.events.front().map_or(false, |e| should_merge(e, span)) {
                         let ev = self.events.pop_front().unwrap();
                         span = span.union(ev.span);
                     }

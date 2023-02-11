@@ -351,13 +351,13 @@ impl<'s> TreeParser<'s> {
         });
 
         if let ListItem(ty) = c {
-            if self
+            let same_depth = self
                 .open_lists
                 .last()
                 .map_or(true, |OpenList { depth, .. }| {
                     usize::from(*depth) < self.tree.depth()
-                })
-            {
+                });
+            if same_depth {
                 let tight = true;
                 let node = self.tree.enter(
                     Node::Container(Container::List(ListKind { ty, tight })),
