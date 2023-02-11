@@ -1,4 +1,6 @@
 BEGIN {
+    FS=":"
+    while (getline < "skip") skips[$1]=$2
     print "use crate::suite_test;"
     print ""
 }
@@ -40,6 +42,7 @@ $0 ~ "^\\.$" && !ignore { # enter html
     cmd="cat src | md5sum | cut -c-7"
     cmd | getline hash
     close(cmd)
+    if (hash in skips) printf "#[ignore = \"%s\"]\n", skips[hash]
     printf "fn test_%s() {\n", hash
     printf "    let src = r##\""
     while (getline l < "src") print l
