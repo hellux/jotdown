@@ -1,5 +1,7 @@
+#[rustfmt::skip]
 #[cfg(feature = "suite_bench")]
 mod bench;
+#[rustfmt::skip]
 #[cfg(feature = "suite")]
 mod suite;
 
