@@ -1,5 +1,30 @@
 .POSIX:
 
+all: jotdown docs
+	cargo build --workspace
+
+jotdown: target/release/jotdown
+	cp $< $@
+
+target/release/jotdown:
+	cargo build --release
+
+.PHONY:
+docs:
+	cargo doc --no-deps --workspace
+
+.PHONY: lint
+lint:
+	cargo fmt --all -- --check
+	cargo clippy -- -D warnings
+	cargo clippy --no-default-features -- -D warnings
+	cargo clippy --all-features -- -D warnings
+
+.PHONY: check
+check:
+	cargo test --workspace
+	cargo test --workspace --no-default-features
+
 .PHONY: suite
 suite:
 	git submodule update --init modules/djot.js
