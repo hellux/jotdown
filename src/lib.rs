@@ -241,7 +241,8 @@ pub enum Container<'s> {
 
 impl<'s> Container<'s> {
     /// Is a block element.
-    fn is_block(&self) -> bool {
+    #[must_use]
+    pub fn is_block(&self) -> bool {
         match self {
             Self::Blockquote
             | Self::List { .. }
@@ -278,7 +279,8 @@ impl<'s> Container<'s> {
     }
 
     /// Is a block element that may contain children blocks.
-    fn is_block_container(&self) -> bool {
+    #[must_use]
+    pub fn is_block_container(&self) -> bool {
         match self {
             Self::Blockquote
             | Self::List { .. }
