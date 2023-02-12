@@ -20,6 +20,7 @@ exclude = [
 [workspace]
 members = [
     "bench/criterion",
+    "bench/iai",
     "bench/input",
     "examples/jotdown_wasm",
 ]

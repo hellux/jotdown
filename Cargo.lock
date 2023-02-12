@@ -35,6 +35,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bench-iai"
+version = "0.1.0"
+dependencies = [
+ "bench-input",
+ "iai",
+ "jotdown",
+]
+
+[[package]]
 name = "bench-input"
 version = "0.1.0"
 
@@ -170,6 +179,12 @@ checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "iai"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71a816c97c42258aa5834d07590b718b4c9a598944cd39a52dc25b351185d678"
 
 [[package]]
 name = "indexmap"
