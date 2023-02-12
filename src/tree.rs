@@ -222,6 +222,13 @@ impl<C, A> Builder<C, A> {
     }
 
     pub(super) fn inline(&mut self, span: Span) {
+        if let Some(head_ni) = self.head {
+            let n = &mut self.nodes[head_ni.index()];
+            if matches!(n.kind, NodeKind::Inline) && n.span.end() == span.start() {
+                n.span = n.span.with_end(span.end());
+                return;
+            }
+        }
         self.add_node(InternalNode {
             span,
             kind: NodeKind::Inline,

@@ -711,25 +711,20 @@ impl<'s> Parser<'s> {
                     inline::Container::Strong => Container::Strong,
                     inline::Container::Mark => Container::Mark,
                     inline::Container::InlineLink => Container::Link(
-                        match self.inlines.src(inline.span) {
-                            CowStr::Owned(s) => s.replace('\n', "").into(),
-                            s @ CowStr::Borrowed(_) => s,
-                        },
+                        self.inlines.src(inline.span).replace('\n', "").into(),
                         LinkType::Span(SpanLinkType::Inline),
                     ),
                     inline::Container::InlineImage => Container::Image(
-                        match self.inlines.src(inline.span) {
-                            CowStr::Owned(s) => s.replace('\n', "").into(),
-                            s @ CowStr::Borrowed(_) => s,
-                        },
+                        self.inlines.src(inline.span).replace('\n', "").into(),
                         SpanLinkType::Inline,
                     ),
                     inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
-                        let tag = match self.inlines.src(inline.span) {
-                            CowStr::Owned(s) => s.replace('\n', " ").into(),
-                            s @ CowStr::Borrowed(_) => s,
-                        };
-                        let link_def = self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
+                        let tag = self.inlines.src(inline.span).replace('\n', " ");
+                        let link_def = self
+                            .pre_pass
+                            .link_definitions
+                            .get::<str>(tag.as_ref())
+                            .cloned();
 
                         let url = if let Some((url, attrs_def)) = link_def {
                             attributes.union(attrs_def);

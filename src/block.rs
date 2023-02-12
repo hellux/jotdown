@@ -1076,8 +1076,7 @@ mod test {
         test_parse!(
             "para0\npara1\n",
             (Enter(Leaf(Paragraph)), ""),
-            (Inline, "para0\n"),
-            (Inline, "para1"),
+            (Inline, "para0\npara1"),
             (Exit(Leaf(Paragraph)), ""),
         );
     }
@@ -1136,8 +1135,7 @@ mod test {
             (Enter(Container(Section)), "#"),
             (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "8\n"),
-            (Inline, "12\n"),
-            (Inline, "15"),
+            (Inline, "12\n15"),
             (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
@@ -1154,8 +1152,7 @@ mod test {
             (Enter(Container(Section)), "#"),
             (Enter(Leaf(Heading { has_section: true })), "#"),
             (Inline, "a\n"),
-            (Inline, "b\n"),
-            (Inline, "c"),
+            (Inline, "b\nc"),
             (Exit(Leaf(Heading { has_section: true })), "#"),
             (Exit(Container(Section)), "#"),
         );
@@ -1229,9 +1226,7 @@ mod test {
             "> a\nb\nc\n",
             (Enter(Container(Blockquote)), ">"),
             (Enter(Leaf(Paragraph)), ""),
-            (Inline, "a\n"),
-            (Inline, "b\n"),
-            (Inline, "c"),
+            (Inline, "a\nb\nc"),
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(Blockquote)), ">"),
         );
@@ -1308,9 +1303,7 @@ mod test {
                 "````", //
             ),
             (Enter(Leaf(CodeBlock)), "lang"),
-            (Inline, "l0\n"),
-            (Inline, "```\n"),
-            (Inline, " l1\n"),
+            (Inline, "l0\n```\n l1\n"),
             (Exit(Leaf(CodeBlock)), "lang"),
         );
         test_parse!(
@@ -1337,8 +1330,7 @@ mod test {
                 "~~~\n", //
             ),
             (Enter(Leaf(CodeBlock)), ""),
-            (Inline, "code\n"),
-            (Inline, "  block\n"),
+            (Inline, "code\n  block\n"),
             (Exit(Leaf(CodeBlock)), ""),
         );
     }
@@ -2013,8 +2005,7 @@ mod test {
             ),
             (Enter(Container(Table)), ""),
             (Enter(Leaf(Caption)), ""),
-            (Inline, "caption\n"),
-            (Inline, "continued"),
+            (Inline, "caption\ncontinued"),
             (Exit(Leaf(Caption)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
             (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
