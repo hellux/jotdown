@@ -694,15 +694,23 @@ impl<'s> Parser<'s> {
             inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                 let t = match c {
                     inline::Container::Span => Container::Span,
-                    inline::Container::Verbatim => Container::Verbatim,
-                    inline::Container::InlineMath => Container::Math { display: false },
-                    inline::Container::DisplayMath => Container::Math { display: true },
-                    inline::Container::RawFormat => Container::RawInline {
-                        format: match self.inlines.src(inline.span) {
-                            CowStr::Owned(_) => panic!(),
-                            CowStr::Borrowed(s) => s,
-                        },
-                    },
+                    inline::Container::Verbatim(inline::VerbatimType::Verbatim) => {
+                        Container::Verbatim
+                    }
+                    inline::Container::Verbatim(inline::VerbatimType::InlineMath) => {
+                        Container::Math { display: false }
+                    }
+                    inline::Container::Verbatim(inline::VerbatimType::DisplayMath) => {
+                        Container::Math { display: true }
+                    }
+                    inline::Container::Verbatim(inline::VerbatimType::Raw) => {
+                        Container::RawInline {
+                            format: match self.inlines.src(inline.span) {
+                                CowStr::Owned(_) => panic!(),
+                                CowStr::Borrowed(s) => s,
+                            },
+                        }
+                    }
                     inline::Container::Subscript => Container::Subscript,
                     inline::Container::Superscript => Container::Superscript,
                     inline::Container::Insert => Container::Insert,

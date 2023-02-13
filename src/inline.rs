@@ -32,11 +32,7 @@ pub enum Container {
     Emphasis,
     Strong,
     Mark,
-    Verbatim,
-    /// Span is the format.
-    RawFormat,
-    InlineMath,
-    DisplayMath,
+    Verbatim(VerbatimType),
     /// Span is the reference link tag.
     ReferenceLink,
     /// Span is the reference link tag.
@@ -47,6 +43,15 @@ pub enum Container {
     InlineImage,
     /// Open delimiter span is URL, closing is '>'.
     Autolink,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum VerbatimType {
+    Verbatim,
+    InlineMath,
+    DisplayMath,
+    /// Span is the format.
+    Raw,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,9 +155,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         {
                             Some((
                                 if first.len == 2 {
-                                    DisplayMath
+                                    Verbatim(VerbatimType::DisplayMath)
                                 } else {
-                                    InlineMath
+                                    Verbatim(VerbatimType::InlineMath)
                                 },
                                 *len,
                             ))
@@ -166,7 +171,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 }
                 math_opt
             }
-            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
+            lex::Kind::Seq(lex::Sequence::Backtick) => {
+                Some((Verbatim(VerbatimType::Verbatim), first.len))
+            }
             _ => None,
         }
         .map(|(mut kind, opener_len)| {
@@ -190,7 +197,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             while let Some(t) = self.eat() {
                 if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len
                 {
-                    if matches!(kind, Verbatim)
+                    if matches!(kind, Verbatim(VerbatimType::Verbatim))
                         && matches!(
                             self.lexer.peek().map(|t| &t.kind),
                             Some(lex::Kind::Open(Delimiter::BraceEqual))
@@ -222,7 +229,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                             );
                             self.lexer = lex::Lexer::new(ahead);
                             let span_format = self.span.after(len);
-                            kind = RawFormat;
+                            kind = Verbatim(VerbatimType::Raw);
                             self.events[opener_event].kind = EventKind::Enter(kind);
                             self.events[opener_event].span = span_format;
                             self.span = span_format.translate(1); // }
@@ -863,7 +870,7 @@ mod test {
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
-    use super::Verbatim;
+    use super::VerbatimType;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
@@ -885,47 +892,47 @@ mod test {
     fn verbatim() {
         test_parse!(
             "`abc`",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "abc"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
         test_parse!(
             "`abc\ndef`",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "abc\ndef"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
         test_parse!(
             "`abc&def`",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "abc&def"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
         test_parse!(
             "`abc",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "abc"),
-            (Exit(Verbatim), ""),
+            (Exit(Verbatim(VerbatimType::Verbatim)), ""),
         );
         test_parse!(
             "``abc``",
-            (Enter(Verbatim), "``"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "``"),
             (Str, "abc"),
-            (Exit(Verbatim), "``"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "``"),
         );
         test_parse!(
             "abc `def`",
             (Str, "abc "),
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "def"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
         test_parse!(
             "abc`def`",
             (Str, "abc"),
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "def"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
     }
 
@@ -934,9 +941,9 @@ mod test {
         test_parse!(
             "`raw`{#id}",
             (Attributes, "{#id}"),
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "raw"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
     }
 
@@ -944,15 +951,15 @@ mod test {
     fn verbatim_whitespace() {
         test_parse!(
             "`  `",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "  "),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
         test_parse!(
             "` abc `",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, " abc "),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
     }
 
@@ -960,9 +967,9 @@ mod test {
     fn verbatim_trim() {
         test_parse!(
             "` ``abc`` `",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "``abc``"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
         );
     }
 
@@ -970,34 +977,34 @@ mod test {
     fn math() {
         test_parse!(
             "$`abc`",
-            (Enter(InlineMath), "$`"),
+            (Enter(Verbatim(VerbatimType::InlineMath)), "$`"),
             (Str, "abc"),
-            (Exit(InlineMath), "`"),
+            (Exit(Verbatim(VerbatimType::InlineMath)), "`"),
         );
         test_parse!(
             "$`abc` str",
-            (Enter(InlineMath), "$`"),
+            (Enter(Verbatim(VerbatimType::InlineMath)), "$`"),
             (Str, "abc"),
-            (Exit(InlineMath), "`"),
+            (Exit(Verbatim(VerbatimType::InlineMath)), "`"),
             (Str, " str"),
         );
         test_parse!(
             "$$`abc`",
-            (Enter(DisplayMath), "$$`"),
+            (Enter(Verbatim(VerbatimType::DisplayMath)), "$$`"),
             (Str, "abc"),
-            (Exit(DisplayMath), "`"),
+            (Exit(Verbatim(VerbatimType::DisplayMath)), "`"),
         );
         test_parse!(
             "$`abc",
-            (Enter(InlineMath), "$`"),
+            (Enter(Verbatim(VerbatimType::InlineMath)), "$`"),
             (Str, "abc"),
-            (Exit(InlineMath), ""),
+            (Exit(Verbatim(VerbatimType::InlineMath)), ""),
         );
         test_parse!(
             "$```abc```",
-            (Enter(InlineMath), "$```"),
+            (Enter(Verbatim(VerbatimType::InlineMath)), "$```"),
             (Str, "abc"),
-            (Exit(InlineMath), "```"),
+            (Exit(Verbatim(VerbatimType::InlineMath)), "```"),
         );
     }
 
@@ -1005,16 +1012,16 @@ mod test {
     fn raw_format() {
         test_parse!(
             "`raw`{=format}",
-            (Enter(RawFormat), "format"),
+            (Enter(Verbatim(VerbatimType::Raw)), "format"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(Verbatim(VerbatimType::Raw)), "format"),
         );
         test_parse!(
             "before `raw`{=format} after",
             (Str, "before "),
-            (Enter(RawFormat), "format"),
+            (Enter(Verbatim(VerbatimType::Raw)), "format"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(Verbatim(VerbatimType::Raw)), "format"),
             (Str, " after"),
         );
     }
@@ -1023,9 +1030,9 @@ mod test {
     fn raw_attr() {
         test_parse!(
             "`raw`{=format #id}",
-            (Enter(Verbatim), "`"),
+            (Enter(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "raw"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim(VerbatimType::Verbatim)), "`"),
             (Str, "{=format #id}"),
         );
     }
