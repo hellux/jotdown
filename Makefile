@@ -68,6 +68,13 @@ afl:
 		trap - EXIT;\
 		cat) # keep process alive for trap
 
+afl_quick:
+	rm -rf tests/afl/out
+	(cd tests/afl && \
+		cargo afl build --release --config profile.release.debug-assertions=true && \
+		AFL_NO_UI=1 AFL_BENCH_UNTIL_CRASH=1 \
+			cargo afl fuzz -i in -o out -V 60 target/release/${AFL_TARGET})
+
 afl_crash:
 	set +e; \
 	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
