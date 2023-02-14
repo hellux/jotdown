@@ -78,3 +78,27 @@ jobs:
         run: |
           echo core | sudo tee /proc/sys/kernel/core_pattern
           make afl_quick
+  bench:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repo"
+        uses: actions/checkout@v3
+      - name: "Setup toolchain"
+        run: |
+          rustup update stable
+          rustup default stable
+          sudo apt-get install valgrind
+      - name: "Fetch benchmark inputs"
+        run: make bench
+      - name: "Benchmark"
+        run: |
+          cargo bench -p bench-crit all > crit
+          cargo bench -p bench-iai > iai
+      - name: "Artifact results"
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark
+          path: |
+            crit
+            iai
