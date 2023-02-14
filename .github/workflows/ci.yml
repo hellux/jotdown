@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Build and run tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - "1.56"
+          - stable
+    steps:
+      - name: "Checkout repo"
+        uses: actions/checkout@v3
+      - name: "Setup toolchain"
+        run: |
+          rustup update ${{ matrix.toolchain }}
+          rustup default ${{ matrix.toolchain }}
+      - name: "Build"
+        run: |
+          make all
+          cargo build --workspace --no-default-features
+      - name: "Run tests"
+        env:
+            RUSTDOCFLAGS: -D warnings
+        run: |
+          make check
+  suite:
+    name: Build and run external tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repo"
+        uses: actions/checkout@v3
+      - name: "Setup toolchain"
+        run: |
+          rustup update 1.56
+          rustup default 1.56
+      - name: "Run unit tests"
+        run: make suite
+      - name: "Setup node"
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: "Compare benchmark files"
+        run: make suite_bench
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+      - name: "Setup toolchain"
+        run: |
+          rustup update 1.56
+          rustup default 1.56
+          rustup component add rustfmt
+          rustup component add clippy
+      - name: "Check linting"
+        run: make lint
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v3
+      - name: "Setup toolchain"
+        run: |
+          rustup update nightly
+          rustup default nightly
+          cargo install afl
+      - name: "Fuzz"
+        run: |
+          echo core | sudo tee /proc/sys/kernel/core_pattern
+          make afl_quick

@@ -10,17 +10,19 @@ mod.rs: ${TEST_DJ} html
 	echo "use crate::suite_test;" > $@
 	for name in ${TEST}; do \
 		name_snake=$$(basename -a $$name | sed 's/-/_/g'); \
-		echo "#[test]" >> $@; \
-		echo "fn test_$$name_snake() {" >> $@; \
-		printf '    let src = r###"' >> $@; \
-		cat $$name.dj >> $@; \
-		echo '"###;' >> $@; \
-		printf '    let expected = r###"' >> $@; \
-		cat $$name.html >> $@; \
-		echo '"###;' >> $@; \
-		echo "    suite_test!(src, expected);" >> $@; \
-		echo "}" >> $@; \
-	done
+		skip_reason=$$(grep -E "^$${name_snake}:" skip | cut -d: -f2); \
+		[ -n "$$skip_reason" ] && echo "#[ignore = \"$${skip_reason}\"]"; \
+		echo "#[test]"; \
+		echo "fn $$name_snake() {"; \
+		printf '    let src = r###"'; \
+		cat $$name.dj; \
+		echo '"###;'; \
+		printf '    let expected = r###"'; \
+		cat $$name.html; \
+		echo '"###;'; \
+		echo "    suite_test!(src, expected);"; \
+		echo "}"; \
+	done >> $@
 
 html: djot-js ${TEST_DJ}
 	echo ${TEST}

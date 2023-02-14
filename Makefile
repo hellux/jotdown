@@ -1,5 +1,30 @@
 .POSIX:
 
+all: jotdown docs
+	cargo build --workspace
+
+jotdown: target/release/jotdown
+	cp $< $@
+
+target/release/jotdown:
+	cargo build --release
+
+.PHONY:
+docs:
+	cargo doc --no-deps --workspace
+
+.PHONY: lint
+lint:
+	cargo fmt --all -- --check
+	cargo clippy -- -D warnings
+	cargo clippy --no-default-features -- -D warnings
+	cargo clippy --all-features -- -D warnings
+
+.PHONY: check
+check:
+	cargo test --workspace
+	cargo test --workspace --no-default-features
+
 .PHONY: suite
 suite:
 	git submodule update --init modules/djot.js
@@ -36,12 +61,19 @@ afl:
 	rm -rf tests/afl/out
 	(cd tests/afl && \
 		cargo afl build --release --config profile.release.debug-assertions=true && \
-		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm ../../target/release/${AFL_TARGET} &) && \
+		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm target/release/${AFL_TARGET} &) && \
 		for i in $$(seq $$((${AFL_JOBS} - 1))); do \
-			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i ../../target/release/${AFL_TARGET} & \
+			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i target/release/${AFL_TARGET} & \
 		done; \
 		trap - EXIT;\
 		cat) # keep process alive for trap
+
+afl_quick:
+	rm -rf tests/afl/out
+	(cd tests/afl && \
+		cargo afl build --release --config profile.release.debug-assertions=true && \
+		AFL_NO_UI=1 AFL_BENCH_UNTIL_CRASH=1 \
+			cargo afl fuzz -i in -o out -V 60 target/release/${AFL_TARGET})
 
 afl_crash:
 	set +e; \

@@ -1,4 +1,6 @@
 BEGIN {
+    FS=":"
+    while (getline < "skip") skips[$1]=$2
     print "use crate::suite_test;"
     print ""
 }
@@ -7,14 +9,16 @@ $0 ~ "^`{3,}$" {
     l=length($0)
     if (fence == 0) { # enter fence
         print "#[test]"
-        printf "fn test%02d() {\n", count
-        printf "    let src = r##\""
         fence=l
-        count+=1
     } else if (fence == l) { # exit fence
         if (ignore) {
             ignore=0
         } else {
+            printf "    let expected = r##\""
+            close("src")
+            while (getline l < "src") print l
+            close("src")
+            system("rm -f src")
             print "\"##;"
             print "    suite_test!(src, expected);"
             print "}"
@@ -22,7 +26,7 @@ $0 ~ "^`{3,}$" {
         }
         fence=0
     } else {
-        print $0 # md/html
+        print $0 > "src" # md/html
     }
     next
 }
@@ -34,14 +38,25 @@ fence == 0 && $0 ~ "^`{3,} .*$" {
 }
 
 $0 ~ "^\\.$" && !ignore { # enter html
+    close("src")
+    cmd="cat src | md5sum | cut -c-7"
+    cmd | getline hash
+    close(cmd)
+    if (hash in skips) printf "#[ignore = \"%s\"]\n", skips[hash]
+    printf "fn test_%s() {\n", hash
+    printf "    let src = r##\""
+    while (getline l < "src") print l
+    close("src")
+    system("rm -f src")
     print "\"##;"
-    printf "    let expected = r##\""
     next
 }
 
 !ignore {
-    if (fence==0 && $0 != "") { # comment
-        printf "// "
+    if (fence) {
+        # write to file so content can be piped to md5sum (without having to shell escape)
+        print $0 > "src" # md/html
+    } else if ($0 != "") {
+        printf "// %s\n", $0 # comment
     }
-    print $0 # comment/md/html
 }
