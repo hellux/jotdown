@@ -78,6 +78,8 @@ WebAssembly backend.
 
 ## Status
 
+### Correctness
+
 As of writing, Jotdown implements all the current features of the Djot syntax,
 including:
 
@@ -125,3 +127,34 @@ $ make suite_bench
 ```
 
 Note that it requires node in order to run the reference implementation.
+
+### Performance
+
+There are benchmarks available to measure the performance. The input files are
+borrowed from the [reference implementation][djot-js]. To fetch the input files
+symlink them to the bench directory, run:
+
+```
+make bench
+```
+
+There are two separate benchmarks suites that can be run; criterion and iai.
+Criterion measures statistical real-time performance while iai measures exact
+number of executed instructions and memory accesses. To run the criterion
+benchmarks, use
+
+```
+cargo bench -p bench-crit [filter]
+```
+
+Alternatively, if `cargo-criterion` is installed:
+
+```
+cargo criterion -p bench-crit -- [filter]
+```
+
+To run the iai benchmarks, use
+
+```
+cargo bench -p bench-iai
+```

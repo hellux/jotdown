@@ -13,13 +13,15 @@ documentation = "https://docs.rs/jotdown"
 exclude = [
     ".gitmodules",
     "Makefile",
-    "benches",
     "modules",
     "tests",
 ]
 
 [workspace]
 members = [
+    "bench/criterion",
+    "bench/iai",
+    "bench/input",
     "examples/jotdown_wasm",
 ]
 exclude = [

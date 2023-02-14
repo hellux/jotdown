@@ -47,7 +47,7 @@ suite_bench:
 bench:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
-		ln -fs ../modules/djot.js/bench/$$f benches/$$f; \
+		ln -fs ../modules/djot.js/bench/$$f bench/$$f; \
 	done
 
 cov: suite suite_bench
@@ -96,6 +96,6 @@ clean:
 	(cd tests/suite && make clean)
 	rm -f tests/bench/*.dj
 	(cd tests/bench && make clean)
-	rm -f benches/*.dj
+	rm -f bench/*.dj
 	rm -rf tests/afl/out
 	(cd examples/jotdown_wasm && make clean)
