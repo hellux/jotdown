@@ -127,6 +127,50 @@ impl<I: Iterator<Item = char> + Clone> Input<I> {
             None
         }
     }
+
+    fn ahead_raw_format(&mut self) -> Option<Span> {
+        if matches!(
+            self.lexer.peek().map(|t| &t.kind),
+            Some(lex::Kind::Open(Delimiter::BraceEqual))
+        ) {
+            let mut ahead = self.lexer.chars();
+            let mut end = false;
+            let len = (&mut ahead)
+                .skip(2) // {=
+                .take_while(|c| {
+                    if *c == '{' {
+                        return false;
+                    }
+                    if *c == '}' {
+                        end = true;
+                    };
+                    !end && !c.is_whitespace()
+                })
+                .map(char::len_utf8)
+                .sum();
+            (len > 0 && end).then(|| {
+                let tok = self.eat();
+                debug_assert_eq!(
+                    tok,
+                    Some(lex::Token {
+                        kind: lex::Kind::Open(Delimiter::BraceEqual),
+                        len: 2,
+                    })
+                );
+                self.lexer = lex::Lexer::new(ahead);
+                self.span.after(len)
+            })
+        } else {
+            None
+        }
+    }
+}
+
+pub struct VerbatimState {
+    event_opener: usize,
+    len_opener: u8,
+    non_whitespace_encountered: bool,
+    non_whitespace_last: Option<(lex::Kind, usize)>,
 }
 
 pub struct Parser<I: Iterator + Clone> {
@@ -136,6 +180,8 @@ pub struct Parser<I: Iterator + Clone> {
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
     events: std::collections::VecDeque<Event>,
+    /// State if inside a verbatim container.
+    verbatim: Option<VerbatimState>,
 }
 
 impl<I: Iterator<Item = char> + Clone> Parser<I> {
@@ -144,6 +190,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             input: Input::new(chars),
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
+            verbatim: None,
         }
     }
 
@@ -151,6 +198,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.input.reset(chars);
         self.openers.clear();
         debug_assert!(self.events.is_empty());
+        debug_assert!(self.verbatim.is_none());
     }
 
     fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<()> {
@@ -183,125 +231,92 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<()> {
-        let (mut kind, opener_len) = match first.kind {
-            lex::Kind::Seq(Sequence::Dollar) => {
-                let math_opt = (first.len <= 2)
-                    .then(|| {
-                        if let Some(lex::Token {
-                            kind: lex::Kind::Seq(Sequence::Backtick),
-                            len,
-                        }) = self.input.peek()
-                        {
-                            Some((
-                                if first.len == 2 {
-                                    DisplayMath
-                                } else {
-                                    InlineMath
-                                },
-                                *len,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten();
-                if math_opt.is_some() {
-                    self.input.eat(); // backticks
-                }
-                math_opt
-            }
-            lex::Kind::Seq(Sequence::Backtick) => Some((Verbatim, first.len)),
-            _ => None,
-        }?;
-
-        let e_attr = self.events.len();
-        self.push_sp(
-            EventKind::Placeholder,
-            Span::empty_at(self.input.span.start()),
-        );
-        let opener_event = self.events.len();
-        self.push(EventKind::Enter(kind));
-
-        let mut span_inner = self.input.span.empty_after();
-        let mut span_outer = None;
-
-        let mut non_whitespace_first = None;
-        let mut non_whitespace_last = None;
-
-        while let Some(t) = self.input.eat() {
-            if matches!(t.kind, lex::Kind::Seq(Sequence::Backtick)) && t.len == opener_len {
-                if matches!(kind, Verbatim)
-                    && matches!(
-                        self.input.peek().map(|t| &t.kind),
-                        Some(lex::Kind::Open(Delimiter::BraceEqual))
-                    )
-                {
-                    let mut ahead = self.input.lexer.chars();
-                    let mut end = false;
-                    let len = (&mut ahead)
-                        .skip(2) // {=
-                        .take_while(|c| {
-                            if *c == '{' {
-                                return false;
-                            }
-                            if *c == '}' {
-                                end = true;
-                            };
-                            !end && !c.is_whitespace()
-                        })
-                        .map(char::len_utf8)
-                        .sum();
-                    if len > 0 && end {
-                        let tok = self.input.eat();
-                        debug_assert_eq!(
-                            tok,
-                            Some(lex::Token {
-                                kind: lex::Kind::Open(Delimiter::BraceEqual),
-                                len: 2,
-                            })
-                        );
-                        self.input.lexer = lex::Lexer::new(ahead);
-                        let span_format = self.input.span.after(len);
-                        kind = RawFormat;
-                        self.events[opener_event].kind = EventKind::Enter(kind);
-                        self.events[opener_event].span = span_format;
-                        self.input.span = span_format.translate(1); // }
-                        span_outer = Some(span_format);
+        if let Some(VerbatimState {
+            event_opener,
+            len_opener,
+            non_whitespace_encountered,
+            non_whitespace_last,
+        }) = &mut self.verbatim
+        {
+            let event_opener = *event_opener;
+            let len_opener = *len_opener;
+            if usize::from(len_opener) == first.len
+                && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
+            {
+                let raw_format = self.input.ahead_raw_format();
+                let mut span_closer = self.input.span;
+                if let Some(span_format) = raw_format {
+                    self.events[event_opener].kind = EventKind::Enter(RawFormat);
+                    self.events[event_opener].span = span_format;
+                    self.input.span = span_format.translate(1);
+                    span_closer = span_format;
+                } else if let Some((non_empty, span_attr)) = self.input.ahead_attributes() {
+                    if non_empty {
+                        let e_attr = event_opener - 1;
+                        self.events[e_attr] = Event {
+                            kind: EventKind::Attributes,
+                            span: span_attr,
+                        };
                     }
-                }
-                break;
-            }
-            if !matches!(t.kind, lex::Kind::Whitespace) {
-                if non_whitespace_first.is_none() {
-                    non_whitespace_first = Some((t.kind, span_inner.end()));
-                }
-                non_whitespace_last = Some((t.kind, span_inner.end() + t.len));
-            }
-            span_inner = span_inner.extend(t.len);
-            self.input.reset_span();
-        }
-
-        if let Some((lex::Kind::Seq(Sequence::Backtick), pos)) = non_whitespace_first {
-            span_inner = span_inner.with_start(pos);
-        }
-        if let Some((lex::Kind::Seq(Sequence::Backtick), pos)) = non_whitespace_last {
-            span_inner = span_inner.with_end(pos);
-        }
-
-        self.push_sp(EventKind::Str, span_inner);
-        self.push_sp(EventKind::Exit(kind), span_outer.unwrap_or(self.input.span));
-
-        if let Some((non_empty, span)) = self.input.ahead_attributes() {
-            self.input.span = span;
-            if non_empty {
-                self.events[e_attr] = Event {
-                    kind: EventKind::Attributes,
-                    span,
+                    self.input.span = span_attr;
                 };
-            }
+                let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
+                    debug_assert!(matches!(
+                        ty,
+                        Verbatim | RawFormat | InlineMath | DisplayMath
+                    ));
+                    ty
+                } else {
+                    panic!()
+                };
+                if let Some((lex::Kind::Seq(Sequence::Backtick), event_skip)) = non_whitespace_last
+                {
+                    self.events.drain(*event_skip..);
+                }
+                self.push_sp(EventKind::Exit(ty_opener), span_closer);
+                self.verbatim = None;
+            } else {
+                // continue verbatim
+                if matches!(first.kind, lex::Kind::Whitespace) {
+                    if !*non_whitespace_encountered
+                        && self.input.peek().map_or(false, |t| {
+                            matches!(
+                                t.kind,
+                                lex::Kind::Seq(Sequence::Backtick) if t.len != len_opener.into(),
+                            )
+                        })
+                    {
+                        return Some(()); // skip whitespace
+                    }
+                } else {
+                    *non_whitespace_encountered = true;
+                    *non_whitespace_last = Some((first.kind, self.events.len() + 1));
+                }
+                self.push(EventKind::Str);
+            };
+            Some(())
+        } else {
+            let (ty, len_opener) = match first.kind {
+                lex::Kind::DollarBacktick(l) if first.len - l as usize == 1 => {
+                    Some((InlineMath, l))
+                }
+                lex::Kind::DollarBacktick(l) if first.len - l as usize == 2 => {
+                    Some((DisplayMath, l))
+                }
+                lex::Kind::Seq(Sequence::Backtick) if first.len < 256 => {
+                    Some((Verbatim, first.len as u8))
+                }
+                _ => None,
+            }?;
+            self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
+            self.verbatim = Some(VerbatimState {
+                event_opener: self.events.len(),
+                len_opener,
+                non_whitespace_encountered: false,
+                non_whitespace_last: None,
+            });
+            self.push(EventKind::Enter(ty))
         }
-
-        Some(())
     }
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<()> {
@@ -339,10 +354,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     self.push(EventKind::Attributes);
                     self.push_sp(EventKind::Enter(Span), span_str.empty_before());
                     self.push_sp(EventKind::Str, span_str);
-                    return self.push_sp(EventKind::Exit(Span), span_str.empty_after());
+                    self.push_sp(EventKind::Exit(Span), span_str.empty_after());
                 } else {
-                    return self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
+                    self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
                 }
+                return Some(());
             }
         }
 
@@ -400,9 +416,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             if end && valid {
                 self.input.lexer = lex::Lexer::new(ahead);
                 self.input.span = self.input.span.after(len);
-                let span = self.input.span;
+                self.push(EventKind::Atom(Symbol));
                 self.input.span = self.input.span.after(1);
-                return self.push_sp(EventKind::Atom(Symbol), span);
+                return Some(());
             }
         }
         None
@@ -452,13 +468,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<()> {
-        let (delim, dir) = Delim::from_token(first.kind)?;
+        let (delim, dir) = Delim::from_token(first)?;
 
         self.openers
             .iter()
-            .rposition(|(d, _)| {
-                *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
-            })
+            .rposition(|(d, _)| delim.closes(*d))
             .and_then(|o| {
                 if matches!(dir, Dir::Open) {
                     return None;
@@ -479,6 +493,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 }
 
                 let inner_span = self.events[e_opener].span.between(self.input.span);
+                self.openers.drain(o..);
                 let mut closed = match DelimEventKind::from(d) {
                     DelimEventKind::Container(cont) => {
                         self.events[e_opener].kind = EventKind::Enter(cont);
@@ -490,7 +505,6 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     }
                     DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
                 };
-                self.openers.drain(o..);
 
                 if closed.is_some() {
                     let event_closer = &mut self.events.back_mut().unwrap();
@@ -566,7 +580,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<()> {
         let mut ahead = self.input.lexer.chars();
-        let (kind, span) = match ahead.next() {
+        let kind = match ahead.next() {
             Some(opener @ ('[' | '(')) => {
                 let img = ty == SpanType::Image;
                 let (closer, kind) = match opener {
@@ -587,19 +601,22 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     })
                     .map(char::len_utf8)
                     .sum();
-                end.then(|| {
-                    let span = self.input.span.after(len).translate(1);
-                    (kind, span)
-                })
+                if end {
+                    self.input.span = self.input.span.after(len).translate(1);
+                    Some(kind)
+                } else {
+                    None
+                }
             }
             _ => None,
         }?;
 
         self.input.lexer = lex::Lexer::new(ahead);
         self.events[opener_event].kind = EventKind::Enter(kind);
-        self.events[opener_event].span = span;
-        self.input.span = span.translate(1);
-        self.push_sp(EventKind::Exit(kind), span)
+        self.events[opener_event].span = self.input.span;
+        self.push(EventKind::Exit(kind));
+        self.input.span = self.input.span.translate(1);
+        Some(())
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<()> {
@@ -695,13 +712,13 @@ enum Dir {
 }
 
 impl Delim {
-    fn from_token(kind: lex::Kind) -> Option<(Self, Dir)> {
+    fn from_token(token: &lex::Token) -> Option<(Self, Dir)> {
         use Delim::*;
         use Dir::{Both, Close, Open};
         use Directionality::{Bi, Uni};
         use SpanType::{General, Image};
 
-        match kind {
+        match token.kind {
             lex::Kind::Sym(Symbol::Asterisk) => Some((Strong(Bi), Both)),
             lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis(Bi), Both)),
             lex::Kind::Sym(Symbol::Caret) => Some((Superscript(Bi), Both)),
@@ -731,6 +748,10 @@ impl Delim {
             lex::Kind::Close(Delimiter::BraceQuote2) => Some((DoubleQuoted, Close)),
             _ => None,
         }
+    }
+
+    fn closes(self, opener: Delim) -> bool {
+        self == opener || matches!((opener, self), (Delim::Span(..), Delim::Span(..)))
     }
 }
 
@@ -763,6 +784,7 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
             || !self.openers.is_empty()
+            || self.verbatim.is_some()
             || self // for merge or attributes
                 .events
                 .back()
@@ -773,6 +795,20 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
             if self.parse_event().is_none() {
                 break;
             }
+        }
+
+        // automatically close unclosed verbatim
+        if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
+            let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
+                debug_assert!(matches!(
+                    ty,
+                    Verbatim | RawFormat | InlineMath | DisplayMath
+                ));
+                ty
+            } else {
+                panic!()
+            };
+            self.push(EventKind::Exit(ty_opener));
         }
 
         self.events.pop_front().and_then(|e| {
