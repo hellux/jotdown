@@ -3,6 +3,7 @@ use crate::lex;
 use crate::Span;
 
 use lex::Delimiter;
+use lex::Sequence;
 use lex::Symbol;
 
 use Atom::*;
@@ -148,11 +149,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<()> {
         let (mut kind, opener_len) = match first.kind {
-            lex::Kind::Seq(lex::Sequence::Dollar) => {
+            lex::Kind::Seq(Sequence::Dollar) => {
                 let math_opt = (first.len <= 2)
                     .then(|| {
                         if let Some(lex::Token {
-                            kind: lex::Kind::Seq(lex::Sequence::Backtick),
+                            kind: lex::Kind::Seq(Sequence::Backtick),
                             len,
                         }) = self.peek()
                         {
@@ -174,7 +175,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 }
                 math_opt
             }
-            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
+            lex::Kind::Seq(Sequence::Backtick) => Some((Verbatim, first.len)),
             _ => None,
         }?;
 
@@ -190,7 +191,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         let mut non_whitespace_last = None;
 
         while let Some(t) = self.eat() {
-            if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len {
+            if matches!(t.kind, lex::Kind::Seq(Sequence::Backtick)) && t.len == opener_len {
                 if matches!(kind, Verbatim)
                     && matches!(
                         self.lexer.peek().map(|t| &t.kind),
@@ -242,10 +243,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             self.reset_span();
         }
 
-        if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_first {
+        if let Some((lex::Kind::Seq(Sequence::Backtick), pos)) = non_whitespace_first {
             span_inner = span_inner.with_start(pos);
         }
-        if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_last {
+        if let Some((lex::Kind::Seq(Sequence::Backtick), pos)) = non_whitespace_last {
             span_inner = span_inner.with_end(pos);
         }
 
@@ -298,10 +299,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     self.events.drain(i..);
 
                     self.push(EventKind::Attributes);
-                    self.push_sp(EventKind::Enter(Container::Span), span_str.empty_before());
+                    self.push_sp(EventKind::Enter(Span), span_str.empty_before());
                     self.push_sp(EventKind::Str, span_str);
-
-                    return self.push_sp(EventKind::Exit(Container::Span), span_str.empty_after());
+                    return self.push_sp(EventKind::Exit(Span), span_str.empty_after());
                 } else {
                     return self.push_sp(EventKind::Placeholder, self.span.empty_before());
                 }
@@ -447,9 +447,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         self.push(EventKind::Exit(cont))
                     }
                     DelimEventKind::Quote(ty) => {
-                        self.events[e_opener].kind =
-                            EventKind::Atom(Atom::Quote { ty, left: true });
-                        self.push(EventKind::Atom(Atom::Quote { ty, left: false }))
+                        self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
+                        self.push(EventKind::Atom(Quote { ty, left: false }))
                     }
                     DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
                 };
@@ -460,7 +459,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     if event_closer.span.is_empty()
                         && matches!(
                             event_closer.kind,
-                            EventKind::Exit(Container::ReferenceLink | Container::ReferenceImage)
+                            EventKind::Exit(ReferenceLink | ReferenceImage)
                         )
                     {
                         event_closer.span = inner_span;
@@ -581,62 +580,59 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<()> {
-        let atom =
-            match first.kind {
-                lex::Kind::Newline => Softbreak,
-                lex::Kind::Hardbreak => Hardbreak,
-                lex::Kind::Escape => Escape,
-                lex::Kind::Nbsp => Nbsp,
-                lex::Kind::Seq(lex::Sequence::Period) if first.len >= 3 => {
-                    while self.span.len() > 3 {
-                        self.push_sp(EventKind::Atom(Ellipsis), self.span.with_len(3));
-                        self.span = self.span.skip(3);
-                    }
-                    if self.span.len() == 3 {
-                        Ellipsis
-                    } else {
-                        return self.push(EventKind::Str);
-                    }
+        let atom = match first.kind {
+            lex::Kind::Newline => Softbreak,
+            lex::Kind::Hardbreak => Hardbreak,
+            lex::Kind::Escape => Escape,
+            lex::Kind::Nbsp => Nbsp,
+            lex::Kind::Seq(Sequence::Period) if first.len >= 3 => {
+                while self.span.len() > 3 {
+                    self.push_sp(EventKind::Atom(Ellipsis), self.span.with_len(3));
+                    self.span = self.span.skip(3);
                 }
-                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len >= 2 => {
-                    let (m, n) = if first.len % 3 == 0 {
-                        (first.len / 3, 0)
-                    } else if first.len % 2 == 0 {
-                        (0, first.len / 2)
-                    } else {
-                        let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
-                        ((first.len - 2 * n) / 3, n)
-                    };
-                    std::iter::repeat(EmDash)
-                        .take(m)
-                        .chain(std::iter::repeat(EnDash).take(n))
-                        .for_each(|atom| {
-                            let l = if matches!(atom, EnDash) { 2 } else { 3 };
-                            self.push_sp(EventKind::Atom(atom), self.span.with_len(l));
-                            self.span = self.span.skip(l);
-                        });
-                    return Some(());
+                if self.span.len() == 3 {
+                    Ellipsis
+                } else {
+                    return self.push(EventKind::Str);
                 }
-                lex::Kind::Open(lex::Delimiter::BraceQuote1) => Quote {
-                    ty: QuoteType::Single,
-                    left: true,
-                },
-                lex::Kind::Sym(lex::Symbol::Quote1)
-                | lex::Kind::Close(lex::Delimiter::BraceQuote1) => Quote {
-                    ty: QuoteType::Single,
-                    left: false,
-                },
-                lex::Kind::Open(lex::Delimiter::BraceQuote2) => Quote {
-                    ty: QuoteType::Double,
-                    left: true,
-                },
-                lex::Kind::Sym(lex::Symbol::Quote2)
-                | lex::Kind::Close(lex::Delimiter::BraceQuote2) => Quote {
-                    ty: QuoteType::Double,
-                    left: false,
-                },
-                _ => return None,
-            };
+            }
+            lex::Kind::Seq(Sequence::Hyphen) if first.len >= 2 => {
+                let (m, n) = if first.len % 3 == 0 {
+                    (first.len / 3, 0)
+                } else if first.len % 2 == 0 {
+                    (0, first.len / 2)
+                } else {
+                    let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
+                    ((first.len - 2 * n) / 3, n)
+                };
+                std::iter::repeat(EmDash)
+                    .take(m)
+                    .chain(std::iter::repeat(EnDash).take(n))
+                    .for_each(|atom| {
+                        let l = if matches!(atom, EnDash) { 2 } else { 3 };
+                        self.push_sp(EventKind::Atom(atom), self.span.with_len(l));
+                        self.span = self.span.skip(l);
+                    });
+                return Some(());
+            }
+            lex::Kind::Open(Delimiter::BraceQuote1) => Quote {
+                ty: QuoteType::Single,
+                left: true,
+            },
+            lex::Kind::Sym(Symbol::Quote1) | lex::Kind::Close(Delimiter::BraceQuote1) => Quote {
+                ty: QuoteType::Single,
+                left: false,
+            },
+            lex::Kind::Open(Delimiter::BraceQuote2) => Quote {
+                ty: QuoteType::Double,
+                left: true,
+            },
+            lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2) => Quote {
+                ty: QuoteType::Double,
+                left: false,
+            },
+            _ => return None,
+        };
 
         self.push(EventKind::Atom(atom))
     }
