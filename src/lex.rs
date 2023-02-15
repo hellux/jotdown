@@ -21,6 +21,7 @@ pub enum Kind {
     Close(Delimiter),
     Sym(Symbol),
     Seq(Sequence),
+    DollarBacktick(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +56,6 @@ pub enum Symbol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sequence {
     Backtick,
-    Dollar,
     Hyphen,
     Period,
 }
@@ -64,7 +64,6 @@ impl Sequence {
     fn ch(self) -> char {
         match self {
             Self::Backtick => '`',
-            Self::Dollar => '$',
             Self::Period => '.',
             Self::Hyphen => '-',
         }
@@ -207,6 +206,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     Open(Brace)
                 }
             }
+            '}' => Close(Brace),
             '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
             '=' => self.maybe_eat_close_brace(Text, BraceEqual),
@@ -236,8 +236,21 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             ':' => Sym(Colon),
 
             '`' => self.eat_seq(Backtick),
-            '$' => self.eat_seq(Dollar),
             '.' => self.eat_seq(Period),
+            '$' => {
+                self.eat_while(|c| c == '$');
+                let mut n_ticks: u8 = 0;
+                self.eat_while(|c| {
+                    if c == '`' {
+                        if let Some(l) = n_ticks.checked_add(1) {
+                            n_ticks = l;
+                            return true;
+                        }
+                    }
+                    false
+                });
+                DollarBacktick(n_ticks)
+            }
 
             _ => Text,
         };
@@ -383,11 +396,17 @@ mod test {
         test_lex!("`", Seq(Backtick).l(1));
         test_lex!("```", Seq(Backtick).l(3));
         test_lex!(
-            "`$-.",
+            "`-.",
             Seq(Backtick).l(1),
-            Seq(Dollar).l(1),
             Seq(Hyphen).l(1),
             Seq(Period).l(1),
         );
+    }
+
+    #[test]
+    fn dollar_backtick() {
+        test_lex!("$`", DollarBacktick(1).l(2));
+        test_lex!("$$$`", DollarBacktick(1).l(4));
+        test_lex!("$$````", DollarBacktick(4).l(6));
     }
 }
