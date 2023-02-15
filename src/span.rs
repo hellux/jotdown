@@ -30,14 +30,6 @@ impl Span {
         Self::empty_at(self.end())
     }
 
-    pub fn with_start(self, start: usize) -> Self {
-        Self::new(start, self.end())
-    }
-
-    pub fn with_end(self, end: usize) -> Self {
-        Self::new(self.start(), end)
-    }
-
     pub fn with_len(self, len: usize) -> Self {
         Self::by_len(self.start(), len)
     }
