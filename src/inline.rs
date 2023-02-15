@@ -147,7 +147,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_verbatim(&mut self, first: &lex::Token) -> Option<()> {
-        match first.kind {
+        let (mut kind, opener_len) = match first.kind {
             lex::Kind::Seq(lex::Sequence::Dollar) => {
                 let math_opt = (first.len <= 2)
                     .then(|| {
@@ -176,93 +176,93 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             }
             lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
             _ => None,
-        }
-        .map(|(mut kind, opener_len)| {
-            let e_attr = self.events.len();
-            self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
-            let opener_event = self.events.len();
-            self.push(EventKind::Enter(kind));
+        }?;
 
-            let mut span_inner = self.span.empty_after();
-            let mut span_outer = None;
+        let e_attr = self.events.len();
+        self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
+        let opener_event = self.events.len();
+        self.push(EventKind::Enter(kind));
 
-            let mut non_whitespace_first = None;
-            let mut non_whitespace_last = None;
+        let mut span_inner = self.span.empty_after();
+        let mut span_outer = None;
 
-            while let Some(t) = self.eat() {
-                if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len
+        let mut non_whitespace_first = None;
+        let mut non_whitespace_last = None;
+
+        while let Some(t) = self.eat() {
+            if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len {
+                if matches!(kind, Verbatim)
+                    && matches!(
+                        self.lexer.peek().map(|t| &t.kind),
+                        Some(lex::Kind::Open(Delimiter::BraceEqual))
+                    )
                 {
-                    if matches!(kind, Verbatim)
-                        && matches!(
-                            self.lexer.peek().map(|t| &t.kind),
-                            Some(lex::Kind::Open(Delimiter::BraceEqual))
-                        )
-                    {
-                        let mut ahead = self.lexer.chars();
-                        let mut end = false;
-                        let len = (&mut ahead)
-                            .skip(2) // {=
-                            .take_while(|c| {
-                                if *c == '{' {
-                                    return false;
-                                }
-                                if *c == '}' {
-                                    end = true;
-                                };
-                                !end && !c.is_whitespace()
+                    let mut ahead = self.lexer.chars();
+                    let mut end = false;
+                    let len = (&mut ahead)
+                        .skip(2) // {=
+                        .take_while(|c| {
+                            if *c == '{' {
+                                return false;
+                            }
+                            if *c == '}' {
+                                end = true;
+                            };
+                            !end && !c.is_whitespace()
+                        })
+                        .map(char::len_utf8)
+                        .sum();
+                    if len > 0 && end {
+                        let tok = self.eat();
+                        debug_assert_eq!(
+                            tok,
+                            Some(lex::Token {
+                                kind: lex::Kind::Open(Delimiter::BraceEqual),
+                                len: 2,
                             })
-                            .map(char::len_utf8)
-                            .sum();
-                        if len > 0 && end {
-                            let tok = self.eat();
-                            debug_assert_eq!(
-                                tok,
-                                Some(lex::Token {
-                                    kind: lex::Kind::Open(Delimiter::BraceEqual),
-                                    len: 2,
-                                })
-                            );
-                            self.lexer = lex::Lexer::new(ahead);
-                            let span_format = self.span.after(len);
-                            kind = RawFormat;
-                            self.events[opener_event].kind = EventKind::Enter(kind);
-                            self.events[opener_event].span = span_format;
-                            self.span = span_format.translate(1); // }
-                            span_outer = Some(span_format);
-                        }
+                        );
+                        self.lexer = lex::Lexer::new(ahead);
+                        let span_format = self.span.after(len);
+                        kind = RawFormat;
+                        self.events[opener_event].kind = EventKind::Enter(kind);
+                        self.events[opener_event].span = span_format;
+                        self.span = span_format.translate(1); // }
+                        span_outer = Some(span_format);
                     }
-                    break;
                 }
-                if !matches!(t.kind, lex::Kind::Whitespace) {
-                    if non_whitespace_first.is_none() {
-                        non_whitespace_first = Some((t.kind, span_inner.end()));
-                    }
-                    non_whitespace_last = Some((t.kind, span_inner.end() + t.len));
+                break;
+            }
+            if !matches!(t.kind, lex::Kind::Whitespace) {
+                if non_whitespace_first.is_none() {
+                    non_whitespace_first = Some((t.kind, span_inner.end()));
                 }
-                span_inner = span_inner.extend(t.len);
-                self.reset_span();
+                non_whitespace_last = Some((t.kind, span_inner.end() + t.len));
             }
+            span_inner = span_inner.extend(t.len);
+            self.reset_span();
+        }
 
-            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_first {
-                span_inner = span_inner.with_start(pos);
-            }
-            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_last {
-                span_inner = span_inner.with_end(pos);
-            }
+        if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_first {
+            span_inner = span_inner.with_start(pos);
+        }
+        if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_last {
+            span_inner = span_inner.with_end(pos);
+        }
 
-            self.push_sp(EventKind::Str, span_inner);
-            self.push_sp(EventKind::Exit(kind), span_outer.unwrap_or(self.span));
+        self.push_sp(EventKind::Str, span_inner);
+        self.push_sp(EventKind::Exit(kind), span_outer.unwrap_or(self.span));
 
-            if let Some((non_empty, span)) = self.ahead_attributes() {
-                self.span = span;
-                if non_empty {
-                    self.events[e_attr] = Event {
-                        kind: EventKind::Attributes,
-                        span,
-                    };
-                }
+        if let Some((non_empty, span)) = self.ahead_attributes() {
+            self.span = span;
+            if non_empty {
+                self.events[e_attr] = Event {
+                    kind: EventKind::Attributes,
+                    span,
+                };
             }
-        })
+        }
+
+        Some(())
     }
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<()> {
@@ -414,115 +414,113 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<()> {
-        Delim::from_token(first.kind).and_then(|(delim, dir)| {
-            self.openers
-                .iter()
-                .rposition(|(d, _)| {
-                    *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
-                })
-                .and_then(|o| {
-                    if matches!(dir, Dir::Open) {
-                        return None;
+        let (delim, dir) = Delim::from_token(first.kind)?;
+
+        self.openers
+            .iter()
+            .rposition(|(d, _)| {
+                *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
+            })
+            .and_then(|o| {
+                if matches!(dir, Dir::Open) {
+                    return None;
+                }
+                let whitespace_after = self.events.back().map_or(false, |ev| {
+                    matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
+                });
+                if matches!(dir, Dir::Both) && whitespace_after {
+                    return None;
+                }
+
+                let (d, e) = self.openers[o];
+                let e_attr = e;
+                let e_opener = e + 1;
+                if e_opener == self.events.len() - 1 {
+                    // empty container
+                    return None;
+                }
+
+                let inner_span = self.events[e_opener].span.between(self.span);
+                let mut closed = match DelimEventKind::from(d) {
+                    DelimEventKind::Container(cont) => {
+                        self.events[e_opener].kind = EventKind::Enter(cont);
+                        self.push(EventKind::Exit(cont))
                     }
-                    let whitespace_after = self.events.back().map_or(false, |ev| {
-                        matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
-                    });
-                    if matches!(dir, Dir::Both) && whitespace_after {
-                        return None;
+                    DelimEventKind::Quote(ty) => {
+                        self.events[e_opener].kind =
+                            EventKind::Atom(Atom::Quote { ty, left: true });
+                        self.push(EventKind::Atom(Atom::Quote { ty, left: false }))
                     }
+                    DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
+                };
+                self.openers.drain(o..);
 
-                    let (d, e) = self.openers[o];
-                    let e_attr = e;
-                    let e_opener = e + 1;
-                    if e_opener == self.events.len() - 1 {
-                        // empty container
-                        return None;
-                    }
-
-                    let inner_span = self.events[e_opener].span.between(self.span);
-                    let mut closed = match DelimEventKind::from(d) {
-                        DelimEventKind::Container(cont) => {
-                            self.events[e_opener].kind = EventKind::Enter(cont);
-                            self.push(EventKind::Exit(cont))
-                        }
-                        DelimEventKind::Quote(ty) => {
-                            self.events[e_opener].kind =
-                                EventKind::Atom(Atom::Quote { ty, left: true });
-                            self.push(EventKind::Atom(Atom::Quote { ty, left: false }))
-                        }
-                        DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
-                    };
-                    self.openers.drain(o..);
-
-                    if closed.is_some() {
-                        let event_closer = &mut self.events.back_mut().unwrap();
-                        if event_closer.span.is_empty()
-                            && matches!(
-                                event_closer.kind,
-                                EventKind::Exit(
-                                    Container::ReferenceLink | Container::ReferenceImage
-                                )
-                            )
-                        {
-                            event_closer.span = inner_span;
-                            self.events[e_opener].span = inner_span;
-                        }
-                    }
-
-                    if let Some((non_empty, span)) = self.ahead_attributes() {
-                        if non_empty {
-                            self.events[e_attr] = Event {
-                                kind: EventKind::Attributes,
-                                span,
-                            };
-                        }
-
-                        if closed.is_none() {
-                            self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                            closed = self.push(EventKind::Exit(Container::Span));
-                        }
-
-                        self.span = span;
-                    }
-
-                    closed
-                })
-                .or_else(|| {
-                    if matches!(dir, Dir::Close) {
-                        return None;
-                    }
-                    if matches!(dir, Dir::Both)
-                        && self
-                            .peek()
-                            .map_or(true, |t| matches!(t.kind, lex::Kind::Whitespace))
+                if closed.is_some() {
+                    let event_closer = &mut self.events.back_mut().unwrap();
+                    if event_closer.span.is_empty()
+                        && matches!(
+                            event_closer.kind,
+                            EventKind::Exit(Container::ReferenceLink | Container::ReferenceImage)
+                        )
                     {
-                        return None;
+                        event_closer.span = inner_span;
+                        self.events[e_opener].span = inner_span;
                     }
-                    if matches!(delim, Delim::SingleQuoted | Delim::DoubleQuoted)
-                        && self
-                            .events
-                            .back()
-                            .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
-                    {
-                        return None;
+                }
+
+                if let Some((non_empty, span)) = self.ahead_attributes() {
+                    if non_empty {
+                        self.events[e_attr] = Event {
+                            kind: EventKind::Attributes,
+                            span,
+                        };
                     }
-                    self.openers.push((delim, self.events.len()));
-                    // push dummy event in case attributes are encountered after closing delimiter
-                    self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
-                    // use non-opener for now, replace if closed later
-                    self.push(match delim {
-                        Delim::SingleQuoted => EventKind::Atom(Quote {
-                            ty: QuoteType::Single,
-                            left: false,
-                        }),
-                        Delim::DoubleQuoted => EventKind::Atom(Quote {
-                            ty: QuoteType::Double,
-                            left: true,
-                        }),
-                        _ => EventKind::Str,
-                    })
+
+                    if closed.is_none() {
+                        self.events[e_opener].kind = EventKind::Enter(Container::Span);
+                        closed = self.push(EventKind::Exit(Container::Span));
+                    }
+
+                    self.span = span;
+                }
+
+                closed
+            })
+            .or_else(|| {
+                if matches!(dir, Dir::Close) {
+                    return None;
+                }
+                if matches!(dir, Dir::Both)
+                    && self
+                        .peek()
+                        .map_or(true, |t| matches!(t.kind, lex::Kind::Whitespace))
+                {
+                    return None;
+                }
+                if matches!(delim, Delim::SingleQuoted | Delim::DoubleQuoted)
+                    && self
+                        .events
+                        .back()
+                        .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                {
+                    return None;
+                }
+                self.openers.push((delim, self.events.len()));
+                // push dummy event in case attributes are encountered after closing delimiter
+                self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
+                // use non-opener for now, replace if closed later
+                self.push(match delim {
+                    Delim::SingleQuoted => EventKind::Atom(Quote {
+                        ty: QuoteType::Single,
+                        left: false,
+                    }),
+                    Delim::DoubleQuoted => EventKind::Atom(Quote {
+                        ty: QuoteType::Double,
+                        left: true,
+                    }),
+                    _ => EventKind::Str,
                 })
-        })
+            })
     }
 
     fn ahead_attributes(&mut self) -> Option<(bool, Span)> {
@@ -546,7 +544,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<()> {
         let mut ahead = self.lexer.chars();
-        match ahead.next() {
+        let (kind, span) = match ahead.next() {
             Some(opener @ ('[' | '(')) => {
                 let img = ty == SpanType::Image;
                 let (closer, kind) = match opener {
@@ -573,14 +571,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
             }
             _ => None,
-        }
-        .map(|(kind, span)| {
-            self.lexer = lex::Lexer::new(ahead);
-            self.events[opener_event].kind = EventKind::Enter(kind);
-            self.events[opener_event].span = span;
-            self.span = span.translate(1);
-            self.push_sp(EventKind::Exit(kind), span);
-        })
+        }?;
+
+        self.lexer = lex::Lexer::new(ahead);
+        self.events[opener_event].kind = EventKind::Enter(kind);
+        self.events[opener_event].span = span;
+        self.span = span.translate(1);
+        self.push_sp(EventKind::Exit(kind), span)
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<()> {
