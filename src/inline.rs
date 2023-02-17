@@ -122,9 +122,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.span = self.span.empty_after();
     }
 
-    fn push(&mut self, e: Event) -> Option<()> {
-        self.events.push_back(e);
+    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<()> {
+        self.events.push_back(Event { kind, span });
         Some(())
+    }
+
+    fn push(&mut self, kind: EventKind) -> Option<()> {
+        self.push_sp(kind, self.span)
     }
 
     fn parse_event(&mut self) -> Option<()> {
@@ -138,13 +142,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or_else(|| {
-                    self.push(Event {
-                        kind: if matches!(first.kind, lex::Kind::Whitespace) {
-                            EventKind::Whitespace
-                        } else {
-                            EventKind::Str
-                        },
-                        span: self.span,
+                    self.push(if matches!(first.kind, lex::Kind::Whitespace) {
+                        EventKind::Whitespace
+                    } else {
+                        EventKind::Str
                     });
                 })
         })
@@ -185,15 +186,9 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         }
         .map(|(mut kind, opener_len)| {
             let e_attr = self.events.len();
-            self.events.push_back(Event {
-                kind: EventKind::Placeholder,
-                span: Span::empty_at(self.span.start()),
-            });
+            self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
             let opener_event = self.events.len();
-            self.events.push_back(Event {
-                kind: EventKind::Enter(kind),
-                span: self.span,
-            });
+            self.push(EventKind::Enter(kind));
 
             let mut span_inner = self.span.empty_after();
             let mut span_outer = None;
@@ -262,10 +257,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 span_inner = span_inner.with_end(pos);
             }
 
-            self.events.push_back(Event {
-                kind: EventKind::Str,
-                span: span_inner,
-            });
+            self.push_sp(EventKind::Str, span_inner);
 
             if let Some((non_empty, span)) = self.ahead_attributes() {
                 if non_empty {
@@ -276,10 +268,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 }
             }
 
-            self.push(Event {
-                kind: EventKind::Exit(kind),
-                span: span_outer.unwrap_or(self.span),
-            });
+            self.push_sp(EventKind::Exit(kind), span_outer.unwrap_or(self.span));
         })
     }
 
@@ -315,28 +304,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         .union(self.events[self.events.len() - 1].span);
                     self.events.drain(i..);
 
-                    self.events.push_back(Event {
-                        kind: EventKind::Attributes,
-                        span: self.span,
-                    });
-                    self.events.push_back(Event {
-                        kind: EventKind::Enter(Container::Span),
-                        span: span_str.empty_before(),
-                    });
-                    self.events.push_back(Event {
-                        kind: EventKind::Str,
-                        span: span_str,
-                    });
+                    self.push(EventKind::Attributes);
+                    self.push_sp(EventKind::Enter(Container::Span), span_str.empty_before());
+                    self.push_sp(EventKind::Str, span_str);
 
-                    return self.push(Event {
-                        kind: EventKind::Exit(Container::Span),
-                        span: span_str.empty_after(),
-                    });
+                    return self.push_sp(EventKind::Exit(Container::Span), span_str.empty_after());
                 } else {
-                    return self.push(Event {
-                        kind: EventKind::Placeholder,
-                        span: self.span.empty_before(),
-                    });
+                    return self.push_sp(EventKind::Placeholder, self.span.empty_before());
                 }
             }
         }
@@ -367,19 +341,10 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             if end && is_url {
                 self.lexer = lex::Lexer::new(ahead);
                 self.span = self.span.after(len);
-                self.events.push_back(Event {
-                    kind: EventKind::Enter(Autolink),
-                    span: self.span,
-                });
-                self.events.push_back(Event {
-                    kind: EventKind::Str,
-                    span: self.span,
-                });
+                self.push(EventKind::Enter(Autolink));
+                self.push(EventKind::Str);
                 self.span = self.span.after(1);
-                return self.push(Event {
-                    kind: EventKind::Exit(Autolink),
-                    span: self.span,
-                });
+                return self.push(EventKind::Exit(Autolink));
             }
         }
         None
@@ -406,10 +371,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 self.span = self.span.after(len);
                 let span = self.span;
                 self.span = self.span.after(1);
-                return self.push(Event {
-                    kind: EventKind::Atom(Symbol),
-                    span,
-                });
+                return self.push_sp(EventKind::Atom(Symbol), span);
             }
         }
         None
@@ -450,10 +412,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             if end {
                 self.lexer = lex::Lexer::new(ahead);
                 self.span = self.span.after(len);
-                self.push(Event {
-                    kind: EventKind::Atom(FootnoteReference),
-                    span: self.span,
-                });
+                self.push(EventKind::Atom(FootnoteReference));
                 self.span = self.span.after(1);
                 return Some(());
             }
@@ -491,18 +450,12 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     let mut closed = match DelimEventKind::from(d) {
                         DelimEventKind::Container(cont) => {
                             self.events[e_opener].kind = EventKind::Enter(cont);
-                            self.push(Event {
-                                kind: EventKind::Exit(cont),
-                                span: self.span,
-                            })
+                            self.push(EventKind::Exit(cont))
                         }
                         DelimEventKind::Quote(ty) => {
                             self.events[e_opener].kind =
                                 EventKind::Atom(Atom::Quote { ty, left: true });
-                            self.push(Event {
-                                kind: EventKind::Atom(Atom::Quote { ty, left: false }),
-                                span: self.span,
-                            })
+                            self.push(EventKind::Atom(Atom::Quote { ty, left: false }))
                         }
                         DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
                     };
@@ -533,10 +486,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
                         if closed.is_none() {
                             self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                            closed = self.push(Event {
-                                kind: EventKind::Exit(Container::Span),
-                                span: self.span,
-                            });
+                            closed = self.push(EventKind::Exit(Container::Span));
                         }
 
                         self.span = span;
@@ -565,24 +515,18 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     }
                     self.openers.push((delim, self.events.len()));
                     // push dummy event in case attributes are encountered after closing delimiter
-                    self.events.push_back(Event {
-                        kind: EventKind::Placeholder,
-                        span: Span::empty_at(self.span.start()),
-                    });
+                    self.push_sp(EventKind::Placeholder, Span::empty_at(self.span.start()));
                     // use non-opener for now, replace if closed later
-                    self.push(Event {
-                        kind: match delim {
-                            Delim::SingleQuoted => EventKind::Atom(Quote {
-                                ty: QuoteType::Single,
-                                left: false,
-                            }),
-                            Delim::DoubleQuoted => EventKind::Atom(Quote {
-                                ty: QuoteType::Double,
-                                left: true,
-                            }),
-                            _ => EventKind::Str,
-                        },
-                        span: self.span,
+                    self.push(match delim {
+                        Delim::SingleQuoted => EventKind::Atom(Quote {
+                            ty: QuoteType::Single,
+                            left: false,
+                        }),
+                        Delim::DoubleQuoted => EventKind::Atom(Quote {
+                            ty: QuoteType::Double,
+                            left: true,
+                        }),
+                        _ => EventKind::Str,
                     })
                 })
         })
@@ -642,10 +586,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             self.events[opener_event].kind = EventKind::Enter(kind);
             self.events[opener_event].span = span;
             self.span = span.translate(1);
-            self.push(Event {
-                kind: EventKind::Exit(kind),
-                span,
-            });
+            self.push_sp(EventKind::Exit(kind), span);
         })
     }
 
@@ -658,19 +599,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 lex::Kind::Nbsp => Nbsp,
                 lex::Kind::Seq(lex::Sequence::Period) if first.len >= 3 => {
                     while self.span.len() > 3 {
-                        self.events.push_back(Event {
-                            kind: EventKind::Atom(Ellipsis),
-                            span: self.span.with_len(3),
-                        });
+                        self.push_sp(EventKind::Atom(Ellipsis), self.span.with_len(3));
                         self.span = self.span.skip(3);
                     }
                     if self.span.len() == 3 {
                         Ellipsis
                     } else {
-                        return self.push(Event {
-                            kind: EventKind::Str,
-                            span: self.span,
-                        });
+                        return self.push(EventKind::Str);
                     }
                 }
                 lex::Kind::Seq(lex::Sequence::Hyphen) if first.len >= 2 => {
@@ -687,10 +622,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         .chain(std::iter::repeat(EnDash).take(n))
                         .for_each(|atom| {
                             let l = if matches!(atom, EnDash) { 2 } else { 3 };
-                            self.events.push_back(Event {
-                                kind: EventKind::Atom(atom),
-                                span: self.span.with_len(l),
-                            });
+                            self.push_sp(EventKind::Atom(atom), self.span.with_len(l));
                             self.span = self.span.skip(l);
                         });
                     return Some(());
@@ -716,10 +648,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 _ => return None,
             };
 
-        self.push(Event {
-            kind: EventKind::Atom(atom),
-            span: self.span,
-        })
+        self.push(EventKind::Atom(atom))
     }
 }
 
