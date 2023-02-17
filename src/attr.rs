@@ -12,16 +12,21 @@ pub(crate) fn parse(src: &str) -> Attributes {
 
 pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     let mut has_attr = false;
-    let mut p = Parser::new(chars);
-    for e in &mut p {
-        match e {
-            Element::Class(..) | Element::Identifier(..) | Element::Attribute(..) => {
-                has_attr = true;
-            }
-            Element::Invalid => return (0, false),
+    let mut p = Parser::new();
+    for c in chars {
+        if p.step(c).is_some() {
+            has_attr = true;
+        }
+        if matches!(p.state, Done | Invalid) {
+            break;
         }
     }
-    (p.pos, has_attr)
+
+    if matches!(p.state, Done) {
+        (p.pos, has_attr)
+    } else {
+        (0, false)
+    }
 }
 
 /// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,
@@ -112,15 +117,20 @@ impl<'s> Attributes<'s> {
     }
 
     pub(crate) fn parse(&mut self, input: &'s str) -> bool {
-        for elem in Parser::new(input.chars()) {
-            match elem {
-                Element::Class(c) => self.insert("class", c.of(input).into()),
-                Element::Identifier(i) => self.insert("id", i.of(input).into()),
-                Element::Attribute(a, v) => self.insert(a.of(input), v.of(input).into()),
-                Element::Invalid => return false,
+        let mut p = Parser::new();
+        for c in input.chars() {
+            if let Some(elem) = p.step(c) {
+                match elem {
+                    Element::Class(c) => self.insert("class", c.of(input).into()),
+                    Element::Identifier(i) => self.insert("id", i.of(input).into()),
+                    Element::Attribute(a, v) => self.insert(a.of(input), v.of(input).into()),
+                }
+            }
+            if matches!(p.state, Done | Invalid) {
+                break;
             }
         }
-        true
+        matches!(p.state, Done)
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
@@ -220,132 +230,93 @@ enum State {
     ValueFirst,
     Value,
     ValueQuoted,
+    ValueEscape,
     Done,
     Invalid,
 }
 
-struct Parser<I> {
-    chars: I,
+impl State {
+    fn step(self, c: char) -> State {
+        match self {
+            Start if c == '{' => Whitespace,
+            Start => Invalid,
+            Whitespace => match c {
+                '}' => Done,
+                '.' => ClassFirst,
+                '#' => IdentifierFirst,
+                '%' => Comment,
+                c if is_name(c) => Key,
+                c if c.is_whitespace() => Whitespace,
+                _ => Invalid,
+            },
+            Comment if c == '%' => Whitespace,
+            Comment => Comment,
+            ClassFirst if is_name(c) => Class,
+            ClassFirst => Invalid,
+            IdentifierFirst if is_name(c) => Identifier,
+            IdentifierFirst => Invalid,
+            s @ (Class | Identifier | Value) if is_name(c) => s,
+            Class | Identifier | Value if c.is_whitespace() => Whitespace,
+            Class | Identifier | Value if c == '}' => Done,
+            Class | Identifier | Value => Invalid,
+            Key if is_name(c) => Key,
+            Key if c == '=' => ValueFirst,
+            Key => Invalid,
+            ValueFirst if is_name(c) => Value,
+            ValueFirst if c == '"' => ValueQuoted,
+            ValueFirst => Invalid,
+            ValueQuoted if c == '"' => Whitespace,
+            ValueQuoted if c == '\\' => ValueEscape,
+            ValueQuoted | ValueEscape => ValueQuoted,
+            Invalid | Done => panic!("{:?}", self),
+        }
+    }
+}
+
+struct Parser {
     pos: usize,
     pos_prev: usize,
+    span1: Span,
     state: State,
 }
 
-impl<I: Iterator<Item = char>> Parser<I> {
-    fn new(chars: I) -> Self {
+impl Parser {
+    fn new() -> Self {
         Parser {
-            chars,
             pos: 0,
             pos_prev: 0,
+            span1: Span::new(0, 0),
             state: Start,
         }
     }
 
-    fn step_char(&mut self) -> Option<State> {
-        self.chars.next().map(|c| {
+    fn step(&mut self, c: char) -> Option<Element> {
+        let state_next = self.state.step(c);
+        let st = std::mem::replace(&mut self.state, state_next);
+
+        let elem = if st != self.state
+            && !matches!((st, self.state), (ValueEscape, _) | (_, ValueEscape))
+        {
+            let span0 = Span::new(self.pos_prev, self.pos);
             self.pos_prev = self.pos;
-            self.pos += c.len_utf8();
-            match self.state {
-                Start => match c {
-                    '{' => Whitespace,
-                    _ => Invalid,
-                },
-                Whitespace => match c {
-                    '}' => Done,
-                    '.' => ClassFirst,
-                    '#' => IdentifierFirst,
-                    '%' => Comment,
-                    c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Key,
-                    c if c.is_whitespace() => Whitespace,
-                    _ => Invalid,
-                },
-                Comment => {
-                    if c == '%' {
-                        Whitespace
-                    } else {
-                        Comment
-                    }
-                }
-                s @ (ClassFirst | IdentifierFirst) => {
-                    if is_name(c) {
-                        match s {
-                            ClassFirst => Class,
-                            IdentifierFirst => Identifier,
-                            _ => panic!(),
-                        }
-                    } else {
-                        Invalid
-                    }
-                }
-                s @ (Class | Identifier | Value) => {
-                    if is_name(c) {
-                        s
-                    } else if c.is_whitespace() {
-                        Whitespace
-                    } else if c == '}' {
-                        Done
-                    } else {
-                        Invalid
-                    }
-                }
+            match st {
                 Key => {
-                    if is_name(c) {
-                        Key
-                    } else if c == '=' {
-                        ValueFirst
-                    } else {
-                        Invalid
-                    }
+                    self.span1 = span0;
+                    None
                 }
-                ValueFirst => {
-                    if is_name(c) {
-                        Value
-                    } else if c == '"' {
-                        ValueQuoted
-                    } else {
-                        Invalid
-                    }
-                }
-                ValueQuoted => match c {
-                    '\\' => {
-                        if let Some(c) = self.chars.next() {
-                            self.pos_prev = self.pos;
-                            self.pos += c.len_utf8();
-                        }
-                        ValueQuoted
-                    }
-                    '"' => Whitespace,
-                    _ => ValueQuoted,
-                },
-                Invalid | Done => panic!("{:?}", self.state),
+                Class => Some(Element::Class(span0)),
+                Identifier => Some(Element::Identifier(span0)),
+                Value => Some(Element::Attribute(self.span1, span0)),
+                ValueQuoted => Some(Element::Attribute(self.span1, span0.skip(1))),
+                _ => None,
             }
-        })
-    }
+        } else {
+            None
+        };
 
-    fn step(&mut self) -> (State, Span) {
-        let start = self.pos_prev;
+        self.pos += c.len_utf8();
 
-        if self.state == Done {
-            return (Done, Span::empty_at(start));
-        }
-
-        if self.state == Invalid {
-            return (Invalid, Span::empty_at(start));
-        }
-
-        while let Some(state_next) = self.step_char() {
-            if self.state != state_next {
-                return (
-                    std::mem::replace(&mut self.state, state_next),
-                    Span::new(start, self.pos_prev),
-                );
-            }
-        }
-
-        (
-            if self.state == Done { Done } else { Invalid },
-            Span::new(start, self.pos_prev),
-        )
+        elem
     }
 }
 
@@ -357,47 +328,6 @@ enum Element {
     Class(Span),
     Identifier(Span),
     Attribute(Span, Span),
-    Invalid,
-}
-
-impl<I: Iterator<Item = char>> Iterator for Parser<I> {
-    type Item = Element;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let (st, span0) = self.step();
-            return match st {
-                ClassFirst | IdentifierFirst => {
-                    let (st, span1) = self.step();
-                    Some(match st {
-                        Class => Element::Class(span1),
-                        Identifier => Element::Identifier(span1),
-                        _ => return Some(Element::Invalid),
-                    })
-                }
-                Key => {
-                    let (st, _span1) = self.step();
-                    match st {
-                        ValueFirst => {
-                            let (st, span2) = self.step();
-                            match st {
-                                Value => Some(Element::Attribute(span0, span2)),
-                                ValueQuoted => Some(Element::Attribute(span0, span2.skip(1))),
-                                Invalid => Some(Element::Invalid),
-                                _ => panic!("{:?}", st),
-                            }
-                        }
-                        Invalid => Some(Element::Invalid),
-                        _ => panic!("{:?}", st),
-                    }
-                }
-                Comment | Start | Whitespace => continue,
-                Done => None,
-                Invalid => Some(Element::Invalid),
-                _ => panic!("{:?}", st),
-            };
-        }
-    }
 }
 
 #[cfg(test)]
