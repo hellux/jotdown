@@ -52,17 +52,19 @@ impl<'s> Attributes<'s> {
 
     pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
         let mut p = Parser::new();
+        let mut span_key = None;
         for c in input.chars() {
-            if let Some(e) = p.step(c) {
-                match e {
-                    Element::Class(c) => self.insert("class", input.src(c)),
-                    Element::Identifier(i) => self.insert("id", input.src(i)),
-                    Element::Attribute(a, v) => self.insert(
-                        match input.src(a) {
+            if let Some((ty, sp)) = p.step(c) {
+                match ty {
+                    Element::Class => self.insert("class", input.src(sp)),
+                    Element::Identifier => self.insert("id", input.src(sp)),
+                    Element::Key => span_key = Some(sp),
+                    Element::Value => self.insert(
+                        match input.src(span_key.take().unwrap()) {
                             CowStr::Owned(_) => panic!(),
                             CowStr::Borrowed(s) => s,
                         },
-                        input.src(v),
+                        input.src(sp),
                     ),
                 }
             }
@@ -201,7 +203,6 @@ impl State {
 struct Parser {
     pos: usize,
     pos_prev: usize,
-    span1: Span,
     state: State,
 }
 
@@ -210,29 +211,27 @@ impl Parser {
         Parser {
             pos: 0,
             pos_prev: 0,
-            span1: Span::new(0, 0),
             state: Start,
         }
     }
 
-    fn step(&mut self, c: char) -> Option<Element> {
+    fn step(&mut self, c: char) -> Option<(Element, Span)> {
         let state_next = self.state.step(c);
 
         let elem = if self.state != state_next {
             let st = std::mem::replace(&mut self.state, state_next);
-            let span0 = Span::new(self.pos_prev, self.pos);
+            let span = Span::new(self.pos_prev, self.pos);
             self.pos_prev = self.pos;
             match st {
-                Key => {
-                    self.span1 = span0;
-                    None
-                }
                 ClassFirst | IdentifierFirst | ValueFirst | Comment | Start | Whitespace | Done
                 | Invalid => None,
-                Class => Some(Element::Class(span0)),
-                Identifier => Some(Element::Identifier(span0)),
-                Value => Some(Element::Attribute(self.span1, span0)),
-                ValueQuoted => Some(Element::Attribute(self.span1, span0.skip(1))),
+                Key => Some((Element::Key, span)),
+                Class => Some((Element::Class, span)),
+                Identifier => Some((Element::Identifier, span)),
+                Value | ValueQuoted => Some((
+                    Element::Value,
+                    span.skip(usize::from(matches!(st, ValueQuoted))),
+                )),
             }
         } else {
             None
@@ -253,9 +252,10 @@ pub fn is_name(c: char) -> bool {
 }
 
 enum Element {
-    Class(Span),
-    Identifier(Span),
-    Attribute(Span, Span),
+    Class,
+    Identifier,
+    Key,
+    Value,
 }
 
 #[cfg(test)]
