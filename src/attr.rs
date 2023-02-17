@@ -153,7 +153,7 @@ enum State {
     Class,
     IdentifierFirst,
     Identifier,
-    Attribute,
+    Key,
     ValueFirst,
     Value,
     ValueQuoted,
@@ -171,7 +171,7 @@ impl State {
                 '.' => ClassFirst,
                 '#' => IdentifierFirst,
                 '%' => Comment,
-                c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Attribute,
+                c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Key,
                 c if c.is_whitespace() => Whitespace,
                 _ => Invalid,
             },
@@ -185,9 +185,9 @@ impl State {
             Class | Identifier | Value if c.is_whitespace() => Whitespace,
             Class | Identifier | Value if c == '}' => Done,
             Class | Identifier | Value => Invalid,
-            Attribute if is_name(c) => Attribute,
-            Attribute if c == '=' => ValueFirst,
-            Attribute => Invalid,
+            Key if is_name(c) => Key,
+            Key if c == '=' => ValueFirst,
+            Key => Invalid,
             ValueFirst if is_name(c) => Value,
             ValueFirst if c == '"' => ValueQuoted,
             ValueFirst => Invalid,
@@ -223,7 +223,7 @@ impl Parser {
             let span0 = Span::new(self.pos_prev, self.pos);
             self.pos_prev = self.pos;
             match st {
-                Attribute => {
+                Key => {
                     self.span1 = span0;
                     None
                 }
