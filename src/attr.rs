@@ -59,13 +59,24 @@ impl<'s> Attributes<'s> {
                     Element::Class => self.insert("class", input.src(sp)),
                     Element::Identifier => self.insert("id", input.src(sp)),
                     Element::Key => span_key = Some(sp),
-                    Element::Value => self.insert(
-                        match input.src(span_key.take().unwrap()) {
-                            CowStr::Owned(_) => panic!(),
-                            CowStr::Borrowed(s) => s,
-                        },
-                        input.src(sp),
-                    ),
+                    Element::Value { continuation, .. } => {
+                        if continuation {
+                            self.0.as_mut().unwrap().last_mut().unwrap().1 = format!(
+                                "{} {}",
+                                self.0.as_ref().unwrap().last().unwrap().1,
+                                input.src(sp),
+                            )
+                            .into();
+                        } else {
+                            self.insert(
+                                match input.src(span_key.take().unwrap()) {
+                                    CowStr::Owned(_) => panic!(),
+                                    CowStr::Borrowed(s) => s,
+                                },
+                                input.src(sp),
+                            )
+                        }
+                    }
                 }
             }
             if matches!(p.state, Done | Invalid) {
@@ -159,6 +170,8 @@ enum State {
     ValueFirst,
     Value,
     ValueQuoted,
+    ValueNewline,
+    ValueContinued,
     Done,
     Invalid,
 }
@@ -193,8 +206,11 @@ impl State {
             ValueFirst if is_name(c) => Value,
             ValueFirst if c == '"' => ValueQuoted,
             ValueFirst => Invalid,
-            ValueQuoted if c == '"' => Whitespace,
+            ValueQuoted | ValueNewline | ValueContinued if c == '"' => Whitespace,
+            ValueQuoted | ValueNewline | ValueContinued if c == '\n' => ValueNewline,
             ValueQuoted => ValueQuoted,
+            ValueNewline => ValueContinued,
+            ValueContinued => ValueContinued,
             Invalid | Done => panic!("{:?}", self),
         }
     }
@@ -223,13 +239,15 @@ impl Parser {
             let span = Span::new(self.pos_prev, self.pos);
             self.pos_prev = self.pos;
             match st {
-                ClassFirst | IdentifierFirst | ValueFirst | Comment | Start | Whitespace | Done
-                | Invalid => None,
+                ClassFirst | IdentifierFirst | ValueFirst | ValueNewline | Comment | Start
+                | Whitespace | Done | Invalid => None,
                 Key => Some((Element::Key, span)),
                 Class => Some((Element::Class, span)),
                 Identifier => Some((Element::Identifier, span)),
-                Value | ValueQuoted => Some((
-                    Element::Value,
+                Value | ValueQuoted | ValueContinued => Some((
+                    Element::Value {
+                        continuation: matches!(st, ValueContinued),
+                    },
                     span.skip(usize::from(matches!(st, ValueQuoted))),
                 )),
             }
@@ -255,7 +273,7 @@ enum Element {
     Class,
     Identifier,
     Key,
-    Value,
+    Value { continuation: bool },
 }
 
 #[cfg(test)]
@@ -314,6 +332,11 @@ mod test {
             ("class", "class"),
             ("style", "color:red")
         );
+    }
+
+    #[test]
+    fn value_newline() {
+        test_attr!("{attr0=\"abc\ndef\"}", ("attr0", "abc def"));
     }
 
     #[test]
