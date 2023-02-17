@@ -216,7 +216,7 @@ enum State {
     Class,
     IdentifierFirst,
     Identifier,
-    Attribute,
+    Key,
     ValueFirst,
     Value,
     ValueQuoted,
@@ -255,7 +255,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                     '.' => ClassFirst,
                     '#' => IdentifierFirst,
                     '%' => Comment,
-                    c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Attribute,
+                    c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Key,
                     c if c.is_whitespace() => Whitespace,
                     _ => Invalid,
                 },
@@ -288,9 +288,9 @@ impl<I: Iterator<Item = char>> Parser<I> {
                         Invalid
                     }
                 }
-                Attribute => {
+                Key => {
                     if is_name(c) {
-                        Attribute
+                        Key
                     } else if c == '=' {
                         ValueFirst
                     } else {
@@ -375,7 +375,7 @@ impl<I: Iterator<Item = char>> Iterator for Parser<I> {
                         _ => return Some(Element::Invalid),
                     })
                 }
-                Attribute => {
+                Key => {
                     let (st, _span1) = self.step();
                     match st {
                         ValueFirst => {
