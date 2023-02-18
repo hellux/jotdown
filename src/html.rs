@@ -194,7 +194,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
                         write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v)?;
+                        self.write_escape(v.as_ref())?;
                         self.out.write_char('"')?;
                     }
 
@@ -249,7 +249,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 self.out.write_char(' ')?;
                             }
                             first_written = true;
-                            self.out.write_str(cls)?;
+                            self.out.write_str(cls.as_ref())?;
                         }
                         // div class goes after classes from attrs
                         if let Container::Div { class: Some(cls) } = c {
@@ -415,7 +415,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     self.out.write_str("\n<hr")?;
                     for (a, v) in attrs.iter() {
                         write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v)?;
+                        self.write_escape(v.as_ref())?;
                         self.out.write_char('"')?;
                     }
                     self.out.write_str(">")?;

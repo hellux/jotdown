@@ -549,7 +549,7 @@ impl<'s> PrePass<'s> {
                     let id_override = attrs
                         .as_ref()
                         .and_then(|attrs| attrs.get("id"))
-                        .map(ToString::to_string);
+                        .map(|s| s.to_string());
 
                     inlines.set_spans(tree.take_inlines());
                     let mut id_auto = String::new();
@@ -735,7 +735,7 @@ impl<'s> Parser<'s> {
                             .cloned();
 
                         let url = if let Some((url, attrs_def)) = link_def {
-                            attributes.union(attrs_def);
+                            attributes.prepend(attrs_def);
                             url
                         } else {
                             self.pre_pass
@@ -1393,7 +1393,7 @@ mod test {
             Start(Paragraph, Attributes::new()),
             Start(
                 Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
-                [("b", "c"), ("a", "b")].into_iter().collect(),
+                [("a", "b"), ("b", "c")].into_iter().collect(),
             ),
             Str("text".into()),
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
