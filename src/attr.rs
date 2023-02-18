@@ -326,13 +326,13 @@ mod test {
     }
 
     #[test]
-    fn empty() {
+    fn parse_empty() {
         test_attr!("{}");
     }
 
     #[ignore = "classes not concatenated"]
     #[test]
-    fn class_id() {
+    fn parse_class_id() {
         test_attr!(
             "{.some_class #some_id}",
             ("class", "some_class"),
@@ -344,12 +344,12 @@ mod test {
 
     #[ignore = "classes not concatenated"]
     #[test]
-    fn unicode_whitespace() {
+    fn parse_unicode_whitespace() {
         test_attr!("{.a .b}", ("class", "a b"));
     }
 
     #[test]
-    fn value_unquoted() {
+    fn parse_value_unquoted() {
         test_attr!(
             "{attr0=val0 attr1=val1}",
             ("attr0", "val0"),
@@ -358,7 +358,7 @@ mod test {
     }
 
     #[test]
-    fn value_quoted() {
+    fn parse_value_quoted() {
         test_attr!(
             r#"{attr0="val0" attr1="val1"}"#,
             ("attr0", "val0"),
@@ -373,12 +373,12 @@ mod test {
     }
 
     #[test]
-    fn value_newline() {
+    fn parse_value_newline() {
         test_attr!("{attr0=\"abc\ndef\"}", ("attr0", "abc def"));
     }
 
     #[test]
-    fn comment() {
+    fn parse_comment() {
         test_attr!("{%%}");
         test_attr!("{ % abc % }");
         test_attr!(
