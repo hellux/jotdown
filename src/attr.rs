@@ -220,6 +220,85 @@ impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
     }
 }
 
+pub enum StepResult {
+    /// Attributes are valid and completed.
+    Done,
+    /// Attributes are invalid.
+    Invalid,
+    /// Attributes are valid so far.
+    Valid,
+    /// Attributes are valid so far, more input is needed.
+    More,
+}
+
+pub struct Builder<'s> {
+    input: &'s str,
+    chars: std::str::Chars<'s>,
+    attrs: Attributes<'s>,
+    parser: Parser,
+    checkpoint_events: usize,
+}
+
+impl<'s> Builder<'s> {
+    pub fn new(input: &'s str) -> Self {
+        Self {
+            input,
+            chars: input.chars(),
+            attrs: Attributes::new(),
+            parser: Parser {
+                pos: 0,
+                pos_prev: 0,
+                state: State::Start,
+            },
+            checkpoint_events: 0,
+        }
+    }
+
+    pub fn restart(&mut self) {
+        self.parser.state = State::Start;
+    }
+
+    pub fn set_input(&mut self, input: &'s str) {
+        debug_assert_eq!(self.chars.next(), None);
+        self.input = input;
+        self.chars = input.chars();
+        self.parser.pos = 0;
+        self.parser.pos_prev = 0;
+    }
+
+    pub fn step(&mut self) -> StepResult {
+        if let Some(c) = self.chars.next() {
+            if let Some((ev, sp)) = self.parser.step(c) {
+                self.attrs.push_event(ev, sp.of(self.input));
+            }
+            match self.parser.state {
+                State::Done => {
+                    if let Some(elems) = self.attrs.0.as_ref() {
+                        self.checkpoint_events = elems.len();
+                    }
+                    StepResult::Done
+                }
+                State::Invalid => StepResult::Invalid,
+                _ => StepResult::Valid,
+            }
+        } else {
+            StepResult::More
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.input.len() - self.chars.as_str().len()
+    }
+
+    pub fn finish(mut self) -> Attributes<'s> {
+        if let Some(elems) = self.attrs.0.as_mut() {
+            debug_assert_ne!(elems.len(), 0);
+            elems.drain(self.checkpoint_events..);
+        }
+        self.attrs
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Start,

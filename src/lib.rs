@@ -674,23 +674,15 @@ impl<'s> Parser<'s> {
     }
 
     fn inline(&mut self) -> Option<Event<'s>> {
-        let mut inline = self.inline_parser.next();
+        let next = self.inline_parser.next()?;
 
-        inline.as_ref()?;
-
-        let mut first_is_attr = false;
-        let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
-            if let inline::EventKind::Attributes { .. } = inl.kind {
-                first_is_attr = true;
-                attr::parse(inl.span.of(self.src))
-            } else {
-                Attributes::new()
-            }
-        });
-
-        if first_is_attr {
-            inline = self.inline_parser.next();
-        }
+        let (inline, mut attributes) = match next {
+            inline::Event {
+                kind: inline::EventKind::Attributes { attrs, .. },
+                ..
+            } => (self.inline_parser.next(), attrs),
+            inline => (Some(inline), Attributes::new()),
+        };
 
         inline.map(|inline| match inline.kind {
             inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
@@ -1566,7 +1558,6 @@ mod test {
         );
     }
 
-    #[ignore = "multiline attributes broken"]
     #[test]
     fn attr_multiline() {
         test_parse!(
@@ -1581,6 +1572,53 @@ mod test {
             End(Emphasis),
             End(Paragraph),
             End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> a{\n",   //
+                "> %%\n",   //
+                "> a=a}\n", //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Span, [("a", "a")].into_iter().collect()),
+            Str("a".into()),
+            End(Span),
+            End(Paragraph),
+            End(Blockquote),
+        );
+    }
+
+    #[test]
+    fn attr_multiline_unclosed() {
+        test_parse!(
+            concat!(
+                "a{\n", //
+                " b\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("a{".into()),
+            Softbreak,
+            Str("b".into()),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn attr_multiline_invalid() {
+        test_parse!(
+            concat!(
+                "a{a=b\n", //
+                " b\n",    //
+                "}",       //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("a{a=b".into()),
+            Softbreak,
+            Str("b".into()),
+            Softbreak,
+            Str("}".into()),
+            End(Paragraph),
         );
     }
 
