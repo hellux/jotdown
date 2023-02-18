@@ -56,10 +56,10 @@ impl<'s> Attributes<'s> {
         for c in input.chars() {
             if let Some((ty, sp)) = p.step(c) {
                 match ty {
-                    Element::Class => self.insert("class", input.src(sp)),
-                    Element::Identifier => self.insert("id", input.src(sp)),
-                    Element::Key => span_key = Some(sp),
-                    Element::Value { continuation } => {
+                    Event::Class => self.insert("class", input.src(sp)),
+                    Event::Identifier => self.insert("id", input.src(sp)),
+                    Event::Key => span_key = Some(sp),
+                    Event::Value { continuation } => {
                         if continuation {
                             self.0.as_mut().unwrap().last_mut().unwrap().1 = format!(
                                 "{} {}",
@@ -233,7 +233,7 @@ impl Parser {
         }
     }
 
-    fn step(&mut self, c: char) -> Option<(Element, Span)> {
+    fn step(&mut self, c: char) -> Option<(Event, Span)> {
         use State::*;
 
         let state_next = self.state.step(c);
@@ -245,11 +245,11 @@ impl Parser {
             match st {
                 ClassFirst | IdentifierFirst | ValueFirst | ValueNewline | Comment | Start
                 | Whitespace | Done | Invalid => None,
-                Key => Some((Element::Key, span)),
-                Class => Some((Element::Class, span)),
-                Identifier => Some((Element::Identifier, span)),
+                Key => Some((Event::Key, span)),
+                Class => Some((Event::Class, span)),
+                Identifier => Some((Event::Identifier, span)),
                 Value | ValueQuoted | ValueContinued => Some((
-                    Element::Value {
+                    Event::Value {
                         continuation: matches!(st, ValueContinued),
                     },
                     span.skip(usize::from(matches!(st, ValueQuoted))),
@@ -273,7 +273,7 @@ pub fn is_name(c: char) -> bool {
     is_name_start(c) || c.is_ascii_digit() || matches!(c, '-')
 }
 
-enum Element {
+enum Event {
     Class,
     Identifier,
     Key,
