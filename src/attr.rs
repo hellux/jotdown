@@ -288,6 +288,18 @@ impl<'a, 's> Parser<'a, 's> {
         }
     }
 
+    pub fn restart(&mut self) {
+        self.state = State::Start;
+    }
+
+    pub fn set_input(&mut self, input: &'s str) {
+        debug_assert_eq!(self.chars.next(), None);
+        self.input = input;
+        self.chars = input.chars();
+        self.pos = 0;
+        self.pos_prev = 0;
+    }
+
     pub fn step(&mut self) -> StepResult {
         self.chars.next().map_or(StepResult::More, |c| {
             use State::*;
@@ -323,6 +335,10 @@ impl<'a, 's> Parser<'a, 's> {
                 _ => StepResult::Valid,
             }
         })
+    }
+
+    pub fn len(&self) -> usize {
+        self.input.len() - self.chars.as_str().len()
     }
 }
 

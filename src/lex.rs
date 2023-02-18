@@ -103,9 +103,11 @@ impl<'s> Lexer<'s> {
     }
 
     pub fn ahead(&self) -> &'s str {
-        let pos =
-            self.src.len() - self.chars.as_str().len() - self.next.as_ref().map_or(0, |t| t.len);
-        &self.src[pos..]
+        &self.src[self.pos()..]
+    }
+
+    fn pos(&self) -> usize {
+        self.src.len() - self.chars.as_str().len() - self.next.as_ref().map_or(0, |t| t.len)
     }
 
     fn next_token(&mut self) -> Option<Token> {
