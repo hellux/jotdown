@@ -12,18 +12,20 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     use State::*;
 
     let mut has_attr = false;
-    let mut p = Parser::new();
+    let mut n = 0;
+    let mut state = Start;
     for c in chars {
-        if p.step(c).is_some() {
-            has_attr = true;
-        }
-        if matches!(p.state, Done | Invalid) {
-            break;
+        n += 1;
+        state = state.step(c);
+        match state {
+            Class | Identifier | Value | ValueQuoted => has_attr = true,
+            Done | Invalid => break,
+            _ => {}
         }
     }
 
-    if matches!(p.state, Done) {
-        (p.pos, has_attr)
+    if matches!(state, Done) {
+        (n, has_attr)
     } else {
         (0, false)
     }
