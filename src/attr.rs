@@ -31,6 +31,53 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     }
 }
 
+// class: slice starts on first key=class, emits all values followed by a key=class,
+// other: slice starts on the last key=key, only emits the immediately following values
+#[derive(Debug)]
+pub struct ValueRef<'a, 's>(&'a [(Element, &'s str)]);
+
+impl<'a, 's> std::fmt::Display for ValueRef<'a, 's> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = self.parts();
+        write!(f, "{}", parts.next().unwrap())?;
+        parts.try_for_each(|p| write!(f, " {}", p))
+    }
+}
+
+impl<'a, 's> ValueRef<'a, 's> {
+    /// Return all separated parts of a value. A value may be separated due to a line break or in
+    /// case of "class" values due to concatenation.
+    pub fn parts(&self) -> impl Iterator<Item = &'s str> + 'a {
+        let mut elems = self.0.iter();
+
+        let key0 = elems.next().unwrap().1;
+        let concatenate = matches!(key0, "class");
+
+        let mut done = false;
+        std::iter::from_fn(move || {
+            if !done {
+                while let Some((e, s)) = elems.next() {
+                    match e {
+                        Element::Key => {
+                            if *s != "class" {
+                                elems.find(|e| matches!(e, (Element::Key, "class")));
+                            }
+                        }
+                        Element::Value { closed } => {
+                            if *closed && !concatenate {
+                                done = true;
+                            }
+                            return Some(*s);
+                        }
+                    }
+                }
+                done = true;
+            }
+            None
+        })
+    }
+}
+
 /// A collection of attributes, i.e. a key-value map.
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
 // indirection instead of always 24 bytes.
@@ -120,54 +167,51 @@ impl<'s> Attributes<'s> {
     }
 
     /// Returns a reference to the value corresponding to the attribute key.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the key is "class".
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<CowStr<'s>> {
-        assert_ne!(key, "class");
-        self.0.as_ref().and_then(|elems| {
-            elems
-                .as_ref()
-                .iter()
-                .rposition(|(e, v)| matches!(e, Element::Key) && *v == key)
-                .map(|i| self.get_value(elems.iter().skip(i + 1)))
-        })
+    pub fn get(&self, key: &str) -> Option<ValueRef> {
+        if key == "class" {
+            self.0.as_ref().and_then(|elems| {
+                elems
+                    .as_ref()
+                    .iter()
+                    .position(|(e, v)| matches!(e, Element::Key) && *v == "class")
+                    .map(|i| ValueRef(&elems[i..]))
+            })
+        } else {
+            self.0.as_ref().and_then(|elems| {
+                elems
+                    .as_ref()
+                    .iter()
+                    .rposition(|(e, v)| matches!(e, Element::Key) && *v == key)
+                    .map(|i| ValueRef(&elems[i..]))
+            })
+        }
     }
 
-    /// Returns an iterator over the attributes in undefined order.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, CowStr<'s>)> + '_ {
-        let mut elems = self.0.iter().flat_map(|v| v.iter());
+    /// Return an iterator over each unique key in the collection of attributes.
+    pub fn keys(&self) -> impl Iterator<Item = &str> + '_ {
+        let mut i = 0;
         std::iter::from_fn(move || {
-            elems.next().map(|(elem, s)| match elem {
-                Element::Key => (*s, self.get_value(&mut elems)),
-                Element::Value { .. } => panic!(),
+            self.0.as_ref().and_then(|elems| {
+                while let Some((e, v)) = elems.get(i) {
+                    let unique_key = matches!(e, Element::Key)
+                        && !elems
+                            .iter()
+                            .take(i)
+                            .any(|e| matches!(e, (Element::Key, key) if key == v));
+                    i += 1;
+                    if unique_key {
+                        return Some(*v);
+                    }
+                }
+                None
             })
         })
     }
 
-    fn get_value<'a, I: Iterator<Item = &'a (Element, &'s str)>>(
-        &'a self,
-        mut elems: I,
-    ) -> CowStr<'s> {
-        if let (Element::Value { closed }, s_val) = elems.next().unwrap() {
-            if *closed {
-                (*s_val).into()
-            } else {
-                let mut s_val = s_val.to_string();
-                while let Some((Element::Value { closed }, s_cont)) = elems.next() {
-                    s_val.push(' ');
-                    s_val.push_str(s_cont);
-                    if *closed {
-                        break;
-                    }
-                }
-                s_val.into()
-            }
-        } else {
-            panic!()
-        }
+    /// Returns an iterator over the attributes in undefined order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, ValueRef)> {
+        self.keys().map(|k| (k, self.get(k).unwrap()))
     }
 }
 
@@ -319,7 +363,7 @@ mod test {
             #[allow(unused)]
             let mut attr =super::Attributes::new();
             attr.parse($src);
-            let actual = attr.iter().collect::<Vec<_>>();
+            let actual = attr.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>();
             let expected = &[$($(($key, $val.into())),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
@@ -330,7 +374,6 @@ mod test {
         test_attr!("{}");
     }
 
-    #[ignore = "classes not concatenated"]
     #[test]
     fn parse_class_id() {
         test_attr!(
@@ -342,7 +385,6 @@ mod test {
         test_attr!("{#a #b}", ("id", "b"));
     }
 
-    #[ignore = "classes not concatenated"]
     #[test]
     fn parse_unicode_whitespace() {
         test_attr!("{.a .b}", ("class", "a b"));
@@ -386,6 +428,28 @@ mod test {
             ("class", "some_class"),
             ("id", "some_id"),
         );
+    }
+
+    macro_rules! test_value {
+        ($src:expr, $key:expr, $expected:expr) => {
+            #[allow(unused)]
+            let mut attr = super::Attributes::new();
+            attr.parse($src);
+            let actual = attr.get($key).unwrap().to_string();
+            assert_eq!(actual, $expected, "\n\n{}\n\n", $src);
+        };
+    }
+
+    #[test]
+    fn value_id() {
+        test_value!("{#a #b #c .cls}", "id", "c");
+    }
+
+    #[test]
+    fn value_class() {
+        test_value!("{.a .b .c}", "class", "a b c");
+        test_value!("{.a .b #id .c}", "class", "a b c");
+        test_value!("{.a class=def .b .c}", "class", "a def b c");
     }
 
     #[test]

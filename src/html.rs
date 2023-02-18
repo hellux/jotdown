@@ -192,10 +192,14 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Mark => self.out.write_str("<mark")?,
                     }
 
-                    for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
-                        write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v.as_ref())?;
-                        self.out.write_char('"')?;
+                    for (key, val) in attrs.iter() {
+                        if key != "class" {
+                            write!(self.out, r#" {}=""#, key)?;
+                            for part in val.parts() {
+                                self.write_escape(part)?;
+                            }
+                            self.out.write_char('"')?;
+                        }
                     }
 
                     if let Container::Heading {
@@ -205,14 +209,14 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                     | Container::Section { id } = &c
                     {
-                        if !attrs.iter().any(|(a, _)| a == "id") {
+                        if attrs.get("id").is_none() {
                             self.out.write_str(r#" id=""#)?;
                             self.write_escape(id)?;
                             self.out.write_char('"')?;
                         }
                     }
 
-                    if attrs.iter().any(|(a, _)| a == "class")
+                    if attrs.get("class").is_some()
                         || matches!(
                             c,
                             Container::Div { class: Some(_) }
@@ -240,16 +244,12 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             first_written = true;
                             self.out.write_str(cls)?;
                         }
-                        for cls in attrs
-                            .iter()
-                            .filter(|(a, _)| a == &"class")
-                            .map(|(_, cls)| cls)
-                        {
+                        for part in attrs.get("class").iter().flat_map(|a| a.parts()) {
                             if first_written {
                                 self.out.write_char(' ')?;
                             }
                             first_written = true;
-                            self.out.write_str(cls.as_ref())?;
+                            self.write_escape(part)?;
                         }
                         // div class goes after classes from attrs
                         if let Container::Div { class: Some(cls) } = c {
@@ -413,9 +413,11 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                 Event::Escape | Event::Blankline => unreachable!("filtered out"),
                 Event::ThematicBreak(attrs) => {
                     self.out.write_str("\n<hr")?;
-                    for (a, v) in attrs.iter() {
-                        write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v.as_ref())?;
+                    for (key, val) in attrs.iter() {
+                        write!(self.out, r#" {}=""#, key)?;
+                        for part in val.parts() {
+                            self.write_escape(part)?;
+                        }
                         self.out.write_char('"')?;
                     }
                     self.out.write_str(">")?;
