@@ -57,18 +57,21 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind {
+pub enum EventKind<'s> {
     Enter(Container),
     Exit(Container),
     Atom(Atom),
     Str,
-    Attributes { container: bool },
+    Attributes {
+        container: bool,
+        attrs: attr::Attributes<'s>,
+    },
     Placeholder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event {
-    pub kind: EventKind,
+pub struct Event<'s> {
+    pub kind: EventKind<'s>,
     pub span: Span,
 }
 
@@ -146,25 +149,6 @@ impl<'s> Input<'s> {
         self.span = self.span.empty_after();
     }
 
-    fn ahead_attributes(&mut self) -> Option<(bool, Span)> {
-        let mut span = self.span.empty_after();
-        let mut ahead = self.lexer.ahead().chars();
-        let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
-        if attr_len > 0 {
-            while attr_len > 0 {
-                span = span.extend(attr_len);
-                self.lexer = lex::Lexer::new(ahead.as_str());
-
-                let (l, non_empty) = attr::valid(&mut ahead);
-                has_attr |= non_empty;
-                attr_len = l;
-            }
-            Some((has_attr, span))
-        } else {
-            None
-        }
-    }
-
     fn ahead_raw_format(&mut self) -> Option<Span> {
         if matches!(
             self.lexer.peek().map(|t| &t.kind),
@@ -212,15 +196,23 @@ struct VerbatimState {
 }
 
 #[derive(Clone)]
+enum AttributesElementType {
+    Container { e_placeholder: usize },
+    Word,
+}
+
+#[derive(Clone)]
 pub struct Parser<'s> {
     input: Input<'s>,
     /// Stack with kind and index of _potential_ openers for containers.
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event>,
+    events: std::collections::VecDeque<Event<'s>>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
+    /// State if currently parsing potential attributes.
+    attributes: Option<AttributesElementType>,
     /// Storage of cow strs, used to reduce size of [`Container`].
     pub(crate) store_cowstrs: Vec<CowStr<'s>>,
 }
@@ -230,6 +222,9 @@ enum ControlFlow {
     Continue,
     /// Next line is needed to emit an event.
     Next,
+    /// More lines are needed to emit an event. Unlike for the `Next` variant, the internal ahead
+    /// buffer has already been examined, and more lines need to retrieved from the block parser.
+    More,
     /// Parsing of the line is completed.
     Done,
 }
@@ -241,6 +236,7 @@ impl<'s> Parser<'s> {
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
+            attributes: None,
             store_cowstrs: Vec::new(),
         }
     }
@@ -253,25 +249,26 @@ impl<'s> Parser<'s> {
         debug_assert!(self.events.is_empty());
         self.input.reset();
         self.openers.clear();
-        debug_assert!(self.events.is_empty());
+        debug_assert!(self.attributes.is_none());
         debug_assert!(self.verbatim.is_none());
         self.store_cowstrs.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
+    fn push_sp(&mut self, kind: EventKind<'s>, span: Span) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
         Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
+    fn push(&mut self, kind: EventKind<'s>) -> Option<ControlFlow> {
         self.push_sp(kind, self.input.span)
     }
 
     fn parse_event(&mut self) -> ControlFlow {
         self.input.reset_span();
+
         if let Some(first) = self.input.eat() {
-            self.parse_verbatim(&first)
-                .or_else(|| self.parse_attributes(&first))
+            self.parse_attributes(&first)
+                .or_else(|| self.parse_verbatim(&first))
                 .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_symbol(&first))
                 .or_else(|| self.parse_footnote_reference(&first))
@@ -305,15 +302,6 @@ impl<'s> Parser<'s> {
                     self.events[event_opener].span = span_format;
                     self.input.span = span_format.translate(1);
                     span_closer = span_format;
-                } else if let Some((non_empty, span_attr)) = self.input.ahead_attributes() {
-                    if non_empty {
-                        let e_attr = event_opener - 1;
-                        self.events[e_attr] = Event {
-                            kind: EventKind::Attributes { container: true },
-                            span: span_attr,
-                        };
-                    }
-                    self.input.span = span_attr;
                 };
                 let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                     debug_assert!(matches!(
@@ -330,6 +318,18 @@ impl<'s> Parser<'s> {
                 }
                 self.push_sp(EventKind::Exit(ty_opener), span_closer);
                 self.verbatim = None;
+                if raw_format.is_none()
+                    && self.input.peek().map_or(false, |t| {
+                        matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
+                    })
+                {
+                    return self.ahead_attributes(
+                        AttributesElementType::Container {
+                            e_placeholder: event_opener - 1,
+                        },
+                        false,
+                    );
+                }
             } else {
                 // continue verbatim
                 let is_whitespace = self
@@ -376,41 +376,123 @@ impl<'s> Parser<'s> {
                 non_whitespace_encountered: false,
                 non_whitespace_last: None,
             });
+            self.attributes = None;
             self.push(EventKind::Enter(ty))
         }
     }
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Open(Delimiter::Brace) {
-            let mut ahead = self.input.lexer.ahead().chars();
-            let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
-            attr_len = attr_len.saturating_sub(1); // rm {
-            if attr_len > 0 {
-                while attr_len > 0 {
-                    self.input.span = self.input.span.extend(attr_len);
-                    self.input.lexer = lex::Lexer::new(ahead.as_str());
+            let elem_ty = self
+                .attributes
+                .take()
+                .unwrap_or(AttributesElementType::Word);
+            self.ahead_attributes(elem_ty, true)
+        } else {
+            debug_assert!(self.attributes.is_none());
+            None
+        }
+    }
 
-                    let (l, non_empty) = attr::valid(&mut ahead);
-                    attr_len = l;
-                    has_attr |= non_empty;
-                }
+    fn ahead_attributes(
+        &mut self,
+        elem_ty: AttributesElementType,
+        opener_eaten: bool,
+    ) -> Option<ControlFlow> {
+        let start_attr = self.input.span.end() - usize::from(opener_eaten);
+        debug_assert!(self.input.src[start_attr..].starts_with('{'));
 
-                let set_attr = has_attr
-                    && self
-                        .events
-                        .back()
-                        .map_or(false, |e| e.kind == EventKind::Str);
-
-                if set_attr {
-                    self.push(EventKind::Attributes { container: false });
+        let mut end_attr = start_attr;
+        let mut line_next = 0;
+        let mut valid_lines = 0;
+        let mut line_end = self.input.span_line.end();
+        {
+            let mut line_start = start_attr;
+            let mut validator = attr::Validator::new();
+            let mut res = validator.parse(&self.input.src[line_start..line_end]);
+            loop {
+                if let Some(len) = res.take() {
+                    if len == 0 {
+                        break;
+                    }
+                    valid_lines = line_next;
+                    end_attr = line_start + len;
+                    if self.input.src[end_attr..].starts_with('{') {
+                        line_start = end_attr;
+                        validator.restart();
+                        res = validator.parse(&self.input.src[end_attr..line_end]);
+                    } else {
+                        break;
+                    }
+                } else if let Some(l) = self.input.ahead.get(line_next) {
+                    line_next += 1;
+                    line_start = l.start();
+                    line_end = l.end();
+                    res = validator.parse(l.of(self.input.src));
+                } else if self.input.complete {
+                    // no need to ask for more input
+                    break;
                 } else {
-                    self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
+                    self.attributes = Some(elem_ty);
+                    if opener_eaten {
+                        self.input.span = Span::empty_at(start_attr);
+                        self.input.lexer = lex::Lexer::new(
+                            &self.input.src[start_attr..self.input.span_line.end()],
+                        );
+                    }
+                    return Some(More);
                 }
-                return Some(Continue);
             }
         }
 
-        None
+        if start_attr == end_attr {
+            return None;
+        }
+
+        // retrieve attributes
+        let attrs = {
+            let first = Span::new(start_attr, self.input.span_line.end());
+            let mut parser = attr::Parser::new(attr::Attributes::new());
+            for line in
+                std::iter::once(first).chain(self.input.ahead.iter().take(valid_lines).copied())
+            {
+                let line = line.start()..usize::min(end_attr, line.end());
+                parser.parse(&self.input.src[line]);
+            }
+            parser.finish()
+        };
+
+        for _ in 0..line_next {
+            let l = self.input.ahead.pop_front().unwrap();
+            self.input.set_current_line(l);
+        }
+        self.input.span = Span::new(start_attr, end_attr);
+        self.input.lexer = lex::Lexer::new(&self.input.src[end_attr..line_end]);
+
+        if !attrs.is_empty() {
+            let attr_event = Event {
+                kind: EventKind::Attributes {
+                    container: matches!(elem_ty, AttributesElementType::Container { .. }),
+                    attrs,
+                },
+                span: self.input.span,
+            };
+            match elem_ty {
+                AttributesElementType::Container { e_placeholder } => {
+                    self.events[e_placeholder] = attr_event;
+                    if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
+                        self.events[e_placeholder + 1].kind = EventKind::Enter(Span);
+                        let last = self.events.len() - 1;
+                        self.events[last].kind = EventKind::Exit(Span);
+                    }
+                }
+                AttributesElementType::Word => {
+                    self.events.push_back(attr_event);
+                }
+            }
+        }
+
+        Some(Continue)
     }
 
     fn parse_autolink(&mut self, first: &lex::Token) -> Option<ControlFlow> {
@@ -543,7 +625,7 @@ impl<'s> Parser<'s> {
                 }
 
                 self.openers.drain(o..);
-                let mut closed = match DelimEventKind::from(opener) {
+                let closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
                         self.events[e_opener].kind = EventKind::Enter(cont);
                         self.push(EventKind::Exit(cont))
@@ -568,8 +650,9 @@ impl<'s> Parser<'s> {
                             self.input.reset_span();
                             self.input.eat(); // [ or (
                             return self.push(EventKind::Str);
-                        };
-                        None
+                        } else {
+                            self.push(EventKind::Str) // ]
+                        }
                     }
                     DelimEventKind::Link {
                         event_span,
@@ -658,23 +741,18 @@ impl<'s> Parser<'s> {
                     }
                 };
 
-                if let Some((non_empty, span)) = self.input.ahead_attributes() {
-                    if non_empty {
-                        self.events[e_attr] = Event {
-                            kind: EventKind::Attributes { container: true },
-                            span,
-                        };
-                    }
-
-                    if closed.is_none() {
-                        self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                        closed = self.push(EventKind::Exit(Container::Span));
-                    }
-
-                    self.input.span = span;
+                if self.input.peek().map_or(false, |t| {
+                    matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
+                }) {
+                    self.ahead_attributes(
+                        AttributesElementType::Container {
+                            e_placeholder: e_attr,
+                        },
+                        false,
+                    )
+                } else {
+                    closed
                 }
-
-                closed
             })
             .or_else(|| {
                 let opener = Opener::from_token(first.kind)?;
@@ -783,7 +861,7 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Span) -> Event {
+    fn merge_str_events(&mut self, span_str: Span) -> Event<'s> {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder)
@@ -796,7 +874,10 @@ impl<'s> Parser<'s> {
 
         if matches!(
             self.events.front().map(|ev| &ev.kind),
-            Some(EventKind::Attributes { container: false })
+            Some(EventKind::Attributes {
+                container: false,
+                ..
+            })
         ) {
             self.apply_word_attributes(span)
         } else {
@@ -807,7 +888,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event<'s> {
         if let Some(i) = span_str
             .of(self.input.src)
             .bytes()
@@ -982,12 +1063,13 @@ impl From<Opener> for DelimEventKind {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event;
+    type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
             || !self.openers.is_empty()
             || self.verbatim.is_some()
+            || self.attributes.is_some()
             || self // for merge or attributes
                 .events
                 .back()
@@ -1003,6 +1085,7 @@ impl<'s> Iterator for Parser<'s> {
                         return None;
                     }
                 }
+                More => return None,
             }
         }
 
@@ -1023,7 +1106,10 @@ impl<'s> Iterator for Parser<'s> {
         self.events.pop_front().and_then(|e| match e.kind {
             EventKind::Str if e.span.is_empty() => self.next(),
             EventKind::Str => Some(self.merge_str_events(e.span)),
-            EventKind::Placeholder | EventKind::Attributes { container: false } => self.next(),
+            EventKind::Placeholder
+            | EventKind::Attributes {
+                container: false, ..
+            } => self.next(),
             _ => Some(e),
         })
     }
@@ -1107,7 +1193,13 @@ mod test {
         test_parse!(
             "pre `raw`{#id} post",
             (Str, "pre "),
-            (Attributes { container: true }, "{#id}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: [("id", "id")].into_iter().collect()
+                },
+                "{#id}"
+            ),
             (Enter(Verbatim), "`"),
             (Str, "raw"),
             (Exit(Verbatim), "`"),
@@ -1292,7 +1384,13 @@ mod test {
     fn span_url_attr_unclosed() {
         test_parse!(
             "[text]({.cls}",
-            (Attributes { container: false }, "{.cls}"),
+            (
+                Attributes {
+                    container: false,
+                    attrs: [("class", "cls")].into_iter().collect(),
+                },
+                "{.cls}"
+            ),
             (Enter(Span), ""),
             (Str, "[text]("),
             (Exit(Span), ""),
@@ -1335,12 +1433,35 @@ mod test {
     fn span_attr() {
         test_parse!(
             "[abc]{.def}",
-            (Attributes { container: true }, "{.def}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: [("class", "def")].into_iter().collect(),
+                },
+                "{.def}"
+            ),
             (Enter(Span), "["),
             (Str, "abc"),
             (Exit(Span), "]"),
         );
         test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
+    }
+
+    #[test]
+    fn span_attr_cont() {
+        test_parse!(
+            "[x_y]{.bar_}",
+            (
+                Attributes {
+                    container: true,
+                    attrs: [("class", "bar_")].into_iter().collect(),
+                },
+                "{.bar_}"
+            ),
+            (Enter(Span), "["),
+            (Str, "x_y"),
+            (Exit(Span), "]"),
+        );
     }
 
     #[test]
@@ -1440,7 +1561,13 @@ mod test {
     fn container_attr() {
         test_parse!(
             "_abc def_{.attr}",
-            (Attributes { container: true }, "{.attr}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: [("class", "attr")].into_iter().collect(),
+                },
+                "{.attr}"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1468,7 +1595,13 @@ mod test {
     fn container_attr_multiple() {
         test_parse!(
             "_abc def_{.a}{.b}{.c} {.d}",
-            (Attributes { container: true }, "{.a}{.b}{.c}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: [("class", "a b c")].into_iter().collect(),
+                },
+                "{.a}{.b}{.c}"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1480,7 +1613,13 @@ mod test {
     fn attr() {
         test_parse!(
             "word{a=b}",
-            (Attributes { container: false }, "{a=b}"),
+            (
+                Attributes {
+                    container: false,
+                    attrs: [("a", "b")].into_iter().collect()
+                },
+                "{a=b}"
+            ),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1488,7 +1627,13 @@ mod test {
         test_parse!(
             "some word{.a}{.b} with attrs",
             (Str, "some "),
-            (Attributes { container: false }, "{.a}{.b}"),
+            (
+                Attributes {
+                    container: false,
+                    attrs: [("class", "a b")].into_iter().collect(),
+                },
+                "{.a}{.b}"
+            ),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1501,6 +1646,7 @@ mod test {
         test_parse!("word {%comment%}", (Str, "word "));
         test_parse!("word {%comment%} word", (Str, "word "), (Str, " word"));
         test_parse!("word {a=b}", (Str, "word "));
+        test_parse!("word {.d}", (Str, "word "));
     }
 
     #[test]

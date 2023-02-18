@@ -239,6 +239,37 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     }
 }
 
+pub struct Validator {
+    state: State,
+}
+
+impl Validator {
+    pub fn new() -> Self {
+        Self {
+            state: State::Start,
+        }
+    }
+
+    pub fn restart(&mut self) {
+        self.state = State::Start;
+    }
+
+    /// Returns number of valid bytes parsed (0 means invalid) if finished, otherwise more input is
+    /// needed.
+    pub fn parse(&mut self, input: &str) -> Option<usize> {
+        let mut chars = input.chars();
+        for c in &mut chars {
+            self.state = self.state.step(c);
+            match self.state {
+                State::Done => return Some(input.len() - chars.as_str().len()),
+                State::Invalid => return Some(0),
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
 /// Attributes parser, take input of one or more consecutive attributes and create an `Attributes`
 /// object.
 ///
@@ -302,7 +333,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn finish(self) -> Attributes<'s> {
+    pub fn finish(self) -> Attributes<'s> {
         self.attrs
     }
 }
