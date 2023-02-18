@@ -2,8 +2,6 @@ use crate::CowStr;
 use crate::DiscontinuousString;
 use crate::Span;
 
-use State::*;
-
 pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> {
     let mut a = Attributes::new();
     a.parse(chars);
@@ -11,6 +9,8 @@ pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> 
 }
 
 pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
+    use State::*;
+
     let mut has_attr = false;
     let mut n = 0;
     let mut state = Start;
@@ -59,7 +59,7 @@ impl<'s> Attributes<'s> {
                     Element::Class => self.insert("class", input.src(sp)),
                     Element::Identifier => self.insert("id", input.src(sp)),
                     Element::Key => span_key = Some(sp),
-                    Element::Value { continuation, .. } => {
+                    Element::Value { continuation } => {
                         if continuation {
                             self.0.as_mut().unwrap().last_mut().unwrap().1 = format!(
                                 "{} {}",
@@ -79,11 +79,11 @@ impl<'s> Attributes<'s> {
                     }
                 }
             }
-            if matches!(p.state, Done | Invalid) {
+            if matches!(p.state, State::Done | State::Invalid) {
                 break;
             }
         }
-        matches!(p.state, Done)
+        matches!(p.state, State::Done)
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
@@ -178,6 +178,8 @@ enum State {
 
 impl State {
     fn step(self, c: char) -> State {
+        use State::*;
+
         match self {
             Start if c == '{' => Whitespace,
             Start => Invalid,
@@ -227,11 +229,13 @@ impl Parser {
         Parser {
             pos: 0,
             pos_prev: 0,
-            state: Start,
+            state: State::Start,
         }
     }
 
     fn step(&mut self, c: char) -> Option<(Element, Span)> {
+        use State::*;
+
         let state_next = self.state.step(c);
 
         let elem = if self.state != state_next {
