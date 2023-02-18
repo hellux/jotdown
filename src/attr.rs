@@ -2,8 +2,6 @@ use crate::CowStr;
 use crate::Span;
 use std::fmt;
 
-use State::*;
-
 pub(crate) fn parse(src: &str) -> Attributes {
     let mut a = Attributes::new();
     a.parse(src);
@@ -11,6 +9,8 @@ pub(crate) fn parse(src: &str) -> Attributes {
 }
 
 pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
+    use State::*;
+
     let mut has_attr = false;
     let mut p = Parser::new();
     for c in chars {
@@ -126,11 +126,11 @@ impl<'s> Attributes<'s> {
                     Element::Attribute(a, v) => self.insert(a.of(input), v.of(input).into()),
                 }
             }
-            if matches!(p.state, Done | Invalid) {
+            if matches!(p.state, State::Done | State::Invalid) {
                 break;
             }
         }
-        matches!(p.state, Done)
+        matches!(p.state, State::Done)
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
@@ -237,6 +237,8 @@ enum State {
 
 impl State {
     fn step(self, c: char) -> State {
+        use State::*;
+
         match self {
             Start if c == '{' => Whitespace,
             Start => Invalid,
@@ -286,11 +288,13 @@ impl Parser {
             pos: 0,
             pos_prev: 0,
             span1: Span::new(0, 0),
-            state: Start,
+            state: State::Start,
         }
     }
 
     fn step(&mut self, c: char) -> Option<Element> {
+        use State::*;
+
         let state_next = self.state.step(c);
         let st = std::mem::replace(&mut self.state, state_next);
 
