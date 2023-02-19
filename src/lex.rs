@@ -13,7 +13,6 @@ pub(crate) struct Token {
 pub enum Kind {
     Text,
     Newline,
-    Whitespace,
     Nbsp,
     Hardbreak,
     Escape,
@@ -167,6 +166,8 @@ impl<'s> Lexer<'s> {
             _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
+            '\n' => Newline,
+
             '\\' => {
                 if self
                     .peek_char()
@@ -177,12 +178,6 @@ impl<'s> Lexer<'s> {
                 } else {
                     Text
                 }
-            }
-
-            '\n' => Newline,
-            _ if first.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
-                Whitespace
             }
 
             '[' => Open(Bracket),
@@ -323,18 +318,11 @@ mod test {
         test_lex!("abc", Text.l(3));
         test_lex!(
             "para w/ some _emphasis_ and *strong*.",
-            Text.l(4),
-            Whitespace.l(1),
-            Text.l(2),
-            Whitespace.l(1),
-            Text.l(4),
-            Whitespace.l(1),
+            Text.l(13),
             Sym(Underscore).l(1),
             Text.l(8),
             Sym(Underscore).l(1),
-            Whitespace.l(1),
-            Text.l(3),
-            Whitespace.l(1),
+            Text.l(5),
             Sym(Asterisk).l(1),
             Text.l(6),
             Sym(Asterisk).l(1),
