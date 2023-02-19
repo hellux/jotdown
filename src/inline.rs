@@ -73,24 +73,33 @@ pub struct Event {
     pub span: Span,
 }
 
-pub struct Input<I: Iterator + Clone> {
+pub struct Input<'s> {
     /// Lexer, hosting source.
-    lexer: lex::Lexer<I>,
+    lexer: lex::Lexer<'s>,
+    /// The block is complete, the final line has been provided.
+    complete: bool,
     /// Span of current event.
     span: Span,
 }
 
-impl<I: Iterator<Item = char> + Clone> Input<I> {
-    fn new(chars: I) -> Self {
+impl<'s> Input<'s> {
+    fn new() -> Self {
         Self {
-            lexer: lex::Lexer::new(chars),
-            span: Span::new(0, 0),
+            lexer: lex::Lexer::new(""),
+            complete: false,
+            span: Span::empty_at(0),
         }
     }
 
-    fn reset(&mut self, chars: I) {
-        self.lexer = lex::Lexer::new(chars);
-        self.span = Span::new(0, 0);
+    fn feed_line(&mut self, line: &'s str, offset: usize, last: bool) {
+        debug_assert!(!self.complete);
+        self.lexer = lex::Lexer::new(line);
+        self.complete = last;
+        self.span = Span::empty_at(offset);
+    }
+
+    fn reset(&mut self) {
+        *self = Self::new();
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -111,12 +120,12 @@ impl<I: Iterator<Item = char> + Clone> Input<I> {
 
     fn ahead_attributes(&mut self) -> Option<(bool, Span)> {
         let mut span = self.span.empty_after();
-        let mut ahead = self.lexer.chars();
+        let mut ahead = self.lexer.ahead().chars();
         let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
         if attr_len > 0 {
             while attr_len > 0 {
                 span = span.extend(attr_len);
-                self.lexer = lex::Lexer::new(ahead.clone());
+                self.lexer = lex::Lexer::new(ahead.as_str());
 
                 let (l, non_empty) = attr::valid(&mut ahead);
                 has_attr |= non_empty;
@@ -133,7 +142,7 @@ impl<I: Iterator<Item = char> + Clone> Input<I> {
             self.lexer.peek().map(|t| &t.kind),
             Some(lex::Kind::Open(Delimiter::BraceEqual))
         ) {
-            let mut ahead = self.lexer.chars();
+            let mut ahead = self.lexer.ahead().chars();
             let mut end = false;
             let len = (&mut ahead)
                 .skip(2) // {=
@@ -157,7 +166,7 @@ impl<I: Iterator<Item = char> + Clone> Input<I> {
                         len: 2,
                     })
                 );
-                self.lexer = lex::Lexer::new(ahead);
+                self.lexer = lex::Lexer::new(ahead.as_str());
                 self.span.after(len)
             })
         } else {
@@ -173,8 +182,8 @@ pub struct VerbatimState {
     non_whitespace_last: Option<(lex::Kind, usize)>,
 }
 
-pub struct Parser<I: Iterator + Clone> {
-    input: Input<I>,
+pub struct Parser<'s> {
+    input: Input<'s>,
     /// Stack with kind and index of _potential_ openers for containers.
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
@@ -184,18 +193,23 @@ pub struct Parser<I: Iterator + Clone> {
     verbatim: Option<VerbatimState>,
 }
 
-impl<I: Iterator<Item = char> + Clone> Parser<I> {
-    pub fn new(chars: I) -> Self {
+impl<'s> Parser<'s> {
+    pub fn new() -> Self {
         Self {
-            input: Input::new(chars),
+            input: Input::new(),
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
         }
     }
 
-    pub fn reset(&mut self, chars: I) {
-        self.input.reset(chars);
+    pub fn feed_line(&mut self, line: &'s str, offset: usize, last: bool) {
+        self.input.feed_line(line, offset, last);
+    }
+
+    pub fn reset(&mut self) {
+        debug_assert!(self.events.is_empty());
+        self.input.reset();
         self.openers.clear();
         debug_assert!(self.events.is_empty());
         debug_assert!(self.verbatim.is_none());
@@ -321,13 +335,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<()> {
         if first.kind == lex::Kind::Open(Delimiter::Brace) {
-            let mut ahead = self.input.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
             attr_len = attr_len.saturating_sub(1); // rm {
             if attr_len > 0 {
                 while attr_len > 0 {
                     self.input.span = self.input.span.extend(attr_len);
-                    self.input.lexer = lex::Lexer::new(ahead.clone());
+                    self.input.lexer = lex::Lexer::new(ahead.as_str());
 
                     let (l, non_empty) = attr::valid(&mut ahead);
                     attr_len = l;
@@ -367,7 +381,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_autolink(&mut self, first: &lex::Token) -> Option<()> {
         if first.kind == lex::Kind::Sym(Symbol::Lt) {
-            let mut ahead = self.input.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut is_url = false;
             let len = (&mut ahead)
@@ -386,7 +400,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .map(char::len_utf8)
                 .sum();
             if end && is_url {
-                self.input.lexer = lex::Lexer::new(ahead);
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Enter(Autolink));
                 self.push(EventKind::Str);
@@ -399,7 +413,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
 
     fn parse_symbol(&mut self, first: &lex::Token) -> Option<()> {
         if first.kind == lex::Kind::Sym(Symbol::Colon) {
-            let mut ahead = self.input.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut valid = true;
             let len = (&mut ahead)
@@ -414,7 +428,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .map(char::len_utf8)
                 .sum();
             if end && valid {
-                self.input.lexer = lex::Lexer::new(ahead);
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Atom(Symbol));
                 self.input.span = self.input.span.after(1);
@@ -442,7 +456,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     len: 1,
                 })
             );
-            let mut ahead = self.input.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let len = (&mut ahead)
                 .take_while(|c| {
@@ -457,7 +471,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 .map(char::len_utf8)
                 .sum();
             if end {
-                self.input.lexer = lex::Lexer::new(ahead);
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Atom(FootnoteReference));
                 self.input.span = self.input.span.after(1);
@@ -806,7 +820,7 @@ impl From<Opener> for DelimEventKind {
     }
 }
 
-impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
+impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -821,7 +835,11 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
                 })
         {
             if self.parse_event().is_none() {
-                break;
+                if self.input.complete {
+                    break;
+                } else {
+                    return None;
+                }
             }
         }
 
@@ -878,7 +896,8 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new($src.chars());
+            let mut p = super::Parser::new();
+            p.feed_line($src, 0, true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);

@@ -1,14 +1,12 @@
 use crate::CowStr;
-use crate::DiscontinuousString;
 use crate::Span;
-use std::borrow::Cow;
 use std::fmt;
 
 use State::*;
 
-pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> {
+pub(crate) fn parse(src: &str) -> Attributes {
     let mut a = Attributes::new();
-    a.parse(chars);
+    a.parse(src);
     a
 }
 
@@ -113,20 +111,12 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
-        #[inline]
-        fn borrow(cow: CowStr) -> &str {
-            match cow {
-                Cow::Owned(_) => panic!(),
-                Cow::Borrowed(s) => s,
-            }
-        }
-
+    pub(crate) fn parse(&mut self, input: &'s str) -> bool {
         for elem in Parser::new(input.chars()) {
             match elem {
-                Element::Class(c) => self.insert("class", input.src(c).into()),
-                Element::Identifier(i) => self.insert("id", input.src(i).into()),
-                Element::Attribute(a, v) => self.insert(borrow(input.src(a)), input.src(v).into()),
+                Element::Class(c) => self.insert("class", c.of(input).into()),
+                Element::Identifier(i) => self.insert("id", i.of(input).into()),
+                Element::Attribute(a, v) => self.insert(a.of(input), v.of(input).into()),
                 Element::Invalid => return false,
             }
         }
