@@ -37,6 +37,7 @@ pub enum Delimiter {
     Bracket,
     BraceQuote1,
     BraceQuote2,
+    Paren,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,6 +187,8 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
 
             '[' => Open(Bracket),
             ']' => Close(Bracket),
+            '(' => Open(Paren),
+            ')' => Close(Paren),
             '{' => {
                 let explicit = match self.peek_char() {
                     Some('*') => Some(Open(BraceAsterisk)),

@@ -473,10 +473,13 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             .rposition(|(o, _)| o.closed_by(first.kind))
             .and_then(|o| {
                 let (opener, e) = self.openers[o];
-                let e_attr = e;
-                let e_opener = e + 1;
+                let (e_attr, e_opener) = if let Opener::Link { event_span, .. } = opener {
+                    (event_span - 1, e)
+                } else {
+                    (e, e + 1)
+                };
 
-                if e_opener == self.events.len() - 1 {
+                if e_opener == self.events.len() - 1 && !matches!(opener, Opener::Link { .. }) {
                     // empty container
                     return None;
                 }
@@ -487,7 +490,6 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     return None;
                 }
 
-                let inner_span = self.events[e_opener].span.between(self.input.span);
                 self.openers.drain(o..);
                 let mut closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
@@ -498,21 +500,56 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
                         self.push(EventKind::Atom(Quote { ty, left: false }))
                     }
-                    DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
-                };
-
-                if closed.is_some() {
-                    let event_closer = &mut self.events.back_mut().unwrap();
-                    if event_closer.span.is_empty()
-                        && matches!(
-                            event_closer.kind,
-                            EventKind::Exit(ReferenceLink | ReferenceImage)
-                        )
-                    {
-                        event_closer.span = inner_span;
-                        self.events[e_opener].span = inner_span;
+                    DelimEventKind::Span(ty) => {
+                        if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
+                            self.input.peek().map(|t| t.kind)
+                        {
+                            self.push(EventKind::Str); // ]
+                            self.openers.push((
+                                Opener::Link {
+                                    event_span: e_opener,
+                                    image: matches!(ty, SpanType::Image),
+                                    inline: matches!(d, Delimiter::Paren),
+                                },
+                                self.events.len(),
+                            ));
+                            self.input.reset_span();
+                            self.input.eat(); // [ or (
+                            return self.push(EventKind::Str);
+                        };
+                        None
                     }
-                }
+                    DelimEventKind::Link {
+                        event_span,
+                        inline,
+                        image,
+                    } => {
+                        let span_spec = self.events[e_opener].span.between(self.input.span);
+                        let span_spec = if !inline && span_spec.is_empty() {
+                            self.events[event_span]
+                                .span
+                                .between(self.events[e_opener - 1].span)
+                        } else {
+                            span_spec
+                        };
+                        let container = match (image, inline) {
+                            (false, false) => ReferenceLink,
+                            (false, true) => InlineLink,
+                            (true, false) => ReferenceImage,
+                            (true, true) => InlineImage,
+                        };
+                        self.events[event_span] = Event {
+                            kind: EventKind::Enter(container),
+                            span: span_spec,
+                        };
+                        self.events[e_opener - 1] = Event {
+                            kind: EventKind::Exit(container),
+                            span: span_spec,
+                        };
+                        self.events.drain(e_opener..);
+                        Some(())
+                    }
+                };
 
                 if let Some((non_empty, span)) = self.input.ahead_attributes() {
                     if non_empty {
@@ -569,47 +606,6 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     _ => EventKind::Str,
                 })
             })
-    }
-
-    fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<()> {
-        let mut ahead = self.input.lexer.chars();
-        let kind = match ahead.next() {
-            Some(opener @ ('[' | '(')) => {
-                let img = ty == SpanType::Image;
-                let (closer, kind) = match opener {
-                    '[' => (']', if img { ReferenceImage } else { ReferenceLink }),
-                    '(' => (')', if img { InlineImage } else { InlineLink }),
-                    _ => unreachable!(),
-                };
-                let mut end = false;
-                let len = (&mut ahead)
-                    .take_while(|c| {
-                        if *c == opener {
-                            return false;
-                        }
-                        if *c == closer {
-                            end = true;
-                        };
-                        !end
-                    })
-                    .map(char::len_utf8)
-                    .sum();
-                if end {
-                    self.input.span = self.input.span.after(len).translate(1);
-                    Some(kind)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }?;
-
-        self.input.lexer = lex::Lexer::new(ahead);
-        self.events[opener_event].kind = EventKind::Enter(kind);
-        self.events[opener_event].span = self.input.span;
-        self.push(EventKind::Exit(kind));
-        self.input.span = self.input.span.translate(1);
-        Some(())
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<()> {
@@ -695,6 +691,11 @@ enum Opener {
     Insert,
     SingleQuoted,
     DoubleQuoted,
+    Link {
+        event_span: usize,
+        image: bool,
+        inline: bool,
+    },
 }
 
 impl Opener {
@@ -750,6 +751,8 @@ impl Opener {
                 kind,
                 lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2)
             ),
+            Link { inline: false, .. } => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
+            Link { inline: true, .. } => matches!(kind, lex::Kind::Close(Delimiter::Paren)),
         }
     }
 
@@ -770,6 +773,11 @@ enum DelimEventKind {
     Container(Container),
     Span(SpanType),
     Quote(QuoteType),
+    Link {
+        event_span: usize,
+        image: bool,
+        inline: bool,
+    },
 }
 
 impl From<Opener> for DelimEventKind {
@@ -785,6 +793,15 @@ impl From<Opener> for DelimEventKind {
             Opener::Insert => Self::Container(Insert),
             Opener::SingleQuoted => Self::Quote(QuoteType::Single),
             Opener::DoubleQuoted => Self::Quote(QuoteType::Double),
+            Opener::Link {
+                event_span,
+                image,
+                inline,
+            } => Self::Link {
+                event_span,
+                image,
+                inline,
+            },
         }
     }
 }
@@ -1108,6 +1125,28 @@ mod test {
     }
 
     #[test]
+    fn span_url_attr_unclosed() {
+        test_parse!(
+            "[text]({.cls}",
+            (Attributes, "{.cls}"),
+            (Enter(Span), ""),
+            (Str, "[text]("),
+            (Exit(Span), ""),
+        );
+    }
+
+    #[ignore = "broken"]
+    #[test]
+    fn span_url_attr_closed() {
+        test_parse!(
+            "[text]({.cls})",
+            (Enter(InlineLink), "{.cls}"),
+            (Str, "text"),
+            (Exit(InlineLink), "{.cls}"),
+        );
+    }
+
+    #[test]
     fn span_url_empty() {
         test_parse!(
             "before [text]() after",
@@ -1117,6 +1156,11 @@ mod test {
             (Exit(InlineLink), ""),
             (Str, " after"),
         );
+    }
+
+    #[test]
+    fn span_url_unclosed() {
+        test_parse!("[text](url", (Str, "[text](url"));
     }
 
     #[test]
