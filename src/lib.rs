@@ -62,7 +62,6 @@ mod lex;
 mod span;
 mod tree;
 
-use span::DiscontinuousString;
 use span::Span;
 
 pub use attr::Attributes;

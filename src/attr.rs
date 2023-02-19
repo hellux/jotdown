@@ -1,10 +1,8 @@
-use crate::CowStr;
-use crate::DiscontinuousString;
 use crate::Span;
 
-pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> {
+pub(crate) fn parse(src: &str) -> Attributes {
     let mut a = Attributes::new();
-    a.parse(chars);
+    a.parse(src);
     a
 }
 
@@ -97,15 +95,11 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
+    pub(crate) fn parse(&mut self, input: &'s str) -> bool {
         let mut p = Parser::new();
         for c in input.chars() {
             if let Some((ev, sp)) = p.step(c) {
-                let s = match input.src(sp) {
-                    CowStr::Owned(..) => panic!(),
-                    CowStr::Borrowed(s) => s,
-                };
-                self.push_event(ev, s);
+                self.push_event(ev, sp.of(input));
             }
             if matches!(p.state, State::Done | State::Invalid) {
                 break;
