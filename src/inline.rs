@@ -67,7 +67,6 @@ pub enum EventKind {
     Exit(Container),
     Atom(Atom),
     Str,
-    Whitespace,
     Attributes { container: bool },
     Placeholder,
 }
@@ -235,11 +234,7 @@ impl<'s> Parser<'s> {
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
                 .unwrap_or_else(|| {
-                    self.push(if matches!(first.kind, lex::Kind::Whitespace) {
-                        EventKind::Whitespace
-                    } else {
-                        EventKind::Str
-                    });
+                    self.push(EventKind::Str);
                 })
         })
     }
@@ -287,7 +282,12 @@ impl<'s> Parser<'s> {
                 self.verbatim = None;
             } else {
                 // continue verbatim
-                if matches!(first.kind, lex::Kind::Whitespace) {
+                let is_whitespace = self
+                    .input
+                    .content(self.input.span)
+                    .chars()
+                    .all(char::is_whitespace);
+                if is_whitespace {
                     if !*non_whitespace_encountered
                         && self.input.peek().map_or(false, |t| {
                             matches!(
@@ -480,10 +480,14 @@ impl<'s> Parser<'s> {
                     // empty container
                     return None;
                 }
-                let whitespace_after = self.events.back().map_or(false, |ev| {
-                    matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
+                let whitespace_before = self.events.back().map_or(false, |ev| {
+                    self.input
+                        .content(ev.span)
+                        .chars()
+                        .last()
+                        .map_or(false, char::is_whitespace)
                 });
-                if opener.bidirectional() && whitespace_after {
+                if opener.bidirectional() && whitespace_before {
                     return None;
                 }
 
@@ -568,19 +572,29 @@ impl<'s> Parser<'s> {
             })
             .or_else(|| {
                 let opener = Opener::from_token(first.kind)?;
-                if opener.bidirectional()
-                    && self
-                        .input
-                        .peek()
-                        .map_or(true, |t| matches!(t.kind, lex::Kind::Whitespace))
-                {
+                let whitespace_after = self
+                    .input
+                    .lexer
+                    .ahead()
+                    .chars()
+                    .next()
+                    .map_or(true, |c| c.is_whitespace());
+                if opener.bidirectional() && whitespace_after {
                     return None;
                 }
+                let whitespace_before = self.events.back().map_or(false, |ev| {
+                    self.input
+                        .content(ev.span)
+                        .chars()
+                        .last()
+                        .map_or(false, char::is_whitespace)
+                });
                 if matches!(opener, Opener::SingleQuoted | Opener::DoubleQuoted)
                     && self
                         .events
                         .back()
                         .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                    && !whitespace_before
                 {
                     return None;
                 }
@@ -666,10 +680,8 @@ impl<'s> Parser<'s> {
     fn merge_str_events(&mut self, span_str: Span) -> Event {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
-            matches!(
-                e.kind,
-                EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
-            ) && span.end() == e.span.start()
+            matches!(e.kind, EventKind::Str | EventKind::Placeholder)
+                && span.end() == e.span.start()
         };
         while self.events.front().map_or(false, |e| should_merge(e, span)) {
             let ev = self.events.pop_front().unwrap();
@@ -874,9 +886,7 @@ impl<'s> Iterator for Parser<'s> {
             || self // for merge or attributes
                 .events
                 .back()
-                .map_or(false, |ev| {
-                    matches!(ev.kind, EventKind::Str | EventKind::Whitespace)
-                })
+                .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if self.parse_event().is_none() {
                 if self.input.last {
@@ -899,7 +909,7 @@ impl<'s> Iterator for Parser<'s> {
 
         self.events.pop_front().and_then(|e| match e.kind {
             EventKind::Str if e.span.is_empty() => self.next(),
-            EventKind::Str | EventKind::Whitespace => Some(self.merge_str_events(e.span)),
+            EventKind::Str => Some(self.merge_str_events(e.span)),
             EventKind::Placeholder | EventKind::Attributes { container: false } => self.next(),
             _ => Some(e),
         })
