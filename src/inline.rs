@@ -63,7 +63,7 @@ pub enum EventKind {
     Atom(Atom),
     Str,
     Whitespace,
-    Attributes,
+    Attributes { container: bool },
     Placeholder,
 }
 
@@ -268,7 +268,7 @@ impl<'s> Parser<'s> {
                     if non_empty {
                         let e_attr = event_opener - 1;
                         self.events[e_attr] = Event {
-                            kind: EventKind::Attributes,
+                            kind: EventKind::Attributes { container: true },
                             span: span_attr,
                         };
                     }
@@ -355,20 +355,7 @@ impl<'s> Parser<'s> {
                         .map_or(false, |e| e.kind == EventKind::Str);
 
                 if set_attr {
-                    let i = self
-                        .events
-                        .iter()
-                        .rposition(|e| e.kind != EventKind::Str)
-                        .map_or(0, |i| i + 1);
-                    let span_str = self.events[i]
-                        .span
-                        .union(self.events[self.events.len() - 1].span);
-                    self.events.drain(i..);
-
-                    self.push(EventKind::Attributes);
-                    self.push_sp(EventKind::Enter(Span), span_str.empty_before());
-                    self.push_sp(EventKind::Str, span_str);
-                    self.push_sp(EventKind::Exit(Span), span_str.empty_after());
+                    self.push(EventKind::Attributes { container: false });
                 } else {
                     self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
                 }
@@ -568,7 +555,7 @@ impl<'s> Parser<'s> {
                 if let Some((non_empty, span)) = self.input.ahead_attributes() {
                     if non_empty {
                         self.events[e_attr] = Event {
-                            kind: EventKind::Attributes,
+                            kind: EventKind::Attributes { container: true },
                             span,
                         };
                     }
@@ -692,9 +679,51 @@ impl<'s> Parser<'s> {
             let ev = self.events.pop_front().unwrap();
             span = span.union(ev.span);
         }
-        Event {
-            kind: EventKind::Str,
-            span,
+
+        if matches!(
+            self.events.front().map(|ev| &ev.kind),
+            Some(EventKind::Attributes { container: false })
+        ) {
+            self.apply_word_attributes(span)
+        } else {
+            Event {
+                kind: EventKind::Str,
+                span,
+            }
+        }
+    }
+
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
+        if let Some(i) = span_str
+            .of(self.input.src)
+            .bytes()
+            .rposition(|c| c.is_ascii_whitespace())
+        {
+            let before = span_str.with_len(i + 1);
+            let word = span_str.skip(i + 1);
+            self.events.push_front(Event {
+                kind: EventKind::Str,
+                span: word,
+            });
+            Event {
+                kind: EventKind::Str,
+                span: before,
+            }
+        } else {
+            let attr = self.events.pop_front().unwrap();
+            self.events.push_front(Event {
+                kind: EventKind::Exit(Span),
+                span: span_str.empty_after(),
+            });
+            self.events.push_front(Event {
+                kind: EventKind::Str,
+                span: span_str,
+            });
+            self.events.push_front(Event {
+                kind: EventKind::Enter(Span),
+                span: span_str.empty_before(),
+            });
+            attr
         }
     }
 }
@@ -878,7 +907,7 @@ impl<'s> Iterator for Parser<'s> {
         self.events.pop_front().and_then(|e| match e.kind {
             EventKind::Str if e.span.is_empty() => self.next(),
             EventKind::Str | EventKind::Whitespace => Some(self.merge_str_events(e.span)),
-            EventKind::Placeholder => self.next(),
+            EventKind::Placeholder | EventKind::Attributes { container: false } => self.next(),
             _ => Some(e),
         })
     }
@@ -889,6 +918,7 @@ mod test {
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
+    use super::QuoteType;
     use super::Verbatim;
 
     macro_rules! test_parse {
@@ -961,7 +991,7 @@ mod test {
         test_parse!(
             "pre `raw`{#id} post",
             (Str, "pre "),
-            (Attributes, "{#id}"),
+            (Attributes { container: true }, "{#id}"),
             (Enter(Verbatim), "`"),
             (Str, "raw"),
             (Exit(Verbatim), "`"),
@@ -1146,14 +1176,13 @@ mod test {
     fn span_url_attr_unclosed() {
         test_parse!(
             "[text]({.cls}",
-            (Attributes, "{.cls}"),
+            (Attributes { container: false }, "{.cls}"),
             (Enter(Span), ""),
             (Str, "[text]("),
             (Exit(Span), ""),
         );
     }
 
-    #[ignore = "broken"]
     #[test]
     fn span_url_attr_closed() {
         test_parse!(
@@ -1190,7 +1219,7 @@ mod test {
     fn span_attr() {
         test_parse!(
             "[abc]{.def}",
-            (Attributes, "{.def}"),
+            (Attributes { container: true }, "{.def}"),
             (Enter(Span), "["),
             (Str, "abc"),
             (Exit(Span), "]"),
@@ -1295,7 +1324,7 @@ mod test {
     fn container_attr() {
         test_parse!(
             "_abc def_{.attr}",
-            (Attributes, "{.attr}"),
+            (Attributes { container: true }, "{.attr}"),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1323,7 +1352,7 @@ mod test {
     fn container_attr_multiple() {
         test_parse!(
             "_abc def_{.a}{.b}{.c} {.d}",
-            (Attributes, "{.a}{.b}{.c}"),
+            (Attributes { container: true }, "{.a}{.b}{.c}"),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1335,7 +1364,7 @@ mod test {
     fn attr() {
         test_parse!(
             "word{a=b}",
-            (Attributes, "{a=b}"),
+            (Attributes { container: false }, "{a=b}"),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1343,7 +1372,7 @@ mod test {
         test_parse!(
             "some word{.a}{.b} with attrs",
             (Str, "some "),
-            (Attributes, "{.a}{.b}"),
+            (Attributes { container: false }, "{.a}{.b}"),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1362,5 +1391,47 @@ mod test {
     fn attr_empty() {
         test_parse!("word{}", (Str, "word"));
         test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
+    }
+
+    #[test]
+    fn quote() {
+        test_parse!(
+            "'a'",
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+        );
+        test_parse!(
+            " 'a' ",
+            (Str, " "),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+            (Str, " "),
+        );
     }
 }
