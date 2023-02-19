@@ -85,6 +85,10 @@ impl<C: Clone, A: Clone> Tree<C, A> {
             })
         })
     }
+
+    pub fn branch_is_empty(&self) -> bool {
+        matches!(self.head, None)
+    }
 }
 
 impl<C: Clone, A: Clone> Iterator for Tree<C, A> {

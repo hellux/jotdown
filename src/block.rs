@@ -447,7 +447,7 @@ impl<'s> TreeParser<'s> {
                 .tree
                 .enter(Node::Container(TableRow { head: false }), row.with_len(1));
             let rem = row.skip(1); // |
-            let lex = lex::Lexer::new(rem.of(self.src).chars());
+            let lex = lex::Lexer::new(rem.of(self.src));
             let mut pos = rem.start();
             let mut cell_start = pos;
             let mut separator_row = true;

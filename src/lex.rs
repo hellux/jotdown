@@ -72,9 +72,9 @@ impl Sequence {
 }
 
 #[derive(Clone)]
-pub(crate) struct Lexer<I: Iterator + Clone> {
-    chars: I,
-    chars_non_peeked: I,
+pub(crate) struct Lexer<'s> {
+    src: &'s str,
+    chars: std::str::Chars<'s>,
     /// Next character should be escaped.
     escape: bool,
     /// Token to be peeked or next'ed.
@@ -83,11 +83,11 @@ pub(crate) struct Lexer<I: Iterator + Clone> {
     len: usize,
 }
 
-impl<I: Iterator<Item = char> + Clone> Lexer<I> {
-    pub fn new(chars: I) -> Lexer<I> {
+impl<'s> Lexer<'s> {
+    pub fn new(src: &'s str) -> Self {
         Lexer {
-            chars: chars.clone(),
-            chars_non_peeked: chars,
+            src,
+            chars: src.chars(),
             escape: false,
             next: None,
             len: 0,
@@ -103,13 +103,14 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         self.next.as_ref()
     }
 
-    pub fn chars(&self) -> I {
-        self.chars_non_peeked.clone()
+    pub fn ahead(&self) -> &'s str {
+        let pos =
+            self.src.len() - self.chars.as_str().len() - self.next.as_ref().map_or(0, |t| t.len);
+        &self.src[pos..]
     }
 
     fn next_token(&mut self) -> Option<Token> {
         let mut current = self.token();
-        self.chars_non_peeked = self.chars.clone();
 
         // concatenate text tokens
         if let Some(Token { kind: Text, len }) = &mut current {
@@ -148,7 +149,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 
     fn token(&mut self) -> Option<Token> {
-        self.chars_non_peeked = self.chars.clone();
         self.len = 0;
 
         let first = self.eat_char()?;
@@ -283,17 +283,11 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 }
 
-impl<I: Iterator<Item = char> + Clone> Iterator for Lexer<I> {
+impl<'s> Iterator for Lexer<'s> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next
-            .take()
-            .map(|x| {
-                self.chars_non_peeked = self.chars.clone();
-                x
-            })
-            .or_else(|| self.next_token())
+        self.next.take().or_else(|| self.next_token())
     }
 }
 
@@ -307,7 +301,7 @@ mod test {
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src.chars()).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };
