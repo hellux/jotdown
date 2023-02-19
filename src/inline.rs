@@ -176,7 +176,7 @@ pub struct VerbatimState {
 pub struct Parser<I: Iterator + Clone> {
     input: Input<I>,
     /// Stack with kind and index of _potential_ openers for containers.
-    openers: Vec<(Delim, usize)>,
+    openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
     events: std::collections::VecDeque<Event>,
@@ -468,33 +468,28 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
     }
 
     fn parse_container(&mut self, first: &lex::Token) -> Option<()> {
-        let (delim, dir) = Delim::from_token(first)?;
-
         self.openers
             .iter()
-            .rposition(|(d, _)| delim.closes(*d))
+            .rposition(|(o, _)| o.closed_by(first.kind))
             .and_then(|o| {
-                if matches!(dir, Dir::Open) {
+                let (opener, e) = self.openers[o];
+                let e_attr = e;
+                let e_opener = e + 1;
+
+                if e_opener == self.events.len() - 1 {
+                    // empty container
                     return None;
                 }
                 let whitespace_after = self.events.back().map_or(false, |ev| {
                     matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
                 });
-                if matches!(dir, Dir::Both) && whitespace_after {
-                    return None;
-                }
-
-                let (d, e) = self.openers[o];
-                let e_attr = e;
-                let e_opener = e + 1;
-                if e_opener == self.events.len() - 1 {
-                    // empty container
+                if opener.bidirectional() && whitespace_after {
                     return None;
                 }
 
                 let inner_span = self.events[e_opener].span.between(self.input.span);
                 self.openers.drain(o..);
-                let mut closed = match DelimEventKind::from(d) {
+                let mut closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
                         self.events[e_opener].kind = EventKind::Enter(cont);
                         self.push(EventKind::Exit(cont))
@@ -538,10 +533,8 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 closed
             })
             .or_else(|| {
-                if matches!(dir, Dir::Close) {
-                    return None;
-                }
-                if matches!(dir, Dir::Both)
+                let opener = Opener::from_token(first.kind)?;
+                if opener.bidirectional()
                     && self
                         .input
                         .peek()
@@ -549,7 +542,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 {
                     return None;
                 }
-                if matches!(delim, Delim::SingleQuoted | Delim::DoubleQuoted)
+                if matches!(opener, Opener::SingleQuoted | Opener::DoubleQuoted)
                     && self
                         .events
                         .back()
@@ -557,19 +550,19 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 {
                     return None;
                 }
-                self.openers.push((delim, self.events.len()));
+                self.openers.push((opener, self.events.len()));
                 // push dummy event in case attributes are encountered after closing delimiter
                 self.push_sp(
                     EventKind::Placeholder,
                     Span::empty_at(self.input.span.start()),
                 );
                 // use non-opener for now, replace if closed later
-                self.push(match delim {
-                    Delim::SingleQuoted => EventKind::Atom(Quote {
+                self.push(match opener {
+                    Opener::SingleQuoted => EventKind::Atom(Quote {
                         ty: QuoteType::Single,
                         left: false,
                     }),
-                    Delim::DoubleQuoted => EventKind::Atom(Quote {
+                    Opener::DoubleQuoted => EventKind::Atom(Quote {
                         ty: QuoteType::Double,
                         left: true,
                     }),
@@ -691,7 +684,7 @@ enum SpanType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Delim {
+enum Opener {
     Span(SpanType),
     Strong(Directionality),
     Emphasis(Directionality),
@@ -704,54 +697,72 @@ enum Delim {
     DoubleQuoted,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Dir {
-    Open,
-    Close,
-    Both,
-}
-
-impl Delim {
-    fn from_token(token: &lex::Token) -> Option<(Self, Dir)> {
-        use Delim::*;
-        use Dir::{Both, Close, Open};
+impl Opener {
+    fn from_token(kind: lex::Kind) -> Option<Self> {
         use Directionality::{Bi, Uni};
+        use Opener::*;
         use SpanType::{General, Image};
 
-        match token.kind {
-            lex::Kind::Sym(Symbol::Asterisk) => Some((Strong(Bi), Both)),
-            lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis(Bi), Both)),
-            lex::Kind::Sym(Symbol::Caret) => Some((Superscript(Bi), Both)),
-            lex::Kind::Sym(Symbol::Tilde) => Some((Subscript(Bi), Both)),
-            lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Both)),
-            lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Both)),
-            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((Span(Image), Open)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((Span(General), Open)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((Span(General), Close)),
-            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Open)),
-            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Close)),
-            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Open)),
-            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Close)),
-            lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Open)),
-            lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Close)),
-            lex::Kind::Open(Delimiter::BraceQuote1) => Some((SingleQuoted, Open)),
-            lex::Kind::Close(Delimiter::BraceQuote1) => Some((SingleQuoted, Close)),
-            lex::Kind::Open(Delimiter::BraceQuote2) => Some((DoubleQuoted, Open)),
-            lex::Kind::Close(Delimiter::BraceQuote2) => Some((DoubleQuoted, Close)),
+        match kind {
+            lex::Kind::Sym(Symbol::Asterisk) => Some(Strong(Bi)),
+            lex::Kind::Sym(Symbol::Underscore) => Some(Emphasis(Bi)),
+            lex::Kind::Sym(Symbol::Caret) => Some(Superscript(Bi)),
+            lex::Kind::Sym(Symbol::Tilde) => Some(Subscript(Bi)),
+            lex::Kind::Sym(Symbol::Quote1) => Some(SingleQuoted),
+            lex::Kind::Sym(Symbol::Quote2) => Some(DoubleQuoted),
+            lex::Kind::Sym(Symbol::ExclaimBracket) => Some(Span(Image)),
+            lex::Kind::Open(Delimiter::Bracket) => Some(Span(General)),
+            lex::Kind::Open(Delimiter::BraceAsterisk) => Some(Strong(Uni)),
+            lex::Kind::Open(Delimiter::BraceUnderscore) => Some(Emphasis(Uni)),
+            lex::Kind::Open(Delimiter::BraceCaret) => Some(Superscript(Uni)),
+            lex::Kind::Open(Delimiter::BraceTilde) => Some(Subscript(Uni)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some(Mark),
+            lex::Kind::Open(Delimiter::BraceHyphen) => Some(Delete),
+            lex::Kind::Open(Delimiter::BracePlus) => Some(Insert),
+            lex::Kind::Open(Delimiter::BraceQuote1) => Some(SingleQuoted),
+            lex::Kind::Open(Delimiter::BraceQuote2) => Some(DoubleQuoted),
             _ => None,
         }
     }
 
-    fn closes(self, opener: Delim) -> bool {
-        self == opener || matches!((opener, self), (Delim::Span(..), Delim::Span(..)))
+    fn closed_by(&self, kind: lex::Kind) -> bool {
+        use Directionality::{Bi, Uni};
+        use Opener::*;
+
+        match self {
+            Span(..) => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
+            Strong(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Asterisk)),
+            Strong(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceAsterisk)),
+            Emphasis(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Underscore)),
+            Emphasis(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceUnderscore)),
+            Superscript(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Caret)),
+            Superscript(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceCaret)),
+            Subscript(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Tilde)),
+            Subscript(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceTilde)),
+            Mark => matches!(kind, lex::Kind::Close(Delimiter::BraceEqual)),
+            Delete => matches!(kind, lex::Kind::Close(Delimiter::BraceHyphen)),
+            Insert => matches!(kind, lex::Kind::Close(Delimiter::BracePlus)),
+            SingleQuoted => matches!(
+                kind,
+                lex::Kind::Sym(Symbol::Quote1) | lex::Kind::Close(Delimiter::BraceQuote1)
+            ),
+            DoubleQuoted => matches!(
+                kind,
+                lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2)
+            ),
+        }
+    }
+
+    fn bidirectional(&self) -> bool {
+        matches!(
+            self,
+            Opener::Strong(Directionality::Bi)
+                | Opener::Emphasis(Directionality::Bi)
+                | Opener::Superscript(Directionality::Bi)
+                | Opener::Subscript(Directionality::Bi)
+                | Opener::SingleQuoted
+                | Opener::DoubleQuoted
+        )
     }
 }
 
@@ -761,19 +772,19 @@ enum DelimEventKind {
     Quote(QuoteType),
 }
 
-impl From<Delim> for DelimEventKind {
-    fn from(d: Delim) -> Self {
+impl From<Opener> for DelimEventKind {
+    fn from(d: Opener) -> Self {
         match d {
-            Delim::Span(ty) => Self::Span(ty),
-            Delim::Strong(..) => Self::Container(Strong),
-            Delim::Emphasis(..) => Self::Container(Emphasis),
-            Delim::Superscript(..) => Self::Container(Superscript),
-            Delim::Subscript(..) => Self::Container(Subscript),
-            Delim::Mark => Self::Container(Mark),
-            Delim::Delete => Self::Container(Delete),
-            Delim::Insert => Self::Container(Insert),
-            Delim::SingleQuoted => Self::Quote(QuoteType::Single),
-            Delim::DoubleQuoted => Self::Quote(QuoteType::Double),
+            Opener::Span(ty) => Self::Span(ty),
+            Opener::Strong(..) => Self::Container(Strong),
+            Opener::Emphasis(..) => Self::Container(Emphasis),
+            Opener::Superscript(..) => Self::Container(Superscript),
+            Opener::Subscript(..) => Self::Container(Subscript),
+            Opener::Mark => Self::Container(Mark),
+            Opener::Delete => Self::Container(Delete),
+            Opener::Insert => Self::Container(Insert),
+            Opener::SingleQuoted => Self::Quote(QuoteType::Single),
+            Opener::DoubleQuoted => Self::Quote(QuoteType::Double),
         }
     }
 }
