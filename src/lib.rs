@@ -799,7 +799,7 @@ impl<'s> Parser<'s> {
 
         let mut first_is_attr = false;
         let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
-            if let inline::EventKind::Attributes = inl.kind {
+            if let inline::EventKind::Attributes { .. } = inl.kind {
                 first_is_attr = true;
                 attr::parse(inl.span.of(self.src))
             } else {
@@ -911,7 +911,7 @@ impl<'s> Parser<'s> {
                 },
                 inline::EventKind::Str => Event::Str(inline.span.of(self.src).into()),
                 inline::EventKind::Whitespace
-                | inline::EventKind::Attributes
+                | inline::EventKind::Attributes { .. }
                 | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
