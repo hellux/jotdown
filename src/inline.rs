@@ -163,6 +163,11 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
             _ => None,
         }
         .map(|(mut kind, opener_len)| {
+            let e_attr = self.events.len();
+            self.events.push_back(Event {
+                kind: EventKind::Placeholder,
+                span: Span::empty_at(self.span.start()),
+            });
             let opener_event = self.events.len();
             self.events.push_back(Event {
                 kind: EventKind::Enter(kind),
@@ -240,6 +245,15 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 kind: EventKind::Str,
                 span: span_inner,
             });
+
+            if let Some((non_empty, span)) = self.ahead_attributes() {
+                if non_empty {
+                    self.events[e_attr] = Event {
+                        kind: EventKind::Attributes,
+                        span,
+                    };
+                }
+            }
 
             Event {
                 kind: EventKind::Exit(kind),
@@ -905,6 +919,17 @@ mod test {
             (Str, "abc"),
             (Enter(Verbatim), "`"),
             (Str, "def"),
+            (Exit(Verbatim), "`"),
+        );
+    }
+
+    #[test]
+    fn verbatim_attr() {
+        test_parse!(
+            "`raw`{#id}",
+            (Attributes, "{#id}"),
+            (Enter(Verbatim), "`"),
+            (Str, "raw"),
             (Exit(Verbatim), "`"),
         );
     }
