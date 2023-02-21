@@ -493,41 +493,25 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                         }
                     }
 
-                    let mut ahead = self.lexer.chars();
-                    let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
-                    if attr_len > 0 {
-                        let span_closer = self.span;
-                        self.span = self.span.empty_after();
-                        while attr_len > 0 {
-                            self.span = self.span.extend(attr_len);
-                            self.lexer = lex::Lexer::new(ahead.clone());
-
-                            let (l, non_empty) = attr::valid(&mut ahead);
-                            has_attr |= non_empty;
-                            attr_len = l;
-                        }
-
-                        if has_attr {
+                    if let Some((non_empty, span)) = self.ahead_attributes() {
+                        if non_empty {
                             self.events[e_attr] = Event {
                                 kind: EventKind::Attributes,
-                                span: self.span,
+                                span,
                             };
                         }
 
                         if event_closer.is_none() {
-                            if has_attr {
-                                self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                            }
+                            self.events[e_opener].kind = EventKind::Enter(Container::Span);
                             event_closer = Some(Event {
-                                kind: if has_attr {
-                                    EventKind::Exit(Container::Span)
-                                } else {
-                                    EventKind::Str
-                                },
-                                span: span_closer,
+                                kind: EventKind::Exit(Container::Span),
+                                span: self.span,
                             });
                         }
+
+                        self.span = span;
                     }
+
                     event_closer
                 })
                 .or_else(|| {
@@ -572,6 +556,25 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     })
                 })
         })
+    }
+
+    fn ahead_attributes(&mut self) -> Option<(bool, Span)> {
+        let mut span = self.span.empty_after();
+        let mut ahead = self.lexer.chars();
+        let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
+        if attr_len > 0 {
+            while attr_len > 0 {
+                span = span.extend(attr_len);
+                self.lexer = lex::Lexer::new(ahead.clone());
+
+                let (l, non_empty) = attr::valid(&mut ahead);
+                has_attr |= non_empty;
+                attr_len = l;
+            }
+            Some((has_attr, span))
+        } else {
+            None
+        }
     }
 
     fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<Event> {
