@@ -672,7 +672,7 @@ impl<'s> PrePass<'s> {
                     let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inline_parser.reset();
                     inlines.iter().enumerate().for_each(|(i, sp)| {
-                        inline_parser.feed_line(sp.of(src), sp.start(), i == inlines.len() - 1);
+                        inline_parser.feed_line(*sp, i == inlines.len() - 1);
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
                                 let mut chars = ev.span.of(src).chars().peekable();
@@ -774,7 +774,7 @@ impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
         let tree = block::parse(src);
-        let mut inline_parser = inline::Parser::new("", 0, true);
+        let mut inline_parser = inline::Parser::new(src);
         let pre_pass = PrePass::new(src, tree.clone(), &mut inline_parser);
 
         Self {
@@ -1044,11 +1044,8 @@ impl<'s> Parser<'s> {
                     if self.verbatim {
                         Event::Str(content.into())
                     } else {
-                        self.inline_parser.feed_line(
-                            content,
-                            ev.span.start(),
-                            self.tree.branch_is_empty(),
-                        );
+                        self.inline_parser
+                            .feed_line(ev.span, self.tree.branch_is_empty());
                         return self.next();
                     }
                 }

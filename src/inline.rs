@@ -75,21 +75,29 @@ pub struct Event {
 
 #[derive(Clone)]
 pub struct Input<'s> {
-    /// Lexer, hosting source.
+    src: &'s str,
+    /// Lexer.
     lexer: lex::Lexer<'s>,
-    /// The final line of this block has been provided.
-    last: bool,
+    /// The block is complete, the final line has been provided.
+    complete: bool,
     /// Span of current event.
     span: Span,
 }
 
 impl<'s> Input<'s> {
-    fn new(src: &'s str, offset: usize, last: bool) -> Self {
+    fn new(src: &'s str) -> Self {
         Self {
-            lexer: lex::Lexer::new(src),
-            last,
-            span: Span::empty_at(offset),
+            src,
+            lexer: lex::Lexer::new(""),
+            complete: false,
+            span: Span::empty_at(0),
         }
+    }
+
+    fn feed_line(&mut self, line: Span, last: bool) {
+        self.lexer = lex::Lexer::new(line.of(self.src));
+        self.span = line.empty_before();
+        self.complete = last;
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -186,22 +194,22 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    pub fn new(src: &'s str, offset: usize, last: bool) -> Self {
+    pub fn new(src: &'s str) -> Self {
         Self {
-            input: Input::new(src, offset, last),
+            input: Input::new(src),
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
         }
     }
 
-    pub fn feed_line(&mut self, src: &'s str, offset: usize, last: bool) {
-        self.input = Input::new(src, offset, last);
+    pub fn feed_line(&mut self, line: Span, last: bool) {
+        self.input.feed_line(line, last);
     }
 
     pub fn reset(&mut self) {
         debug_assert!(self.events.is_empty());
-        self.feed_line("", 0, true);
+        self.feed_line(Span::empty_at(0), true);
         self.openers.clear();
         debug_assert!(self.events.is_empty());
         debug_assert!(self.verbatim.is_none());
@@ -827,7 +835,7 @@ impl<'s> Iterator for Parser<'s> {
                 })
         {
             if self.parse_event().is_none() {
-                if self.input.last {
+                if self.input.complete {
                     break;
                 } else {
                     return None;
@@ -887,7 +895,8 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new($src, 0, true);
+            let mut p = super::Parser::new($src);
+            p.feed_line(super::Span::by_len(0, $src.len()), true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
