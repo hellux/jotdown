@@ -1665,6 +1665,23 @@ mod test {
     }
 
     #[test]
+    fn attr_multiline() {
+        test_parse!(
+            concat!(
+                "> _abc_{a=b\n", //
+                "> c=d}\n",      //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Emphasis, [("a", "b"), ("c", "d")].into_iter().collect()),
+            Str("abc".into()),
+            End(Emphasis),
+            End(Paragraph),
+            End(Blockquote),
+        );
+    }
+
+    #[test]
     fn list_item_unordered() {
         test_parse!(
             "- abc",
