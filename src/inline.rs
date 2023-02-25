@@ -74,8 +74,9 @@ pub struct Event {
 }
 
 #[derive(Clone)]
-pub struct Input<'s> {
-    /// Lexer, hosting source.
+struct Input<'s> {
+    src: &'s str,
+    /// Lexer.
     lexer: lex::Lexer<'s>,
     /// The block is complete, the final line has been provided.
     complete: bool,
@@ -84,23 +85,24 @@ pub struct Input<'s> {
 }
 
 impl<'s> Input<'s> {
-    fn new() -> Self {
+    fn new(src: &'s str) -> Self {
         Self {
+            src,
             lexer: lex::Lexer::new(""),
             complete: false,
             span: Span::empty_at(0),
         }
     }
 
-    fn feed_line(&mut self, line: &'s str, offset: usize, last: bool) {
+    fn feed_line(&mut self, line: Span, last: bool) {
         debug_assert!(!self.complete);
-        self.lexer = lex::Lexer::new(line);
+        self.lexer = lex::Lexer::new(line.of(self.src));
         self.complete = last;
-        self.span = Span::empty_at(offset);
+        self.span = line.empty_before();
     }
 
     fn reset(&mut self) {
-        *self = Self::new();
+        *self = Self::new(self.src);
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -197,17 +199,17 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    pub fn new() -> Self {
+    pub fn new(src: &'s str) -> Self {
         Self {
-            input: Input::new(),
+            input: Input::new(src),
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
         }
     }
 
-    pub fn feed_line(&mut self, line: &'s str, offset: usize, last: bool) {
-        self.input.feed_line(line, offset, last);
+    pub fn feed_line(&mut self, line: Span, last: bool) {
+        self.input.feed_line(line, last);
     }
 
     pub fn reset(&mut self) {
@@ -899,8 +901,8 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new();
-            p.feed_line($src, 0, true);
+            let mut p = super::Parser::new($src);
+            p.feed_line(super::Span::by_len(0, $src.len()), true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
