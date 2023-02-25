@@ -80,6 +80,8 @@ pub struct Input<'s> {
     complete: bool,
     /// Span of current line.
     span_line: Span,
+    /// Upcoming lines within the current block.
+    ahead: std::collections::VecDeque<Span>,
     /// Span of current event.
     span: Span,
 }
@@ -91,15 +93,40 @@ impl<'s> Input<'s> {
             lexer: lex::Lexer::new(""),
             complete: false,
             span_line: Span::new(0, 0),
+            ahead: std::collections::VecDeque::new(),
             span: Span::empty_at(0),
         }
     }
 
     fn feed_line(&mut self, line: Span, last: bool) {
+        self.complete = last;
+        if self.lexer.ahead().is_empty() {
+            if let Some(next) = self.ahead.pop_front() {
+                self.set_current_line(next);
+                self.ahead.push_back(line);
+            } else {
+                self.set_current_line(line);
+            }
+        } else {
+            self.ahead.push_back(line);
+        }
+    }
+
+    fn set_current_line(&mut self, line: Span) {
         self.lexer = lex::Lexer::new(line.of(self.src));
         self.span = line.empty_before();
         self.span_line = line;
-        self.complete = last;
+    }
+
+    fn reset(&mut self) {
+        self.lexer = lex::Lexer::new("");
+        self.complete = false;
+        self.ahead.clear();
+        self.span = Span::empty_at(0);
+    }
+
+    fn last(&self) -> bool {
+        self.complete && self.ahead.is_empty()
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -214,7 +241,7 @@ impl<'s> Parser<'s> {
 
     pub fn reset(&mut self) {
         debug_assert!(self.events.is_empty());
-        self.feed_line(Span::empty_at(0), true);
+        self.input.reset();
         self.openers.clear();
         debug_assert!(self.events.is_empty());
         debug_assert!(self.verbatim.is_none());
@@ -954,8 +981,10 @@ impl<'s> Iterator for Parser<'s> {
                 .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if self.parse_event().is_none() {
-                if self.input.complete {
+                if self.input.last() {
                     break;
+                } else if let Some(l) = self.input.ahead.pop_front() {
+                    self.input.set_current_line(l);
                 } else {
                     return None;
                 }
