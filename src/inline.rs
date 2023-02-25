@@ -80,6 +80,8 @@ struct Input<'s> {
     complete: bool,
     /// Span of current line.
     span_line: Span,
+    /// Upcoming lines within the current block.
+    ahead: std::collections::VecDeque<Span>,
     /// Span of current event.
     span: Span,
 }
@@ -91,20 +93,40 @@ impl<'s> Input<'s> {
             lexer: lex::Lexer::new(""),
             complete: false,
             span_line: Span::new(0, 0),
+            ahead: std::collections::VecDeque::new(),
             span: Span::empty_at(0),
         }
     }
 
     fn feed_line(&mut self, line: Span, last: bool) {
         debug_assert!(!self.complete);
-        self.lexer = lex::Lexer::new(line.of(self.src));
         self.complete = last;
+        if self.lexer.ahead().is_empty() {
+            if let Some(next) = self.ahead.pop_front() {
+                self.set_current_line(next);
+                self.ahead.push_back(line);
+            } else {
+                self.set_current_line(line);
+            }
+        } else {
+            self.ahead.push_back(line);
+        }
+    }
+
+    fn set_current_line(&mut self, line: Span) {
+        self.lexer = lex::Lexer::new(line.of(self.src));
         self.span_line = line;
         self.span = line.empty_before();
     }
 
     fn reset(&mut self) {
-        *self = Self::new(self.src);
+        self.lexer = lex::Lexer::new("");
+        self.complete = false;
+        self.ahead.clear();
+    }
+
+    fn last(&self) -> bool {
+        self.complete && self.ahead.is_empty()
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -960,8 +982,10 @@ impl<'s> Iterator for Parser<'s> {
                 .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if self.parse_event().is_none() {
-                if self.input.complete {
+                if self.input.last() {
                     break;
+                } else if let Some(l) = self.input.ahead.pop_front() {
+                    self.input.set_current_line(l);
                 } else {
                     return None;
                 }
