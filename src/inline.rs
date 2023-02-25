@@ -9,6 +9,7 @@ use lex::Symbol;
 
 use Atom::*;
 use Container::*;
+use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
@@ -224,6 +225,15 @@ pub struct Parser<'s> {
     pub(crate) cow_strs: Vec<CowStr<'s>>,
 }
 
+pub enum ControlFlow {
+    /// At least one event has been emitted, continue parsing the line.
+    Continue,
+    /// Next line is needed to emit an event.
+    Next,
+    /// Parsing of the line is completed.
+    Done,
+}
+
 impl<'s> Parser<'s> {
     pub fn new(src: &'s str) -> Self {
         Self {
@@ -247,18 +257,18 @@ impl<'s> Parser<'s> {
         debug_assert!(self.verbatim.is_none());
     }
 
-    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<()> {
+    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
-        Some(())
+        Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind) -> Option<()> {
+    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
         self.push_sp(kind, self.input.span)
     }
 
-    fn parse_event(&mut self) -> Option<()> {
+    fn parse_event(&mut self) -> ControlFlow {
         self.input.reset_span();
-        self.input.eat().map(|first| {
+        if let Some(first) = self.input.eat() {
             self.parse_verbatim(&first)
                 .or_else(|| self.parse_attributes(&first))
                 .or_else(|| self.parse_autolink(&first))
@@ -266,13 +276,15 @@ impl<'s> Parser<'s> {
                 .or_else(|| self.parse_footnote_reference(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
-                .unwrap_or_else(|| {
-                    self.push(EventKind::Str);
-                })
-        })
+                .unwrap_or_else(|| self.push(EventKind::Str).unwrap())
+        } else if self.input.last() {
+            Done
+        } else {
+            Next
+        }
     }
 
-    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if let Some(VerbatimState {
             event_opener,
             len_opener,
@@ -334,7 +346,7 @@ impl<'s> Parser<'s> {
                             )
                         })
                     {
-                        return Some(()); // skip whitespace
+                        return Some(Continue); // skip whitespace
                     }
                 } else {
                     *non_whitespace_encountered = true;
@@ -342,7 +354,7 @@ impl<'s> Parser<'s> {
                 }
                 self.push(EventKind::Str);
             };
-            Some(())
+            Some(Continue)
         } else {
             let (ty, len_opener) = match first.kind {
                 lex::Kind::DollarBacktick(l) if first.len - l as usize == 1 => {
@@ -367,7 +379,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn parse_attributes(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_attributes(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Open(Delimiter::Brace) {
             let mut ahead = self.input.lexer.ahead().chars();
             let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
@@ -393,14 +405,14 @@ impl<'s> Parser<'s> {
                 } else {
                     self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
                 }
-                return Some(());
+                return Some(Continue);
             }
         }
 
         None
     }
 
-    fn parse_autolink(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_autolink(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Lt) {
             let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
@@ -432,7 +444,7 @@ impl<'s> Parser<'s> {
         None
     }
 
-    fn parse_symbol(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_symbol(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Colon) {
             let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
@@ -453,13 +465,13 @@ impl<'s> Parser<'s> {
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Atom(Symbol));
                 self.input.span = self.input.span.after(1);
-                return Some(());
+                return Some(Continue);
             }
         }
         None
     }
 
-    fn parse_footnote_reference(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_footnote_reference(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Open(Delimiter::Bracket)
             && matches!(
                 self.input.peek(),
@@ -496,13 +508,13 @@ impl<'s> Parser<'s> {
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Atom(FootnoteReference));
                 self.input.span = self.input.span.after(1);
-                return Some(());
+                return Some(Continue);
             }
         }
         None
     }
 
-    fn parse_container(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_container(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         self.openers
             .iter()
             .rposition(|(o, _)| o.closed_by(first.kind))
@@ -641,7 +653,7 @@ impl<'s> Parser<'s> {
                             ),
                         };
                         self.events.drain(e_opener..);
-                        Some(())
+                        Some(Continue)
                     }
                 };
 
@@ -712,7 +724,7 @@ impl<'s> Parser<'s> {
             })
     }
 
-    fn parse_atom(&mut self, first: &lex::Token) -> Option<()> {
+    fn parse_atom(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         let atom = match first.kind {
             lex::Kind::Newline => Softbreak,
             lex::Kind::Hardbreak => Hardbreak,
@@ -746,7 +758,7 @@ impl<'s> Parser<'s> {
                         self.push_sp(EventKind::Atom(atom), self.input.span.with_len(l));
                         self.input.span = self.input.span.skip(l);
                     });
-                return Some(());
+                return Some(Continue);
             }
             lex::Kind::Open(Delimiter::BraceQuote1) => Quote {
                 ty: QuoteType::Single,
@@ -980,13 +992,15 @@ impl<'s> Iterator for Parser<'s> {
                 .back()
                 .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
-            if self.parse_event().is_none() {
-                if self.input.last() {
-                    break;
-                } else if let Some(l) = self.input.ahead.pop_front() {
-                    self.input.set_current_line(l);
-                } else {
-                    return None;
+            match self.parse_event() {
+                Continue => {}
+                Done => break,
+                Next => {
+                    if let Some(l) = self.input.ahead.pop_front() {
+                        self.input.set_current_line(l);
+                    } else {
+                        return None;
+                    }
                 }
             }
         }
