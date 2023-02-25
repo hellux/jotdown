@@ -553,8 +553,8 @@ impl<'s> PrePass<'s> {
                     let mut last_whitespace = true;
                     let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inlines.iter().enumerate().for_each(|(i, sp)| {
-                        inline::Parser::new(sp.of(src), sp.start(), i == inlines.len() - 1)
-                            .for_each(|ev| match ev.kind {
+                        inline::Parser::new(src, *sp, i == inlines.len() - 1).for_each(
+                            |ev| match ev.kind {
                                 inline::EventKind::Str => {
                                     let mut chars = ev.span.of(src).chars().peekable();
                                     while let Some(c) = chars.next() {
@@ -579,7 +579,8 @@ impl<'s> PrePass<'s> {
                                     id_auto.push('-');
                                 }
                                 _ => {}
-                            })
+                            },
+                        )
                     });
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
@@ -671,7 +672,7 @@ impl<'s> Parser<'s> {
             footnotes: Map::new(),
             footnote_index: 0,
             footnote_active: false,
-            inline_parser: inline::Parser::new("", 0, true),
+            inline_parser: inline::Parser::new("", Span::empty_at(0), true),
         }
     }
 
@@ -932,8 +933,8 @@ impl<'s> Parser<'s> {
                         Event::Str(content.into())
                     } else {
                         self.inline_parser.provide_line(
-                            content,
-                            ev.span.start(),
+                            self.src,
+                            ev.span,
                             self.tree.branch_is_empty(),
                         );
                         return self.next();
