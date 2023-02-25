@@ -78,29 +78,65 @@ pub struct Event {
 }
 
 pub struct Input<'s> {
+    src: &'s str,
     /// Lexer.
     lexer: lex::Lexer<'s>,
-    /// The final line of this block has been provided.
-    last: bool,
-    src: &'s str,
+    /// The block is complete, the final line has been provided.
+    complete: bool,
+    /// Upcoming lines within the current block.
+    ahead: std::collections::VecDeque<Span>,
     /// Span of current event.
     span: Span,
 }
 
 impl<'s> Input<'s> {
-    fn new(src: &'s str, inline: Span, last: bool) -> Self {
+    fn new(src: &'s str) -> Self {
         Self {
-            lexer: lex::Lexer::new(inline.of(src)),
             src,
-            last,
-            span: inline.empty_before(),
+            lexer: lex::Lexer::new(""),
+            complete: false,
+            ahead: std::collections::VecDeque::new(),
+            span: Span::empty_at(0),
         }
+    }
+
+    fn provide_line(&mut self, line: Span, last: bool) {
+        self.complete = last;
+        if self.lexer.ahead().is_empty() {
+            if let Some(next) = self.ahead.pop_front() {
+                self.set_current_line(next);
+                self.ahead.push_back(line);
+            } else {
+                self.set_current_line(line);
+            }
+        } else {
+            self.ahead.push_back(line);
+        }
+    }
+
+    fn set_current_line(&mut self, line: Span) {
+        self.lexer = lex::Lexer::new(line.of(self.src));
+        self.span = line.empty_before();
+    }
+
+    fn reset(&mut self) {
+        self.lexer = lex::Lexer::new("");
+        self.complete = false;
+        self.ahead.clear();
+        self.span = Span::empty_at(0);
+    }
+
+    fn last(&self) -> bool {
+        self.complete && self.ahead.is_empty()
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
         let tok = self.lexer.next();
         if let Some(t) = &tok {
             self.span = self.span.extend(t.len);
+        } else if let Some(l) = self.ahead.pop_front() {
+            self.set_current_line(l);
+            return self.eat();
         }
         tok
     }
@@ -193,22 +229,22 @@ pub struct Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    pub fn new(src: &'s str, inline: Span, last: bool) -> Self {
+    pub fn new(src: &'s str) -> Self {
         Self {
-            input: Input::new(src, inline, last),
+            input: Input::new(src),
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
         }
     }
 
-    pub fn provide_line(&mut self, src: &'s str, inline: Span, last: bool) {
-        self.input = Input::new(src, inline, last);
+    pub fn provide_line(&mut self, line: Span, last: bool) {
+        self.input.provide_line(line, last);
     }
 
     pub fn reset(&mut self) {
         debug_assert!(self.events.is_empty());
-        self.provide_line("", Span::empty_at(0), true);
+        self.input.reset();
         self.openers.clear();
         debug_assert!(self.events.is_empty());
         debug_assert!(self.verbatim.is_none());
@@ -889,7 +925,7 @@ impl<'s> Iterator for Parser<'s> {
                 .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
             if self.parse_event().is_none() {
-                if self.input.last {
+                if self.input.last() {
                     break;
                 } else {
                     return None;
@@ -927,7 +963,8 @@ mod test {
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new($src, super::Span::by_len(0, $src.len()), true);
+            let mut p = super::Parser::new($src);
+            p.provide_line(super::Span::by_len(0, $src.len()), true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);

@@ -553,34 +553,31 @@ impl<'s> PrePass<'s> {
                     let mut last_whitespace = true;
                     let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inlines.iter().enumerate().for_each(|(i, sp)| {
-                        inline::Parser::new(src, *sp, i == inlines.len() - 1).for_each(
-                            |ev| match ev.kind {
-                                inline::EventKind::Str => {
-                                    let mut chars = ev.span.of(src).chars().peekable();
-                                    while let Some(c) = chars.next() {
-                                        if c.is_whitespace() {
-                                            while chars.peek().map_or(false, |c| c.is_whitespace())
-                                            {
-                                                chars.next();
-                                            }
-                                            if !last_whitespace {
-                                                last_whitespace = true;
-                                                id_auto.push('-');
-                                            }
-                                        } else if !c.is_ascii_punctuation()
-                                            || matches!(c, '-' | '_')
-                                        {
-                                            id_auto.push(c);
-                                            last_whitespace = false;
+                        let mut p = inline::Parser::new(src);
+                        p.provide_line(*sp, i == inlines.len() - 1);
+                        p.for_each(|ev| match ev.kind {
+                            inline::EventKind::Str => {
+                                let mut chars = ev.span.of(src).chars().peekable();
+                                while let Some(c) = chars.next() {
+                                    if c.is_whitespace() {
+                                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                                            chars.next();
                                         }
+                                        if !last_whitespace {
+                                            last_whitespace = true;
+                                            id_auto.push('-');
+                                        }
+                                    } else if !c.is_ascii_punctuation() || matches!(c, '-' | '_') {
+                                        id_auto.push(c);
+                                        last_whitespace = false;
                                     }
                                 }
-                                inline::EventKind::Atom(inline::Atom::Softbreak) => {
-                                    id_auto.push('-');
-                                }
-                                _ => {}
-                            },
-                        )
+                            }
+                            inline::EventKind::Atom(inline::Atom::Softbreak) => {
+                                id_auto.push('-');
+                            }
+                            _ => {}
+                        })
                     });
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
@@ -672,7 +669,7 @@ impl<'s> Parser<'s> {
             footnotes: Map::new(),
             footnote_index: 0,
             footnote_active: false,
-            inline_parser: inline::Parser::new("", Span::empty_at(0), true),
+            inline_parser: inline::Parser::new(src),
         }
     }
 
@@ -930,11 +927,8 @@ impl<'s> Parser<'s> {
                     if self.verbatim {
                         Event::Str(content.into())
                     } else {
-                        self.inline_parser.provide_line(
-                            self.src,
-                            ev.span,
-                            self.tree.branch_is_empty(),
-                        );
+                        self.inline_parser
+                            .provide_line(ev.span, self.tree.branch_is_empty());
                         return self.next();
                     }
                 }
