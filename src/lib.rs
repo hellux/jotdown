@@ -993,7 +993,7 @@ impl<'s> Parser<'s> {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
                             block::Container::Footnote => {
-                                assert!(enter);
+                                debug_assert!(enter);
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 self.block_attributes = Attributes::new();
                                 continue;

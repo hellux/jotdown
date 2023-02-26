@@ -215,7 +215,7 @@ impl<'s> TreeParser<'s> {
 
             // close list if a non list item or a list item of new type appeared
             if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
-                assert!(usize::from(*depth) <= self.tree.depth());
+                debug_assert!(usize::from(*depth) <= self.tree.depth());
                 if self.tree.depth() == (*depth).into()
                     && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
                 {
@@ -405,7 +405,7 @@ impl<'s> TreeParser<'s> {
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
-            assert!(usize::from(*depth) <= self.tree.depth());
+            debug_assert!(usize::from(*depth) <= self.tree.depth());
             if self.tree.depth() == (*depth).into() {
                 self.prev_blankline = false;
                 self.prev_loose = false;
