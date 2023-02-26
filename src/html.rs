@@ -133,7 +133,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::DescriptionList => self.out.write_str("<dl")?,
                         Container::DescriptionDetails => self.out.write_str("<dd")?,
                         Container::Footnote { number, .. } => {
-                            assert!(self.footnote_number.is_none());
+                            debug_assert!(self.footnote_number.is_none());
                             self.footnote_number = Some((*number).try_into().unwrap());
                             if !self.encountered_footnote {
                                 self.encountered_footnote = true;

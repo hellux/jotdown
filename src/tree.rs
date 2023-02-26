@@ -79,7 +79,7 @@ impl<C: Clone, A: Clone> Tree<C, A> {
         std::iter::from_fn(move || {
             head.take().map(|h| {
                 let n = &self.nodes[h.index()];
-                assert!(matches!(n.kind, NodeKind::Inline));
+                debug_assert!(matches!(n.kind, NodeKind::Inline));
                 head = n.next;
                 n.span
             })
@@ -126,7 +126,7 @@ pub struct NodeIndex(std::num::NonZeroUsize);
 
 impl NodeIndex {
     fn new(i: usize) -> Self {
-        assert_ne!(i, usize::MAX);
+        debug_assert_ne!(i, usize::MAX);
         Self((i + 1).try_into().unwrap())
     }
 
@@ -246,7 +246,7 @@ impl<C, A> Builder<C, A> {
             }
         } else {
             let last = self.branch.pop();
-            assert_ne!(last, None);
+            debug_assert_ne!(last, None);
         }
     }
 
@@ -314,7 +314,7 @@ impl<C, A> Builder<C, A> {
     }
 
     pub(super) fn finish(self) -> Tree<C, A> {
-        assert_eq!(self.depth, 0);
+        debug_assert_eq!(self.depth, 0);
         let head = self.nodes[NodeIndex::root().index()].next;
         Tree {
             nodes: self.nodes.into_boxed_slice().into(),
@@ -331,19 +331,19 @@ impl<C, A> Builder<C, A> {
             match &mut head.kind {
                 NodeKind::Root | NodeKind::Inline | NodeKind::Atom(_) => {
                     // set next pointer of previous node
-                    assert_eq!(head.next, None);
+                    debug_assert_eq!(head.next, None);
                     head.next = Some(ni);
                 }
                 NodeKind::Container(_, child) => {
                     self.branch.push(*head_ni);
                     // set child pointer of current container
-                    assert_eq!(*child, None);
+                    debug_assert_eq!(*child, None);
                     *child = Some(ni);
                 }
             }
         } else if let Some(block) = self.branch.pop() {
             let mut block = &mut self.nodes[block.index()];
-            assert!(matches!(block.kind, NodeKind::Container(..)));
+            debug_assert!(matches!(block.kind, NodeKind::Container(..)));
             block.next = Some(ni);
         } else {
             panic!()
