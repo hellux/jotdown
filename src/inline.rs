@@ -504,7 +504,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                                 )
                             )
                         {
-                            assert_eq!(self.events[e_opener].span, event_closer.span);
+                            debug_assert_eq!(self.events[e_opener].span, event_closer.span);
                             event_closer.span = inner_span;
                             self.events[e_opener].span = inner_span;
                         }
