@@ -684,6 +684,24 @@ impl<'s> Parser<'s> {
 
         self.push(EventKind::Atom(atom))
     }
+
+    fn merge_str_events(&mut self, span_str: Span) -> Event {
+        let mut span = span_str;
+        let should_merge = |e: &Event, span: Span| {
+            matches!(
+                e.kind,
+                EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
+            ) && span.end() == e.span.start()
+        };
+        while self.events.front().map_or(false, |e| should_merge(e, span)) {
+            let ev = self.events.pop_front().unwrap();
+            span = span.union(ev.span);
+        }
+        Event {
+            kind: EventKind::Str,
+            span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -862,30 +880,11 @@ impl<'s> Iterator for Parser<'s> {
             self.push(EventKind::Exit(ty_opener));
         }
 
-        self.events.pop_front().and_then(|e| {
-            match e.kind {
-                EventKind::Str if e.span.is_empty() => self.next(),
-                EventKind::Str | EventKind::Whitespace => {
-                    // merge str events
-                    let mut span = e.span;
-                    let should_merge = |e: &Event, span: Span| {
-                        matches!(
-                            e.kind,
-                            EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
-                        ) && span.end() == e.span.start()
-                    };
-                    while self.events.front().map_or(false, |e| should_merge(e, span)) {
-                        let ev = self.events.pop_front().unwrap();
-                        span = span.union(ev.span);
-                    }
-                    Some(Event {
-                        kind: EventKind::Str,
-                        span,
-                    })
-                }
-                EventKind::Placeholder => self.next(),
-                _ => Some(e),
-            }
+        self.events.pop_front().and_then(|e| match e.kind {
+            EventKind::Str if e.span.is_empty() => self.next(),
+            EventKind::Str | EventKind::Whitespace => Some(self.merge_str_events(e.span)),
+            EventKind::Placeholder => self.next(),
+            _ => Some(e),
         })
     }
 }
