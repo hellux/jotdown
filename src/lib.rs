@@ -1300,8 +1300,49 @@ mod test {
         );
     }
 
+    #[ignore = "multi line tags broken"]
     #[test]
     fn link_reference_multiline() {
+        test_parse!(
+            concat!(
+                "[text][a",     //
+                "b]\n",         //
+                "\n",           //
+                "[a b]: url\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            Blankline,
+        );
+        test_parse!(
+            concat!(
+                "> [text][a",   //
+                "> b]\n",       //
+                "\n",           //
+                "[a b]: url\n", //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            End(Blockquote),
+            Blankline,
+        );
+    }
+
+    #[test]
+    fn link_definition_multiline() {
         test_parse!(
             concat!(
                 "[text][tag]\n",
