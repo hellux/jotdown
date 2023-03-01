@@ -810,7 +810,6 @@ impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        #[allow(clippy::blocks_in_if_conditions)]
         while self.events.is_empty()
             || !self.openers.is_empty()
             || self // for merge or attributes
