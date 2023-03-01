@@ -349,8 +349,9 @@ impl<'s> Parser<'s> {
                     .input
                     .span
                     .of(self.input.src)
-                    .chars()
-                    .all(char::is_whitespace);
+                    .as_bytes()
+                    .iter()
+                    .all(|b| b.is_ascii_whitespace());
                 if is_whitespace {
                     if !*non_whitespace_encountered
                         && self.input.peek().map_or(false, |t| {
@@ -683,13 +684,11 @@ impl<'s> Parser<'s> {
                     // empty container
                     return None;
                 }
-                let whitespace_before = self.events.back().map_or(false, |ev| {
-                    ev.span
-                        .of(self.input.src)
-                        .chars()
-                        .last()
-                        .map_or(false, char::is_whitespace)
-                });
+                let whitespace_before = if 0 < self.input.span.start() {
+                    self.input.src.as_bytes()[self.input.span.start() - 1].is_ascii_whitespace()
+                } else {
+                    false
+                };
                 if opener.bidirectional() && whitespace_before {
                     return None;
                 }
@@ -748,13 +747,20 @@ impl<'s> Parser<'s> {
                                     !matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
                                 })
                             {
-                                events_text
-                                    .filter(|ev| {
-                                        matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
-                                    })
-                                    .map(|ev| ev.span.of(self.input.src))
-                                    .collect::<String>()
-                                    .into()
+                                let mut spec = String::new();
+                                let mut span = Span::new(0, 0);
+                                for ev in events_text.filter(|ev| {
+                                    matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
+                                }) {
+                                    if span.end() == ev.span.start() {
+                                        span = Span::new(span.start(), ev.span.end());
+                                    } else {
+                                        spec.push_str(span.of(self.input.src));
+                                        span = ev.span;
+                                    }
+                                }
+                                spec.push_str(span.of(self.input.src));
+                                spec.into()
                             } else {
                                 span_spec.of(self.input.src).into()
                             }
@@ -837,13 +843,11 @@ impl<'s> Parser<'s> {
                 if opener.bidirectional() && whitespace_after {
                     return None;
                 }
-                let whitespace_before = self.events.back().map_or(false, |ev| {
-                    ev.span
-                        .of(self.input.src)
-                        .chars()
-                        .last()
-                        .map_or(false, char::is_whitespace)
-                });
+                let whitespace_before = if 0 < self.input.span.start() {
+                    self.input.src.as_bytes()[self.input.span.start() - 1].is_ascii_whitespace()
+                } else {
+                    false
+                };
                 if matches!(opener, Opener::SingleQuoted | Opener::DoubleQuoted)
                     && self
                         .events
