@@ -61,11 +61,11 @@ pub enum Sequence {
 }
 
 impl Sequence {
-    fn ch(self) -> char {
+    fn ch(self) -> u8 {
         match self {
-            Self::Backtick => '`',
-            Self::Period => '.',
-            Self::Hyphen => '-',
+            Self::Backtick => b'`',
+            Self::Period => b'.',
+            Self::Hyphen => b'-',
         }
     }
 }
@@ -73,23 +73,21 @@ impl Sequence {
 #[derive(Clone)]
 pub(crate) struct Lexer<'s> {
     src: &'s str,
-    chars: std::str::Chars<'s>,
+    /// Current position within `src`.
+    pos: usize,
     /// Next character should be escaped.
     escape: bool,
     /// Token to be peeked or next'ed.
     next: Option<Token>,
-    /// Length of current token.
-    len: usize,
 }
 
 impl<'s> Lexer<'s> {
     pub fn new(src: &'s str) -> Self {
         Lexer {
             src,
-            chars: src.chars(),
+            pos: 0,
             escape: false,
             next: None,
-            len: 0,
         }
     }
 
@@ -103,9 +101,7 @@ impl<'s> Lexer<'s> {
     }
 
     pub fn ahead(&self) -> &'s str {
-        let pos =
-            self.src.len() - self.chars.as_str().len() - self.next.as_ref().map_or(0, |t| t.len);
-        &self.src[pos..]
+        &self.src[self.pos - self.next.as_ref().map_or(0, |t| t.len)..]
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -123,24 +119,28 @@ impl<'s> Lexer<'s> {
         current
     }
 
-    fn peek_char_n(&mut self, n: usize) -> Option<char> {
-        self.chars.clone().nth(n)
+    fn peek_byte_n(&mut self, n: usize) -> Option<u8> {
+        self.src.as_bytes().get(self.pos + n).copied()
     }
 
-    fn peek_char(&mut self) -> Option<char> {
-        self.peek_char_n(0)
+    fn peek_byte(&mut self) -> Option<u8> {
+        self.peek_byte_n(0)
     }
 
-    fn eat_char(&mut self) -> Option<char> {
-        let c = self.chars.next();
-        self.len += c.map_or(0, char::len_utf8);
-        c
+    fn eat_byte(&mut self) -> Option<u8> {
+        if self.pos < self.src.len() {
+            let c = self.src.as_bytes()[self.pos];
+            self.pos += 1;
+            Some(c)
+        } else {
+            None
+        }
     }
 
-    fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
-        while let Some(c) = self.peek_char() {
+    fn eat_while(&mut self, mut predicate: impl FnMut(u8) -> bool) {
+        while let Some(c) = self.peek_byte() {
             if predicate(c) {
-                self.eat_char();
+                self.eat_byte();
             } else {
                 break;
             }
@@ -148,34 +148,36 @@ impl<'s> Lexer<'s> {
     }
 
     fn token(&mut self) -> Option<Token> {
-        self.len = 0;
+        let start = self.pos;
 
         let kind = if self.escape {
             self.escape = false;
-            match self.eat_char()? {
-                '\n' => Hardbreak,
-                '\t' | ' '
-                    if self.chars.clone().find(|c| !matches!(c, ' ' | '\t')) == Some('\n') =>
+            match self.eat_byte()? {
+                b'\n' => Hardbreak,
+                b'\t' | b' '
+                    if self.src[self.pos..]
+                        .bytes()
+                        .find(|c| !matches!(c, b' ' | b'\t'))
+                        == Some(b'\n') =>
                 {
-                    while self.eat_char() != Some('\n') {}
+                    while self.eat_byte() != Some(b'\n') {}
                     Hardbreak
                 }
-                ' ' => Nbsp,
+                b' ' => Nbsp,
                 _ => Text,
             }
         } else {
             self.eat_while(|c| !is_special(c));
-            if self.len > 0 {
+            if start < self.pos {
                 Text
             } else {
-                match self.eat_char()? {
-                    '\n' => Newline,
+                match self.eat_byte()? {
+                    b'\n' => Newline,
 
-                    '\\' => {
-                        if self
-                            .peek_char()
-                            .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
-                        {
+                    b'\\' => {
+                        if self.peek_byte().map_or(false, |c| {
+                            c.is_ascii_whitespace() || c.is_ascii_punctuation()
+                        }) {
                             self.escape = true;
                             Escape
                         } else {
@@ -183,67 +185,72 @@ impl<'s> Lexer<'s> {
                         }
                     }
 
-                    '[' => Open(Bracket),
-                    ']' => Close(Bracket),
-                    '(' => Open(Paren),
-                    ')' => Close(Paren),
-                    '{' => {
-                        let explicit = match self.peek_char() {
-                            Some('*') => Some(Open(BraceAsterisk)),
-                            Some('^') => Some(Open(BraceCaret)),
-                            Some('=') => Some(Open(BraceEqual)),
-                            Some('-') => Some(Open(BraceHyphen)),
-                            Some('+') => Some(Open(BracePlus)),
-                            Some('~') => Some(Open(BraceTilde)),
-                            Some('_') => Some(Open(BraceUnderscore)),
-                            Some('\'') => Some(Open(BraceQuote1)),
-                            Some('"') => Some(Open(BraceQuote2)),
+                    b'[' => Open(Bracket),
+                    b']' => Close(Bracket),
+                    b'(' => Open(Paren),
+                    b')' => Close(Paren),
+                    b'{' => {
+                        let explicit = match self.peek_byte() {
+                            Some(b'*') => Some(Open(BraceAsterisk)),
+                            Some(b'^') => Some(Open(BraceCaret)),
+                            Some(b'=') => Some(Open(BraceEqual)),
+                            Some(b'-') => Some(Open(BraceHyphen)),
+                            Some(b'+') => Some(Open(BracePlus)),
+                            Some(b'~') => Some(Open(BraceTilde)),
+                            Some(b'_') => Some(Open(BraceUnderscore)),
+                            Some(b'\'') => Some(Open(BraceQuote1)),
+                            Some(b'"') => Some(Open(BraceQuote2)),
                             _ => None,
                         };
                         if let Some(exp) = explicit {
-                            self.eat_char();
+                            self.eat_byte();
                             exp
                         } else {
                             Open(Brace)
                         }
                     }
-                    '}' => Close(Brace),
-                    '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
-                    '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
-                    '=' => self.maybe_eat_close_brace(Text, BraceEqual),
-                    '+' => self.maybe_eat_close_brace(Text, BracePlus),
-                    '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
-                    '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
-                    '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
-                    '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
-                    '-' => {
-                        if self.peek_char() == Some('}') {
-                            self.eat_char();
+                    b'}' => Close(Brace),
+                    b'*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
+                    b'^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
+                    b'=' => self.maybe_eat_close_brace(Text, BraceEqual),
+                    b'+' => self.maybe_eat_close_brace(Text, BracePlus),
+                    b'~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
+                    b'_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
+                    b'\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
+                    b'"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
+                    b'-' => {
+                        if self.peek_byte() == Some(b'}') {
+                            self.eat_byte();
                             Close(BraceHyphen)
                         } else {
-                            while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}')
+                            while self.peek_byte() == Some(b'-')
+                                && self.peek_byte_n(1) != Some(b'}')
                             {
-                                self.eat_char();
+                                self.eat_byte();
                             }
                             Seq(Hyphen)
                         }
                     }
 
-                    '!' if self.peek_char() == Some('[') => {
-                        self.eat_char();
-                        Sym(ExclaimBracket)
+                    b'!' => {
+                        if self.peek_byte() == Some(b'[') {
+                            self.eat_byte();
+                            Sym(ExclaimBracket)
+                        } else {
+                            Text
+                        }
                     }
-                    '<' => Sym(Lt),
-                    '|' => Sym(Pipe),
-                    ':' => Sym(Colon),
+                    b'<' => Sym(Lt),
+                    b'|' => Sym(Pipe),
+                    b':' => Sym(Colon),
 
-                    '`' => self.eat_seq(Backtick),
-                    '.' => self.eat_seq(Period),
-                    '$' => {
-                        self.eat_while(|c| c == '$');
+                    b'`' => self.eat_seq(Backtick),
+                    b'.' => self.eat_seq(Period),
+                    b'$' => {
+                        self.eat_while(|c| c == b'$');
                         let mut n_ticks: u8 = 0;
                         self.eat_while(|c| {
-                            if c == '`' {
+                            if c == b'`' {
                                 if let Some(l) = n_ticks.checked_add(1) {
                                     n_ticks = l;
                                     return true;
@@ -261,7 +268,7 @@ impl<'s> Lexer<'s> {
 
         Some(Token {
             kind,
-            len: self.len,
+            len: self.pos - start,
         })
     }
 
@@ -271,8 +278,8 @@ impl<'s> Lexer<'s> {
     }
 
     fn maybe_eat_close_brace(&mut self, kind: Kind, d: Delimiter) -> Kind {
-        if self.peek_char() == Some('}') {
-            self.eat_char();
+        if self.peek_byte() == Some(b'}') {
+            self.eat_byte();
             Close(d)
         } else {
             kind
@@ -288,32 +295,33 @@ impl<'s> Iterator for Lexer<'s> {
     }
 }
 
-fn is_special(c: char) -> bool {
+fn is_special(c: u8) -> bool {
     matches!(
         c,
-        '\\' | '['
-            | ']'
-            | '('
-            | ')'
-            | '{'
-            | '}'
-            | '*'
-            | '^'
-            | '='
-            | '+'
-            | '~'
-            | '_'
-            | '\''
-            | '"'
-            | '-'
-            | '!'
-            | '<'
-            | '|'
-            | ':'
-            | '`'
-            | '.'
-            | '$'
-            | '\n'
+        b'\\'
+            | b'['
+            | b']'
+            | b'('
+            | b')'
+            | b'{'
+            | b'}'
+            | b'*'
+            | b'^'
+            | b'='
+            | b'+'
+            | b'~'
+            | b'_'
+            | b'\''
+            | b'"'
+            | b'-'
+            | b'!'
+            | b'<'
+            | b'|'
+            | b':'
+            | b'`'
+            | b'.'
+            | b'$'
+            | b'\n'
     )
 }
 

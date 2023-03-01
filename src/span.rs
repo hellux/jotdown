@@ -79,6 +79,10 @@ impl Span {
         &s[self.start()..self.end()]
     }
 
+    pub fn bytes_of(self, s: &str) -> &[u8] {
+        &s.as_bytes()[self.start()..self.end()]
+    }
+
     pub fn skip_chars(self, n: usize, s: &str) -> Self {
         let n_bytes: usize = self.of(s).chars().take(n).map(char::len_utf8).sum();
         Self::new(self.start() + n_bytes, self.end())
