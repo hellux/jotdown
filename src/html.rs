@@ -166,7 +166,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 self.out.write_str("<a")?;
                             } else {
                                 self.out.write_str(r#"<a href=""#)?;
-                                self.write_escape(dst)?;
+                                self.write_attr(dst)?;
                                 self.out.write_char('"')?;
                             }
                         }
@@ -194,7 +194,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
                         write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v)?;
+                        v.parts().try_for_each(|part| self.write_attr(part))?;
                         self.out.write_char('"')?;
                     }
 
@@ -207,7 +207,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     {
                         if !attrs.iter().any(|(a, _)| a == "id") {
                             self.out.write_str(r#" id=""#)?;
-                            self.write_escape(id)?;
+                            self.write_attr(id)?;
                             self.out.write_char('"')?;
                         }
                     }
@@ -249,7 +249,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 self.out.write_char(' ')?;
                             }
                             first_written = true;
-                            self.out.write_str(cls)?;
+                            cls.parts().try_for_each(|part| self.write_attr(part))?;
                         }
                         // div class goes after classes from attrs
                         if let Container::Div { class: Some(cls) } = c {
@@ -276,7 +276,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::CodeBlock { lang } => {
                             if let Some(l) = lang {
                                 self.out.write_str(r#"><code class="language-"#)?;
-                                self.write_escape(l)?;
+                                self.write_attr(l)?;
                                 self.out.write_str(r#"">"#)?;
                             } else {
                                 self.out.write_str("><code>")?;
@@ -388,7 +388,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                 }
                 Event::Str(s) => match self.raw {
-                    Raw::None => self.write_escape(&s)?,
+                    Raw::None => self.write_text(&s)?,
                     Raw::Html => self.out.write_str(&s)?,
                     Raw::Other => {}
                 },
@@ -415,7 +415,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     self.out.write_str("\n<hr")?;
                     for (a, v) in attrs.iter() {
                         write!(self.out, r#" {}=""#, a)?;
-                        self.write_escape(v)?;
+                        v.parts().try_for_each(|part| self.write_attr(part))?;
                         self.out.write_char('"')?;
                     }
                     self.out.write_str(">")?;
@@ -430,13 +430,14 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
         Ok(())
     }
 
-    fn write_escape(&mut self, mut s: &str) -> std::fmt::Result {
+    fn write_escape(&mut self, mut s: &str, escape_quotes: bool) -> std::fmt::Result {
         let mut ent = "";
         while let Some(i) = s.find(|c| {
             match c {
                 '<' => Some("&lt;"),
                 '>' => Some("&gt;"),
                 '&' => Some("&amp;"),
+                '"' if escape_quotes => Some("&quot;"),
                 _ => None,
             }
             .map_or(false, |s| {
@@ -449,5 +450,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             s = &s[i + 1..];
         }
         self.out.write_str(s)
+    }
+
+    fn write_text(&mut self, s: &str) -> std::fmt::Result {
+        self.write_escape(s, false)
+    }
+
+    fn write_attr(&mut self, s: &str) -> std::fmt::Result {
+        self.write_escape(s, true)
     }
 }

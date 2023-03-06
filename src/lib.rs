@@ -63,7 +63,7 @@ mod tree;
 use span::DiscontinuousString;
 use span::Span;
 
-pub use attr::Attributes;
+pub use attr::{AttributeValue, AttributeValueParts, Attributes};
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
