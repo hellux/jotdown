@@ -67,7 +67,7 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
     events: std::iter::Peekable<FilteredEvents<I>>,
     out: W,
     raw: Raw,
-    text_only: bool,
+    img_alt_text: usize,
     list_tightness: Vec<bool>,
     encountered_footnote: bool,
     footnote_number: Option<std::num::NonZeroUsize>,
@@ -81,7 +81,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             events: FilteredEvents { events }.peekable(),
             out,
             raw: Raw::None,
-            text_only: false,
+            img_alt_text: 0,
             list_tightness: Vec::new(),
             encountered_footnote: false,
             footnote_number: None,
@@ -97,7 +97,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     if c.is_block() && !self.first_line {
                         self.out.write_char('\n')?;
                     }
-                    if self.text_only && !matches!(c, Container::Image(..)) {
+                    if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                         continue;
                     }
                     match &c {
@@ -171,8 +171,12 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             }
                         }
                         Container::Image(..) => {
-                            self.text_only = true;
-                            self.out.write_str("<img")?;
+                            self.img_alt_text += 1;
+                            if self.img_alt_text == 1 {
+                                self.out.write_str("<img")?;
+                            } else {
+                                continue;
+                            }
                         }
                         Container::Verbatim => self.out.write_str("<code")?,
                         Container::RawBlock { format } | Container::RawInline { format } => {
@@ -283,7 +287,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             }
                         }
                         Container::Image(..) => {
-                            self.out.write_str(r#" alt=""#)?;
+                            if self.img_alt_text == 1 {
+                                self.out.write_str(r#" alt=""#)?;
+                            }
                         }
                         Container::Math { display } => {
                             self.out
@@ -296,7 +302,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     if c.is_block_container() && !matches!(c, Container::Footnote { .. }) {
                         self.out.write_char('\n')?;
                     }
-                    if self.text_only && !matches!(c, Container::Image(..)) {
+                    if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                         continue;
                     }
                     match c {
@@ -360,12 +366,14 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Span => self.out.write_str("</span>")?,
                         Container::Link(..) => self.out.write_str("</a>")?,
                         Container::Image(src, ..) => {
-                            self.text_only = false;
-                            if !src.is_empty() {
-                                self.out.write_str(r#"" src=""#)?;
-                                self.write_attr(&src)?;
+                            if self.img_alt_text == 1 {
+                                if !src.is_empty() {
+                                    self.out.write_str(r#"" src=""#)?;
+                                    self.write_attr(&src)?;
+                                }
+                                self.out.write_str(r#"">"#)?;
                             }
-                            self.out.write_str(r#"">"#)?;
+                            self.img_alt_text -= 1;
                         }
                         Container::Verbatim => self.out.write_str("</code>")?,
                         Container::Math { display } => {
@@ -388,7 +396,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                 }
                 Event::Str(s) => match self.raw {
-                    Raw::None if self.text_only => self.write_attr(&s)?,
+                    Raw::None if self.img_alt_text > 0 => self.write_attr(&s)?,
                     Raw::None => self.write_text(&s)?,
                     Raw::Html => self.out.write_str(&s)?,
                     Raw::Other => {}
