@@ -77,7 +77,8 @@ afl_quick:
 
 afl_crash:
 	set +e; \
-	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
+	failures="$$(find . -path './tmin/*') $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*')"; \
+	for f in $$failures; do \
 		echo $$f; \
 		out=$$(cat $$f | (cd tests/afl && RUST_BACKTRACE=1 cargo run ${AFL_TARGET} 2>&1)); \
 		if [ $$? -ne 0 ]; then \
@@ -86,6 +87,13 @@ afl_crash:
 			echo "$$out"; \
 			exit 1; \
 		fi; \
+	done
+
+afl_tmin:
+	rm -rf tmin
+	mkdir tmin
+	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
+		cargo afl tmin -i $$f -o tmin/$$(basename $$f) tests/afl/target/release/${AFL_TARGET}; \
 	done
 
 clean:
