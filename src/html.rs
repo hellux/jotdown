@@ -361,11 +361,11 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::Link(..) => self.out.write_str("</a>")?,
                         Container::Image(src, ..) => {
                             self.text_only = false;
-                            if src.is_empty() {
-                                self.out.write_str(r#"">"#)?;
-                            } else {
-                                write!(self.out, r#"" src="{}">"#, src)?;
+                            if !src.is_empty() {
+                                self.out.write_str(r#"" src=""#)?;
+                                self.write_attr(&src)?;
                             }
+                            self.out.write_str(r#"">"#)?;
                         }
                         Container::Verbatim => self.out.write_str("</code>")?,
                         Container::Math { display } => {
