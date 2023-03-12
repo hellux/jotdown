@@ -53,7 +53,7 @@ bench:
 cov: suite suite_bench
 	LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov --features=suite,suite_bench --workspace --html --ignore-run-fail
 
-AFL_TARGET?=gen
+AFL_TARGET?=parse
 AFL_JOBS?=1
 AFL_TARGET_CRASH?=crashes
 
