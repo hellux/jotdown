@@ -402,11 +402,13 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     Raw::Other => {}
                 },
                 Event::FootnoteReference(_tag, number) => {
-                    write!(
-                        self.out,
-                        r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
-                        number, number, number
-                    )?;
+                    if self.img_alt_text == 0 {
+                        write!(
+                            self.out,
+                            r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
+                            number, number, number
+                        )?;
+                    }
                 }
                 Event::Symbol(sym) => write!(self.out, ":{}:", sym)?,
                 Event::LeftSingleQuote => self.out.write_str("&lsquo;")?,
