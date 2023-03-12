@@ -78,13 +78,12 @@ afl_quick:
 afl_crash:
 	set +e; \
 	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
-		echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
-		out=$$(cat $$f | RUST_BACKTRACE=1 cargo run 2>&1); \
+		echo $$f; \
+		out=$$(cat $$f | (cd tests/afl && RUST_BACKTRACE=1 cargo run ${AFL_TARGET} 2>&1)); \
 		if [ $$? -ne 0 ]; then \
 			echo; \
 			echo "FAIL"; \
 			echo "$$out"; \
-			echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
 			exit 1; \
 		fi; \
 	done
