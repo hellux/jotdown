@@ -388,6 +388,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     }
                 }
                 Event::Str(s) => match self.raw {
+                    Raw::None if self.text_only => self.write_attr(&s)?,
                     Raw::None => self.write_text(&s)?,
                     Raw::Html => self.out.write_str(&s)?,
                     Raw::Other => {}
