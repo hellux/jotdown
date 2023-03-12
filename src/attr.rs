@@ -1,6 +1,8 @@
 use crate::CowStr;
 use crate::DiscontinuousString;
 use crate::Span;
+use std::borrow::Cow;
+use std::fmt;
 
 use State::*;
 
@@ -24,12 +26,80 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
     (p.pos, has_attr)
 }
 
+/// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,
+/// without allocating.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttributeValue<'s> {
+    raw: CowStr<'s>,
+}
+
+impl<'s> AttributeValue<'s> {
+    /// Processes the attribute value escapes and returns an iterator of the parts of the value
+    /// that should be displayed.
+    pub fn parts(&'s self) -> AttributeValueParts<'s> {
+        AttributeValueParts { ahead: &self.raw }
+    }
+}
+
+impl<'s> From<&'s str> for AttributeValue<'s> {
+    fn from(value: &'s str) -> Self {
+        Self { raw: value.into() }
+    }
+}
+
+impl<'s> From<CowStr<'s>> for AttributeValue<'s> {
+    fn from(value: CowStr<'s>) -> Self {
+        Self { raw: value }
+    }
+}
+
+impl<'s> From<String> for AttributeValue<'s> {
+    fn from(value: String) -> Self {
+        Self { raw: value.into() }
+    }
+}
+
+impl<'s> fmt::Display for AttributeValue<'s> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.parts().try_for_each(|part| f.write_str(part))
+    }
+}
+
+/// An iterator over the parts of an [`AttributeValue`] that should be displayed.
+pub struct AttributeValueParts<'s> {
+    ahead: &'s str,
+}
+
+impl<'s> Iterator for AttributeValueParts<'s> {
+    type Item = &'s str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for (i, _) in self.ahead.match_indices('\\') {
+            match self.ahead.as_bytes().get(i + 1) {
+                Some(b'\\') => {
+                    let next = &self.ahead[..i + 1];
+                    self.ahead = &self.ahead[i + 2..];
+                    return Some(next);
+                }
+                Some(c) if c.is_ascii_punctuation() => {
+                    let next = &self.ahead[..i];
+                    self.ahead = &self.ahead[i + 1..];
+                    return Some(next);
+                }
+                _ => {}
+            }
+        }
+
+        (!self.ahead.is_empty()).then(|| std::mem::take(&mut self.ahead))
+    }
+}
+
 /// A collection of attributes, i.e. a key-value map.
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
 // indirection instead of always 24 bytes.
 #[allow(clippy::box_vec)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Attributes<'s>(Option<Box<Vec<(&'s str, CowStr<'s>)>>>);
+pub struct Attributes<'s>(Option<Box<Vec<(&'s str, AttributeValue<'s>)>>>);
 
 impl<'s> Attributes<'s> {
     /// Create an empty collection.
@@ -44,17 +114,19 @@ impl<'s> Attributes<'s> {
     }
 
     pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
+        #[inline]
+        fn borrow(cow: CowStr) -> &str {
+            match cow {
+                Cow::Owned(_) => panic!(),
+                Cow::Borrowed(s) => s,
+            }
+        }
+
         for elem in Parser::new(input.chars()) {
             match elem {
-                Element::Class(c) => self.insert("class", input.src(c)),
-                Element::Identifier(i) => self.insert("id", input.src(i)),
-                Element::Attribute(a, v) => self.insert(
-                    match input.src(a) {
-                        CowStr::Owned(_) => panic!(),
-                        CowStr::Borrowed(s) => s,
-                    },
-                    input.src(v),
-                ),
+                Element::Class(c) => self.insert("class", input.src(c).into()),
+                Element::Identifier(i) => self.insert("id", input.src(i).into()),
+                Element::Attribute(a, v) => self.insert(borrow(input.src(a)), input.src(v).into()),
                 Element::Invalid => return false,
             }
         }
@@ -79,7 +151,7 @@ impl<'s> Attributes<'s> {
     /// Insert an attribute. If the attribute already exists, the previous value will be
     /// overwritten, unless it is a "class" attribute. In that case the provided value will be
     /// appended to the existing value.
-    pub fn insert(&mut self, key: &'s str, val: CowStr<'s>) {
+    pub fn insert(&mut self, key: &'s str, val: AttributeValue<'s>) {
         if self.0.is_none() {
             self.0 = Some(Vec::new().into());
         };
@@ -105,15 +177,13 @@ impl<'s> Attributes<'s> {
 
     /// Returns a reference to the value corresponding to the attribute key.
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<&str> {
+    pub fn get(&self, key: &str) -> Option<&AttributeValue<'s>> {
         self.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
     }
 
     /// Returns an iterator over the attributes in undefined order.
-    pub fn iter(&self) -> impl Iterator<Item = (&'s str, &str)> + '_ {
-        self.0
-            .iter()
-            .flat_map(|v| v.iter().map(|(a, b)| (*a, b.as_ref())))
+    pub fn iter(&self) -> impl Iterator<Item = (&'s str, &AttributeValue<'s>)> + '_ {
+        self.0.iter().flat_map(|v| v.iter().map(|(a, b)| (*a, b)))
     }
 }
 
@@ -231,13 +301,17 @@ impl<I: Iterator<Item = char>> Parser<I> {
                         Invalid
                     }
                 }
-                ValueQuoted => {
-                    if c == '"' {
-                        Whitespace
-                    } else {
+                ValueQuoted => match c {
+                    '\\' => {
+                        if let Some(c) = self.chars.next() {
+                            self.pos_prev = self.pos;
+                            self.pos += c.len_utf8();
+                        }
                         ValueQuoted
                     }
-                }
+                    '"' => Whitespace,
+                    _ => ValueQuoted,
+                },
                 Invalid | Done => panic!("{:?}", self.state),
             }
         })
@@ -330,11 +404,14 @@ mod test {
     macro_rules! test_attr {
         ($src:expr $(,$($av:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut attr =super::Attributes::new();
+            let mut attr = super::Attributes::new();
             attr.parse($src);
             let actual = attr.iter().collect::<Vec<_>>();
             let expected = &[$($($av),*,)?];
-            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+            for i in 0..actual.len() {
+                let actual_val = format!("{}", actual[i].1);
+                assert_eq!((actual[i].0, actual_val.as_str()), expected[i], "\n\n{}\n\n", $src);
+            }
         };
     }
 
@@ -391,6 +468,40 @@ mod test {
             "{ .some_class % abc % #some_id}",
             ("class", "some_class"),
             ("id", "some_id"),
+        );
+    }
+
+    #[test]
+    fn escape() {
+        test_attr!(
+            r#"{attr="with escaped \~ char"}"#,
+            ("attr", "with escaped ~ char")
+        );
+        test_attr!(
+            r#"{key="quotes \" should be escaped"}"#,
+            ("key", r#"quotes " should be escaped"#)
+        );
+    }
+
+    #[test]
+    fn escape_backslash() {
+        test_attr!(r#"{attr="with\\backslash"}"#, ("attr", r"with\backslash"));
+        test_attr!(
+            r#"{attr="with many backslashes\\\\"}"#,
+            ("attr", r"with many backslashes\\")
+        );
+        test_attr!(
+            r#"{attr="\\escaped backslash at start"}"#,
+            ("attr", r"\escaped backslash at start")
+        );
+    }
+
+    #[test]
+    fn only_escape_punctuation() {
+        test_attr!(r#"{attr="do not \escape"}"#, ("attr", r"do not \escape"));
+        test_attr!(
+            r#"{attr="\backslash at the beginning"}"#,
+            ("attr", r"\backslash at the beginning")
         );
     }
 
