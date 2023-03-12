@@ -26,13 +26,18 @@ pub fn html(data: &[u8]) {
 }
 
 fn validate_html(html: &str) {
+    #[cfg(feature = "debug")]
     let mut has_error = false;
 
     html5ever::parse_document(
         Dom {
             names: Vec::new(),
+            #[cfg(feature = "debug")]
             has_error: &mut has_error,
+            #[cfg(feature = "debug")]
             line_no: 1,
+            #[cfg(not(feature = "debug"))]
+            _lifetime: std::marker::PhantomData,
         },
         html5ever::ParseOpts {
             tokenizer: tokenizer::TokenizerOpts {
@@ -50,6 +55,7 @@ fn validate_html(html: &str) {
     .read_from(&mut std::io::Cursor::new(html))
     .unwrap();
 
+    #[cfg(feature = "debug")]
     if has_error {
         eprintln!("html:");
         html.split('\n').enumerate().for_each(|(i, l)| {
@@ -62,8 +68,12 @@ fn validate_html(html: &str) {
 
 struct Dom<'a> {
     names: Vec<html5ever::QualName>,
+    #[cfg(feature = "debug")]
     has_error: &'a mut bool,
+    #[cfg(feature = "debug")]
     line_no: u64,
+    #[cfg(not(feature = "debug"))]
+    _lifetime: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> tree_builder::TreeSink for Dom<'a> {
@@ -110,16 +120,26 @@ impl<'a> tree_builder::TreeSink for Dom<'a> {
             "Unexpected open element while closing",
         ];
         if !whitelist.iter().any(|e| msg.starts_with(e)) {
-            *self.has_error = true;
-            eprintln!("{}: {}\n", self.line_no, msg);
+            #[cfg(feature = "debug")]
+            {
+                *self.has_error = true;
+                eprintln!("{}: {}\n", self.line_no, msg);
+            }
+            #[cfg(not(feature = "debug"))]
+            {
+                panic!("invalid html");
+            }
         }
     }
 
     fn set_quirks_mode(&mut self, _: tree_builder::QuirksMode) {}
 
+    #[cfg(feature = "debug")]
     fn set_current_line(&mut self, l: u64) {
         self.line_no = l;
     }
+    #[cfg(not(feature = "debug"))]
+    fn set_current_line(&mut self, _: u64) {}
 
     fn append(&mut self, _: &usize, _: tree_builder::NodeOrText<usize>) {}
     fn append_before_sibling(&mut self, _: &usize, _: tree_builder::NodeOrText<usize>) {}

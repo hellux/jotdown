@@ -20,3 +20,7 @@ path = "src/parse.rs"
 [[bin]]
 name = "html"
 path = "src/html.rs"
+
+[features]
+default = ["debug"]
+debug = []
