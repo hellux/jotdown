@@ -830,16 +830,14 @@ impl<'s> Parser<'s> {
                         inline::Container::Emphasis => Container::Emphasis,
                         inline::Container::Strong => Container::Strong,
                         inline::Container::Mark => Container::Mark,
-                        inline::Container::InlineLink => Container::Link(
-                            inline.span.of(self.src).replace('\n', "").into(),
-                            LinkType::Span(SpanLinkType::Inline),
-                        ),
-                        inline::Container::InlineImage => Container::Image(
-                            inline.span.of(self.src).replace('\n', "").into(),
-                            SpanLinkType::Inline,
-                        ),
-                        inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
-                            let tag = inline.span.of(self.src).replace('\n', " ");
+                        inline::Container::InlineLink(url) => {
+                            Container::Link(url, LinkType::Span(SpanLinkType::Inline))
+                        }
+                        inline::Container::InlineImage(url) => {
+                            Container::Image(url, SpanLinkType::Inline)
+                        }
+                        inline::Container::ReferenceLink(ref tag)
+                        | inline::Container::ReferenceImage(ref tag) => {
                             let link_def = self
                                 .pre_pass
                                 .link_definitions
@@ -851,12 +849,12 @@ impl<'s> Parser<'s> {
                                 (url, SpanLinkType::Reference)
                             } else {
                                 self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
-                                    || (tag.into(), SpanLinkType::Unresolved),
+                                    || (tag.clone(), SpanLinkType::Unresolved),
                                     |id| (format!("#{}", id).into(), SpanLinkType::Reference),
                                 )
                             };
 
-                            if matches!(c, inline::Container::ReferenceLink) {
+                            if matches!(c, inline::Container::ReferenceLink(..)) {
                                 Container::Link(url_or_tag, LinkType::Span(ty))
                             } else {
                                 Container::Image(url_or_tag, ty)
@@ -1359,7 +1357,6 @@ mod test {
         );
     }
 
-    #[ignore = "broken"]
     #[test]
     fn link_inline_multi_line() {
         test_parse!(
@@ -1375,6 +1372,23 @@ mod test {
             ),
             Str("text".into()),
             End(Link("urlurl".into(), LinkType::Span(SpanLinkType::Inline))),
+            End(Paragraph),
+            End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> [text](a\n", //
+                "> bc\n",       //
+                "> def)\n",     //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("abcdef".into(), LinkType::Span(SpanLinkType::Inline)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("abcdef".into(), LinkType::Span(SpanLinkType::Inline))),
             End(Paragraph),
             End(Blockquote),
         );
@@ -1442,7 +1456,6 @@ mod test {
         );
     }
 
-    #[ignore = "multiline links broken"]
     #[test]
     fn link_reference_multiline() {
         test_parse!(
