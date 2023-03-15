@@ -45,18 +45,11 @@ impl<'s> AttributeValue<'s> {
     }
 
     fn extend(&mut self, s: &'s str) {
-        match &mut self.raw {
-            CowStr::Borrowed(prev) => {
-                if prev.is_empty() {
-                    *prev = s;
-                } else {
-                    self.raw = format!("{} {}", prev, s).into();
-                }
-            }
-            CowStr::Owned(ref mut prev) => {
-                prev.push(' ');
-                prev.push_str(s);
-            }
+        if self.raw.is_empty() {
+            self.raw = s.into();
+        } else {
+            self.raw.push(' ');
+            self.raw.push_str(s);
         }
     }
 }
@@ -171,7 +164,8 @@ impl<'s> Attributes<'s> {
         if let Some(i) = attrs.iter().position(|(k, _)| *k == key) {
             let prev = &mut attrs[i].1;
             if key == "class" {
-                *prev = format!("{} {}", prev, val).into();
+                prev.raw.push(' ');
+                prev.raw.push_str(&val.raw);
             } else {
                 *prev = val;
             }

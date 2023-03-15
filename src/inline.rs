@@ -669,18 +669,21 @@ impl<'s> Parser<'s> {
                                     !matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
                                 })
                             {
-                                events_text
+                                let mut spec = CowStr::Borrowed("");
+                                for text in events_text
                                     .filter(|ev| {
                                         matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
                                     })
                                     .map(|ev| ev.span.of(self.input.src))
-                                    .collect::<String>()
-                                    .into()
+                                {
+                                    spec.push_str(text);
+                                }
+                                spec
                             } else {
                                 span_spec.of(self.input.src).into()
                             }
                         } else if multiline {
-                            let mut spec = String::new();
+                            let mut spec = CowStr::Borrowed("");
                             let mut first_part = true;
                             let mut span = self.events[e_opener].span.empty_after();
 
@@ -706,7 +709,7 @@ impl<'s> Parser<'s> {
                             }
                             append(span);
 
-                            spec.into()
+                            spec
                         } else {
                             span_spec.of(self.input.src).into()
                         };

@@ -36,7 +36,7 @@
 //! let events =
 //!     jotdown::Parser::new("a [link](https://example.com)").map(|e| match e {
 //!         Event::Start(Link(dst, ty), attrs) => {
-//!             Event::Start(Link(dst.replace(".com", ".net").into(), ty), attrs)
+//!             Event::Start(Link(dst.replace(".com", ".net"), ty), attrs)
 //!         }
 //!         e => e,
 //!     });
@@ -60,13 +60,13 @@ mod block;
 mod inline;
 mod lex;
 mod span;
+mod string;
 mod tree;
 
 use span::Span;
 
 pub use attr::{AttributeValue, AttributeValueParts, Attributes};
-
-type CowStr<'s> = std::borrow::Cow<'s, str>;
+pub use string::CowStr;
 
 /// A trait for rendering [`Event`]s to an output format.
 ///
@@ -651,7 +651,13 @@ impl<'s> PrePass<'s> {
                     let url = match tree.count_children() {
                         0 => "".into(),
                         1 => tree.take_inlines().next().unwrap().of(src).trim().into(),
-                        _ => tree.take_inlines().map(|sp| sp.of(src).trim()).collect(),
+                        _ => {
+                            let mut url = CowStr::Borrowed("");
+                            tree.take_inlines()
+                                .map(|sp| sp.of(src).trim())
+                                .for_each(|s| url.push_str(s));
+                            url
+                        }
                     };
                     link_definitions.insert(tag, (url, attrs));
                 }
