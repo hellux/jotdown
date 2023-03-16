@@ -122,7 +122,7 @@ pub trait Render {
 /// multiple events. [`Container`] elements are represented by a [`Event::Start`] followed by
 /// events representing its content, and finally a [`Event::End`]. Atomic elements without any
 /// inside elements are represented by a single event.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event<'s> {
     /// Start of a container.
     Start(Container<'s>, Attributes<'s>),
@@ -169,7 +169,7 @@ pub enum Event<'s> {
 /// - inline, may only contain inline elements,
 /// - block leaf, may only contain inline elements,
 /// - block container, may contain any block-level elements.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'s> {
     /// A blockquote element.
     Blockquote,
