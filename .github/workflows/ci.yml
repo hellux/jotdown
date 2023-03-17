@@ -77,10 +77,13 @@ jobs:
           rustup update nightly
           rustup default nightly
           cargo install afl
-      - name: "Fuzz"
+      - name: "Fuzz parser"
         run: |
           echo core | sudo tee /proc/sys/kernel/core_pattern
-          make afl_quick
+          AFL_TARGET=parse make afl_quick
+      - name: "Fuzz html"
+        run: |
+          AFL_TARGET=html make afl_quick
   bench:
     name: Benchmark
     runs-on: ubuntu-latest
