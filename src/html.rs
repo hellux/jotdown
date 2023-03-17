@@ -49,24 +49,8 @@ enum Raw {
     Other,
 }
 
-struct FilteredEvents<I> {
-    events: I,
-}
-
-impl<'s, I: Iterator<Item = Event<'s>>> Iterator for FilteredEvents<I> {
-    type Item = Event<'s>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut ev = self.events.next();
-        while matches!(ev, Some(Event::Blankline | Event::Escape)) {
-            ev = self.events.next();
-        }
-        ev
-    }
-}
-
 struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
-    events: std::iter::Peekable<FilteredEvents<I>>,
+    events: I,
     out: W,
     raw: Raw,
     img_alt_text: usize,
@@ -80,7 +64,7 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
     fn new(events: I, out: W) -> Self {
         Self {
-            events: FilteredEvents { events }.peekable(),
+            events,
             out,
             raw: Raw::None,
             img_alt_text: 0,
@@ -94,6 +78,10 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
 
     fn write(&mut self) -> std::fmt::Result {
         while let Some(e) = self.events.next() {
+            if matches!(&e, Event::Blankline | Event::Escape) {
+                continue;
+            }
+
             let close_para = self.close_para;
             if close_para {
                 self.close_para = false;
