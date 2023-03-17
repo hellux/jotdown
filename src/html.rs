@@ -39,7 +39,7 @@ impl Render for Renderer {
         events: I,
         out: W,
     ) -> std::fmt::Result {
-        Writer::new(events, out).write()
+        Writer::default().write(events, out)
     }
 }
 
@@ -49,9 +49,7 @@ enum Raw {
     Other,
 }
 
-struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
-    events: I,
-    out: W,
+struct Writer {
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
@@ -61,11 +59,9 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
     close_para: bool,
 }
 
-impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
-    fn new(events: I, out: W) -> Self {
+impl Default for Writer {
+    fn default() -> Self {
         Self {
-            events,
-            out,
             raw: Raw::None,
             img_alt_text: 0,
             list_tightness: Vec::new(),
@@ -75,9 +71,15 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             close_para: false,
         }
     }
+}
 
-    fn write(&mut self) -> std::fmt::Result {
-        while let Some(e) = self.events.next() {
+impl Writer {
+    fn write<'s>(
+        &mut self,
+        events: impl Iterator<Item = Event<'s>>,
+        mut out: impl std::fmt::Write,
+    ) -> std::fmt::Result {
+        for e in events {
             if matches!(&e, Event::Blankline | Event::Escape) {
                 continue;
             }
@@ -87,32 +89,30 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                 self.close_para = false;
                 if !matches!(&e, Event::End(Container::Footnote { .. })) {
                     // no need to add href before para close
-                    self.out.write_str("</p>")?;
+                    out.write_str("</p>")?;
                 }
             }
 
             match e {
                 Event::Start(c, attrs) => {
                     if c.is_block() && !self.first_line {
-                        self.out.write_char('\n')?;
+                        out.write_char('\n')?;
                     }
                     if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                         continue;
                     }
                     match &c {
-                        Container::Blockquote => self.out.write_str("<blockquote")?,
+                        Container::Blockquote => out.write_str("<blockquote")?,
                         Container::List { kind, tight } => {
                             self.list_tightness.push(*tight);
                             match kind {
-                                ListKind::Unordered | ListKind::Task => {
-                                    self.out.write_str("<ul")?
-                                }
+                                ListKind::Unordered | ListKind::Task => out.write_str("<ul")?,
                                 ListKind::Ordered {
                                     numbering, start, ..
                                 } => {
-                                    self.out.write_str("<ol")?;
+                                    out.write_str("<ol")?;
                                     if *start > 1 {
-                                        write!(self.out, r#" start="{}""#, start)?;
+                                        write!(out, r#" start="{}""#, start)?;
                                     }
                                     if let Some(ty) = match numbering {
                                         Decimal => None,
@@ -121,65 +121,64 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                         RomanLower => Some('i'),
                                         RomanUpper => Some('I'),
                                     } {
-                                        write!(self.out, r#" type="{}""#, ty)?;
+                                        write!(out, r#" type="{}""#, ty)?;
                                     }
                                 }
                             }
                         }
                         Container::ListItem | Container::TaskListItem { .. } => {
-                            self.out.write_str("<li")?;
+                            out.write_str("<li")?;
                         }
-                        Container::DescriptionList => self.out.write_str("<dl")?,
-                        Container::DescriptionDetails => self.out.write_str("<dd")?,
+                        Container::DescriptionList => out.write_str("<dl")?,
+                        Container::DescriptionDetails => out.write_str("<dd")?,
                         Container::Footnote { number, .. } => {
                             assert!(self.footnote_number.is_none());
                             self.footnote_number = Some((*number).try_into().unwrap());
                             if !self.encountered_footnote {
                                 self.encountered_footnote = true;
-                                self.out
-                                    .write_str("<section role=\"doc-endnotes\">\n<hr>\n<ol>\n")?;
+                                out.write_str("<section role=\"doc-endnotes\">\n<hr>\n<ol>\n")?;
                             }
-                            write!(self.out, "<li id=\"fn{}\">", number)?;
+                            write!(out, "<li id=\"fn{}\">", number)?;
                             continue;
                         }
-                        Container::Table => self.out.write_str("<table")?,
-                        Container::TableRow { .. } => self.out.write_str("<tr")?,
-                        Container::Section { .. } => self.out.write_str("<section")?,
-                        Container::Div { .. } => self.out.write_str("<div")?,
+                        Container::Table => out.write_str("<table")?,
+                        Container::TableRow { .. } => out.write_str("<tr")?,
+                        Container::Section { .. } => out.write_str("<section")?,
+                        Container::Div { .. } => out.write_str("<div")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
                                 continue;
                             }
-                            self.out.write_str("<p")?;
+                            out.write_str("<p")?;
                         }
-                        Container::Heading { level, .. } => write!(self.out, "<h{}", level)?,
-                        Container::TableCell { head: false, .. } => self.out.write_str("<td")?,
-                        Container::TableCell { head: true, .. } => self.out.write_str("<th")?,
-                        Container::Caption => self.out.write_str("<caption")?,
-                        Container::DescriptionTerm => self.out.write_str("<dt")?,
-                        Container::CodeBlock { .. } => self.out.write_str("<pre")?,
-                        Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
+                        Container::Heading { level, .. } => write!(out, "<h{}", level)?,
+                        Container::TableCell { head: false, .. } => out.write_str("<td")?,
+                        Container::TableCell { head: true, .. } => out.write_str("<th")?,
+                        Container::Caption => out.write_str("<caption")?,
+                        Container::DescriptionTerm => out.write_str("<dt")?,
+                        Container::CodeBlock { .. } => out.write_str("<pre")?,
+                        Container::Span | Container::Math { .. } => out.write_str("<span")?,
                         Container::Link(dst, ty) => {
                             if matches!(ty, LinkType::Span(SpanLinkType::Unresolved)) {
-                                self.out.write_str("<a")?;
+                                out.write_str("<a")?;
                             } else {
-                                self.out.write_str(r#"<a href=""#)?;
+                                out.write_str(r#"<a href=""#)?;
                                 if matches!(ty, LinkType::Email) {
-                                    self.out.write_str("mailto:")?;
+                                    out.write_str("mailto:")?;
                                 }
-                                self.write_attr(dst)?;
-                                self.out.write_char('"')?;
+                                write_attr(dst, &mut out)?;
+                                out.write_char('"')?;
                             }
                         }
                         Container::Image(..) => {
                             self.img_alt_text += 1;
                             if self.img_alt_text == 1 {
-                                self.out.write_str("<img")?;
+                                out.write_str("<img")?;
                             } else {
                                 continue;
                             }
                         }
-                        Container::Verbatim => self.out.write_str("<code")?,
+                        Container::Verbatim => out.write_str("<code")?,
                         Container::RawBlock { format } | Container::RawInline { format } => {
                             self.raw = if format == &"html" {
                                 Raw::Html
@@ -188,19 +187,19 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             };
                             continue;
                         }
-                        Container::Subscript => self.out.write_str("<sub")?,
-                        Container::Superscript => self.out.write_str("<sup")?,
-                        Container::Insert => self.out.write_str("<ins")?,
-                        Container::Delete => self.out.write_str("<del")?,
-                        Container::Strong => self.out.write_str("<strong")?,
-                        Container::Emphasis => self.out.write_str("<em")?,
-                        Container::Mark => self.out.write_str("<mark")?,
+                        Container::Subscript => out.write_str("<sub")?,
+                        Container::Superscript => out.write_str("<sup")?,
+                        Container::Insert => out.write_str("<ins")?,
+                        Container::Delete => out.write_str("<del")?,
+                        Container::Strong => out.write_str("<strong")?,
+                        Container::Emphasis => out.write_str("<em")?,
+                        Container::Mark => out.write_str("<mark")?,
                     }
 
                     for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
-                        write!(self.out, r#" {}=""#, a)?;
-                        v.parts().try_for_each(|part| self.write_attr(part))?;
-                        self.out.write_char('"')?;
+                        write!(out, r#" {}=""#, a)?;
+                        v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                        out.write_char('"')?;
                     }
 
                     if let Container::Heading {
@@ -211,9 +210,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                     | Container::Section { id } = &c
                     {
                         if !attrs.iter().any(|(a, _)| a == "id") {
-                            self.out.write_str(r#" id=""#)?;
-                            self.write_attr(id)?;
-                            self.out.write_char('"')?;
+                            out.write_str(r#" id=""#)?;
+                            write_attr(id, &mut out)?;
+                            out.write_char('"')?;
                         }
                     }
 
@@ -229,7 +228,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 | Container::TaskListItem { .. }
                         )
                     {
-                        self.out.write_str(r#" class=""#)?;
+                        out.write_str(r#" class=""#)?;
                         let mut first_written = false;
                         if let Some(cls) = match c {
                             Container::List {
@@ -243,7 +242,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             _ => None,
                         } {
                             first_written = true;
-                            self.out.write_str(cls)?;
+                            out.write_str(cls)?;
                         }
                         for cls in attrs
                             .iter()
@@ -251,19 +250,20 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             .map(|(_, cls)| cls)
                         {
                             if first_written {
-                                self.out.write_char(' ')?;
+                                out.write_char(' ')?;
                             }
                             first_written = true;
-                            cls.parts().try_for_each(|part| self.write_attr(part))?;
+                            cls.parts()
+                                .try_for_each(|part| write_attr(part, &mut out))?;
                         }
                         // div class goes after classes from attrs
                         if let Container::Div { class: Some(cls) } = c {
                             if first_written {
-                                self.out.write_char(' ')?;
+                                out.write_char(' ')?;
                             }
-                            self.out.write_str(cls)?;
+                            out.write_str(cls)?;
                         }
-                        self.out.write_char('"')?;
+                        out.write_char('"')?;
                     }
 
                     match c {
@@ -276,102 +276,101 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 Alignment::Center => "center",
                                 Alignment::Right => "right",
                             };
-                            write!(self.out, r#" style="text-align: {};">"#, a)?;
+                            write!(out, r#" style="text-align: {};">"#, a)?;
                         }
                         Container::CodeBlock { lang } => {
                             if let Some(l) = lang {
-                                self.out.write_str(r#"><code class="language-"#)?;
-                                self.write_attr(l)?;
-                                self.out.write_str(r#"">"#)?;
+                                out.write_str(r#"><code class="language-"#)?;
+                                write_attr(l, &mut out)?;
+                                out.write_str(r#"">"#)?;
                             } else {
-                                self.out.write_str("><code>")?;
+                                out.write_str("><code>")?;
                             }
                         }
                         Container::Image(..) => {
                             if self.img_alt_text == 1 {
-                                self.out.write_str(r#" alt=""#)?;
+                                out.write_str(r#" alt=""#)?;
                             }
                         }
                         Container::Math { display } => {
-                            self.out
-                                .write_str(if display { r#">\["# } else { r#">\("# })?;
+                            out.write_str(if display { r#">\["# } else { r#">\("# })?;
                         }
-                        _ => self.out.write_char('>')?,
+                        _ => out.write_char('>')?,
                     }
                 }
                 Event::End(c) => {
                     if c.is_block_container() && !matches!(c, Container::Footnote { .. }) {
-                        self.out.write_char('\n')?;
+                        out.write_char('\n')?;
                     }
                     if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                         continue;
                     }
                     match c {
-                        Container::Blockquote => self.out.write_str("</blockquote>")?,
+                        Container::Blockquote => out.write_str("</blockquote>")?,
                         Container::List {
                             kind: ListKind::Unordered | ListKind::Task,
                             ..
                         } => {
                             self.list_tightness.pop();
-                            self.out.write_str("</ul>")?;
+                            out.write_str("</ul>")?;
                         }
                         Container::List {
                             kind: ListKind::Ordered { .. },
                             ..
-                        } => self.out.write_str("</ol>")?,
+                        } => out.write_str("</ol>")?,
                         Container::ListItem | Container::TaskListItem { .. } => {
-                            self.out.write_str("</li>")?;
+                            out.write_str("</li>")?;
                         }
-                        Container::DescriptionList => self.out.write_str("</dl>")?,
-                        Container::DescriptionDetails => self.out.write_str("</dd>")?,
+                        Container::DescriptionList => out.write_str("</dl>")?,
+                        Container::DescriptionDetails => out.write_str("</dd>")?,
                         Container::Footnote { number, .. } => {
                             if !close_para {
                                 // create a new paragraph
-                                self.out.write_str("\n<p>")?;
+                                out.write_str("\n<p>")?;
                             }
                             write!(
-                                self.out,
+                                out,
                                 r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a></p>"##,
                                 number,
                             )?;
-                            self.out.write_str("\n</li>")?;
+                            out.write_str("\n</li>")?;
                             self.footnote_number = None;
                         }
-                        Container::Table => self.out.write_str("</table>")?,
-                        Container::TableRow { .. } => self.out.write_str("</tr>")?,
-                        Container::Section { .. } => self.out.write_str("</section>")?,
-                        Container::Div { .. } => self.out.write_str("</div>")?,
+                        Container::Table => out.write_str("</table>")?,
+                        Container::TableRow { .. } => out.write_str("</tr>")?,
+                        Container::Section { .. } => out.write_str("</section>")?,
+                        Container::Div { .. } => out.write_str("</div>")?,
                         Container::Paragraph => {
                             if matches!(self.list_tightness.last(), Some(true)) {
                                 continue;
                             }
                             if self.footnote_number.is_none() {
-                                self.out.write_str("</p>")?;
+                                out.write_str("</p>")?;
                             } else {
                                 self.close_para = true;
                             }
                         }
-                        Container::Heading { level, .. } => write!(self.out, "</h{}>", level)?,
-                        Container::TableCell { head: false, .. } => self.out.write_str("</td>")?,
-                        Container::TableCell { head: true, .. } => self.out.write_str("</th>")?,
-                        Container::Caption => self.out.write_str("</caption>")?,
-                        Container::DescriptionTerm => self.out.write_str("</dt>")?,
-                        Container::CodeBlock { .. } => self.out.write_str("</code></pre>")?,
-                        Container::Span => self.out.write_str("</span>")?,
-                        Container::Link(..) => self.out.write_str("</a>")?,
+                        Container::Heading { level, .. } => write!(out, "</h{}>", level)?,
+                        Container::TableCell { head: false, .. } => out.write_str("</td>")?,
+                        Container::TableCell { head: true, .. } => out.write_str("</th>")?,
+                        Container::Caption => out.write_str("</caption>")?,
+                        Container::DescriptionTerm => out.write_str("</dt>")?,
+                        Container::CodeBlock { .. } => out.write_str("</code></pre>")?,
+                        Container::Span => out.write_str("</span>")?,
+                        Container::Link(..) => out.write_str("</a>")?,
                         Container::Image(src, ..) => {
                             if self.img_alt_text == 1 {
                                 if !src.is_empty() {
-                                    self.out.write_str(r#"" src=""#)?;
-                                    self.write_attr(&src)?;
+                                    out.write_str(r#"" src=""#)?;
+                                    write_attr(&src, &mut out)?;
                                 }
-                                self.out.write_str(r#"">"#)?;
+                                out.write_str(r#"">"#)?;
                             }
                             self.img_alt_text -= 1;
                         }
-                        Container::Verbatim => self.out.write_str("</code>")?,
+                        Container::Verbatim => out.write_str("</code>")?,
                         Container::Math { display } => {
-                            self.out.write_str(if display {
+                            out.write_str(if display {
                                 r#"\]</span>"#
                             } else {
                                 r#"\)</span>"#
@@ -380,88 +379,97 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::RawBlock { .. } | Container::RawInline { .. } => {
                             self.raw = Raw::None;
                         }
-                        Container::Subscript => self.out.write_str("</sub>")?,
-                        Container::Superscript => self.out.write_str("</sup>")?,
-                        Container::Insert => self.out.write_str("</ins>")?,
-                        Container::Delete => self.out.write_str("</del>")?,
-                        Container::Strong => self.out.write_str("</strong>")?,
-                        Container::Emphasis => self.out.write_str("</em>")?,
-                        Container::Mark => self.out.write_str("</mark>")?,
+                        Container::Subscript => out.write_str("</sub>")?,
+                        Container::Superscript => out.write_str("</sup>")?,
+                        Container::Insert => out.write_str("</ins>")?,
+                        Container::Delete => out.write_str("</del>")?,
+                        Container::Strong => out.write_str("</strong>")?,
+                        Container::Emphasis => out.write_str("</em>")?,
+                        Container::Mark => out.write_str("</mark>")?,
                     }
                 }
                 Event::Str(s) => match self.raw {
-                    Raw::None if self.img_alt_text > 0 => self.write_attr(&s)?,
-                    Raw::None => self.write_text(&s)?,
-                    Raw::Html => self.out.write_str(&s)?,
+                    Raw::None if self.img_alt_text > 0 => write_attr(&s, &mut out)?,
+                    Raw::None => write_text(&s, &mut out)?,
+                    Raw::Html => out.write_str(&s)?,
                     Raw::Other => {}
                 },
                 Event::FootnoteReference(_tag, number) => {
                     if self.img_alt_text == 0 {
                         write!(
-                            self.out,
+                            out,
                             r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
                             number, number, number
                         )?;
                     }
                 }
-                Event::Symbol(sym) => write!(self.out, ":{}:", sym)?,
-                Event::LeftSingleQuote => self.out.write_str("&lsquo;")?,
-                Event::RightSingleQuote => self.out.write_str("&rsquo;")?,
-                Event::LeftDoubleQuote => self.out.write_str("&ldquo;")?,
-                Event::RightDoubleQuote => self.out.write_str("&rdquo;")?,
-                Event::Ellipsis => self.out.write_str("&hellip;")?,
-                Event::EnDash => self.out.write_str("&ndash;")?,
-                Event::EmDash => self.out.write_str("&mdash;")?,
-                Event::NonBreakingSpace => self.out.write_str("&nbsp;")?,
-                Event::Hardbreak => self.out.write_str("<br>\n")?,
-                Event::Softbreak => self.out.write_char('\n')?,
+                Event::Symbol(sym) => write!(out, ":{}:", sym)?,
+                Event::LeftSingleQuote => out.write_str("&lsquo;")?,
+                Event::RightSingleQuote => out.write_str("&rsquo;")?,
+                Event::LeftDoubleQuote => out.write_str("&ldquo;")?,
+                Event::RightDoubleQuote => out.write_str("&rdquo;")?,
+                Event::Ellipsis => out.write_str("&hellip;")?,
+                Event::EnDash => out.write_str("&ndash;")?,
+                Event::EmDash => out.write_str("&mdash;")?,
+                Event::NonBreakingSpace => out.write_str("&nbsp;")?,
+                Event::Hardbreak => out.write_str("<br>\n")?,
+                Event::Softbreak => out.write_char('\n')?,
                 Event::Escape | Event::Blankline => unreachable!("filtered out"),
                 Event::ThematicBreak(attrs) => {
-                    self.out.write_str("\n<hr")?;
+                    out.write_str("\n<hr")?;
                     for (a, v) in attrs.iter() {
-                        write!(self.out, r#" {}=""#, a)?;
-                        v.parts().try_for_each(|part| self.write_attr(part))?;
-                        self.out.write_char('"')?;
+                        write!(out, r#" {}=""#, a)?;
+                        v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                        out.write_char('"')?;
                     }
-                    self.out.write_str(">")?;
+                    out.write_str(">")?;
                 }
             }
             self.first_line = false;
         }
         if self.encountered_footnote {
-            self.out.write_str("\n</ol>\n</section>")?;
+            out.write_str("\n</ol>\n</section>")?;
         }
-        self.out.write_char('\n')?;
+        out.write_char('\n')?;
         Ok(())
     }
+}
 
-    fn write_escape(&mut self, mut s: &str, escape_quotes: bool) -> std::fmt::Result {
-        let mut ent = "";
-        while let Some(i) = s.find(|c| {
-            match c {
-                '<' => Some("&lt;"),
-                '>' => Some("&gt;"),
-                '&' => Some("&amp;"),
-                '"' if escape_quotes => Some("&quot;"),
-                _ => None,
-            }
-            .map_or(false, |s| {
-                ent = s;
-                true
-            })
-        }) {
-            self.out.write_str(&s[..i])?;
-            self.out.write_str(ent)?;
-            s = &s[i + 1..];
+fn write_text<W>(s: &str, out: W) -> std::fmt::Result
+where
+    W: std::fmt::Write,
+{
+    write_escape(s, false, out)
+}
+
+fn write_attr<W>(s: &str, out: W) -> std::fmt::Result
+where
+    W: std::fmt::Write,
+{
+    write_escape(s, true, out)
+}
+
+fn write_escape<W>(mut s: &str, escape_quotes: bool, mut out: W) -> std::fmt::Result
+where
+    W: std::fmt::Write,
+{
+    let mut ent = "";
+    while let Some(i) = s.find(|c| {
+        match c {
+            '<' => Some("&lt;"),
+            '>' => Some("&gt;"),
+            '&' => Some("&amp;"),
+            '"' if escape_quotes => Some("&quot;"),
+            _ => None,
         }
-        self.out.write_str(s)
+        .map_or(false, |s| {
+            ent = s;
+            true
+        })
+    }) {
+        out.write_str(&s[..i])?;
+        out.write_str(ent)?;
+        s = &s[i + 1..];
     }
-
-    fn write_text(&mut self, s: &str) -> std::fmt::Result {
-        self.write_escape(s, false)
-    }
-
-    fn write_attr(&mut self, s: &str) -> std::fmt::Result {
-        self.write_escape(s, true)
-    }
+    out.write_str(s)
 }
