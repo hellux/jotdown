@@ -71,6 +71,9 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 ///
 /// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
 ///
+/// If ownership of the [`Event`]s cannot be given to the renderer, use [`Render::push_borrowed`]
+/// or [`Render::write_borrowed`].
+///
 /// An implementor needs to at least implement the [`Render::render_event`] function that renders a
 /// single event to the output. If anything needs to be rendered at the beginning or end of the
 /// output, the [`Render::render_prologue`] and [`Render::render_epilogue`] can be implemented as
@@ -136,7 +139,7 @@ pub trait Render {
         self.render_epilogue(&mut out)
     }
 
-    /// Write [`Event`]s to a byte sink, encoded as UTF-8.
+    /// Write owned [`Event`]s to a byte sink, encoded as UTF-8.
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
@@ -145,35 +148,81 @@ pub trait Render {
         I: Iterator<Item = Event<'s>>,
         W: io::Write,
     {
-        struct Adapter<T: io::Write> {
-            inner: T,
-            error: io::Result<()>,
-        }
-
-        impl<T: io::Write> fmt::Write for Adapter<T> {
-            fn write_str(&mut self, s: &str) -> fmt::Result {
-                match self.inner.write_all(s.as_bytes()) {
-                    Ok(()) => Ok(()),
-                    Err(e) => {
-                        self.error = Err(e);
-                        Err(fmt::Error)
-                    }
-                }
-            }
-        }
-
-        let mut out = Adapter {
+        let mut out = WriteAdapter {
             inner: out,
             error: Ok(()),
         };
 
-        match self.push(events, &mut out) {
-            Ok(()) => Ok(()),
-            Err(_) => match out.error {
-                Err(_) => out.error,
-                _ => Err(io::Error::new(io::ErrorKind::Other, "formatter error")),
-            },
-        }
+        self.push(events, &mut out).map_err(|_| match out.error {
+            Err(e) => e,
+            _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
+        })
+    }
+
+    /// Push borrowed [`Event`]s to a unicode-accepting buffer or stream.
+    ///
+    /// # Examples
+    ///
+    /// Render a borrowed slice of [`Event`]s.
+    /// ```
+    /// # use jotdown::Render;
+    /// # let events: &[jotdown::Event] = &[];
+    /// let mut output = String::new();
+    /// let mut renderer = jotdown::html::Renderer::default();
+    /// renderer.push_borrowed(events.iter(), &mut output);
+    /// ```
+    fn push_borrowed<'s, E, I, W>(&mut self, mut events: I, mut out: W) -> fmt::Result
+    where
+        E: AsRef<Event<'s>>,
+        I: Iterator<Item = E>,
+        W: fmt::Write,
+    {
+        self.render_prologue(&mut out)?;
+        events.try_for_each(|e| self.render_event(e.as_ref(), &mut out))?;
+        self.render_epilogue(&mut out)
+    }
+
+    /// Write borrowed [`Event`]s to a byte sink, encoded as UTF-8.
+    ///
+    /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
+    /// [`std::io::BufWriter`].
+    fn write_borrowed<'s, E, I, W>(&mut self, events: I, out: W) -> io::Result<()>
+    where
+        E: AsRef<Event<'s>>,
+        I: Iterator<Item = E>,
+        W: io::Write,
+    {
+        let mut out = WriteAdapter {
+            inner: out,
+            error: Ok(()),
+        };
+
+        self.push_borrowed(events, &mut out)
+            .map_err(|_| match out.error {
+                Err(e) => e,
+                _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
+            })
+    }
+}
+
+struct WriteAdapter<T: io::Write> {
+    inner: T,
+    error: io::Result<()>,
+}
+
+impl<T: io::Write> fmt::Write for WriteAdapter<T> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.inner.write_all(s.as_bytes()).map_err(|e| {
+            self.error = Err(e);
+            fmt::Error
+        })
+    }
+}
+
+// XXX why is this not a blanket implementation?
+impl<'s> AsRef<Event<'s>> for &Event<'s> {
+    fn as_ref(&self) -> &Event<'s> {
+        self
     }
 }
 
