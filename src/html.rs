@@ -73,8 +73,8 @@ struct Writer<'s, I: Iterator<Item = Event<'s>>, W> {
     list_tightness: Vec<bool>,
     encountered_footnote: bool,
     footnote_number: Option<std::num::NonZeroUsize>,
-    footnote_backlink_written: bool,
     first_line: bool,
+    close_para: bool,
 }
 
 impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
@@ -87,13 +87,22 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
             list_tightness: Vec::new(),
             encountered_footnote: false,
             footnote_number: None,
-            footnote_backlink_written: false,
             first_line: true,
+            close_para: false,
         }
     }
 
     fn write(&mut self) -> std::fmt::Result {
         while let Some(e) = self.events.next() {
+            let close_para = self.close_para;
+            if close_para {
+                self.close_para = false;
+                if !matches!(&e, Event::End(Container::Footnote { .. })) {
+                    // no need to add href before para close
+                    self.out.write_str("</p>")?;
+                }
+            }
+
             match e {
                 Event::Start(c, attrs) => {
                     if c.is_block() && !self.first_line {
@@ -143,7 +152,6 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                     .write_str("<section role=\"doc-endnotes\">\n<hr>\n<ol>\n")?;
                             }
                             write!(self.out, "<li id=\"fn{}\">", number)?;
-                            self.footnote_backlink_written = false;
                             continue;
                         }
                         Container::Table => self.out.write_str("<table")?,
@@ -329,13 +337,15 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::DescriptionList => self.out.write_str("</dl>")?,
                         Container::DescriptionDetails => self.out.write_str("</dd>")?,
                         Container::Footnote { number, .. } => {
-                            if !self.footnote_backlink_written {
-                                write!(
-                                    self.out,
-                                    "\n<p><a href=\"#fnref{}\" role=\"doc-backlink\">↩︎︎</a></p>",
-                                    number,
-                                )?;
+                            if !close_para {
+                                // create a new paragraph
+                                self.out.write_str("\n<p>")?;
                             }
+                            write!(
+                                self.out,
+                                r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a></p>"##,
+                                number,
+                            )?;
                             self.out.write_str("\n</li>")?;
                             self.footnote_number = None;
                         }
@@ -347,20 +357,11 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                             if matches!(self.list_tightness.last(), Some(true)) {
                                 continue;
                             }
-                            if let Some(num) = self.footnote_number {
-                                if matches!(
-                                    self.events.peek(),
-                                    Some(Event::End(Container::Footnote { .. }))
-                                ) {
-                                    write!(
-                                        self.out,
-                                        r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a>"##,
-                                        num
-                                    )?;
-                                    self.footnote_backlink_written = true;
-                                }
+                            if self.footnote_number.is_none() {
+                                self.out.write_str("</p>")?;
+                            } else {
+                                self.close_para = true;
                             }
-                            self.out.write_str("</p>")?;
                         }
                         Container::Heading { level, .. } => write!(self.out, "</h{}>", level)?,
                         Container::TableCell { head: false, .. } => self.out.write_str("</td>")?,
