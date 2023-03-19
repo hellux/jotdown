@@ -577,6 +577,9 @@ type Set<T> = std::collections::BTreeSet<T>;
 /// structure that will be kept for the duration of the parser's lifetime. Then, when the iterator
 /// is advanced, the parser will start from the beginning of the document and parse inline elements
 /// and emit [`Event`]s.
+///
+/// It is possible to clone the parser to avoid performing the block parsing multiple times.
+#[derive(Clone)]
 pub struct Parser<'s> {
     src: &'s str,
 
@@ -608,6 +611,7 @@ pub struct Parser<'s> {
     inline_parser: inline::Parser<'s>,
 }
 
+#[derive(Clone)]
 struct Heading {
     /// Location of heading in src.
     location: usize,
@@ -618,6 +622,7 @@ struct Heading {
 }
 
 /// Because of potential future references, an initial pass is required to obtain all definitions.
+#[derive(Clone)]
 struct PrePass<'s> {
     /// Link definitions and their attributes.
     link_definitions: Map<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,

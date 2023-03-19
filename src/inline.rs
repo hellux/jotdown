@@ -73,6 +73,7 @@ pub struct Event {
     pub span: Span,
 }
 
+#[derive(Clone)]
 pub struct Input<'s> {
     /// Lexer, hosting source.
     lexer: lex::Lexer<'s>,
@@ -164,6 +165,7 @@ impl<'s> Input<'s> {
     }
 }
 
+#[derive(Clone)]
 pub struct VerbatimState {
     event_opener: usize,
     len_opener: u8,
@@ -171,6 +173,7 @@ pub struct VerbatimState {
     non_whitespace_last: Option<(lex::Kind, usize)>,
 }
 
+#[derive(Clone)]
 pub struct Parser<'s> {
     input: Input<'s>,
     /// Stack with kind and index of _potential_ openers for containers.
