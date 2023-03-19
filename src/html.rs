@@ -25,9 +25,11 @@
 use crate::Alignment;
 use crate::Container;
 use crate::Event;
+use crate::LinkType;
 use crate::ListKind;
 use crate::OrderedListNumbering::*;
 use crate::Render;
+use crate::SpanLinkType;
 
 pub struct Renderer;
 
@@ -161,8 +163,8 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::DescriptionTerm => self.out.write_str("<dt")?,
                         Container::CodeBlock { .. } => self.out.write_str("<pre")?,
                         Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
-                        Container::Link(dst, ..) => {
-                            if dst.is_empty() {
+                        Container::Link(dst, ty) => {
+                            if matches!(ty, LinkType::Span(SpanLinkType::Unresolved)) {
                                 self.out.write_str("<a")?;
                             } else {
                                 self.out.write_str(r#"<a href=""#)?;

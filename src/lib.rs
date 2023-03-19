@@ -213,9 +213,10 @@ pub enum Container<'s> {
     CodeBlock { lang: Option<&'s str> },
     /// An inline divider element.
     Span,
-    /// An inline link with a destination URL.
+    /// An inline link, the first field is either a destination URL or an unresolved tag.
     Link(CowStr<'s>, LinkType),
-    /// An inline image with a source URL. Inner Str objects compose the alternative text.
+    /// An inline image, the first field is either a destination URL or an unresolved tag. Inner
+    /// Str objects compose the alternative text.
     Image(CowStr<'s>, SpanLinkType),
     /// An inline verbatim string.
     Verbatim,
@@ -333,6 +334,8 @@ pub enum SpanLinkType {
     Inline,
     /// In the form `[text][tag]` or `[tag][]`.
     Reference,
+    /// Like reference, but the tag is unresolved.
+    Unresolved,
 }
 
 /// The type of an inline link.
@@ -729,19 +732,20 @@ impl<'s> Parser<'s> {
                             let link_def =
                                 self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
 
-                            let url = if let Some((url, attrs_def)) = link_def {
+                            let (url_or_tag, ty) = if let Some((url, attrs_def)) = link_def {
                                 attributes.union(attrs_def);
-                                url
+                                (url, SpanLinkType::Reference)
                             } else {
-                                self.pre_pass
-                                    .heading_id_by_tag(tag.as_ref())
-                                    .map_or_else(|| "".into(), |id| format!("#{}", id).into())
+                                self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
+                                    || (tag, SpanLinkType::Unresolved),
+                                    |id| (format!("#{}", id).into(), SpanLinkType::Reference),
+                                )
                             };
 
                             if matches!(c, inline::Container::ReferenceLink) {
-                                Container::Link(url, LinkType::Span(SpanLinkType::Reference))
+                                Container::Link(url_or_tag, LinkType::Span(ty))
                             } else {
-                                Container::Image(url, SpanLinkType::Reference)
+                                Container::Image(url_or_tag, ty)
                             }
                         }
                         inline::Container::Autolink => {
@@ -1295,6 +1299,32 @@ mod test {
             End(Image("url".into(), SpanLinkType::Reference)),
             End(Paragraph),
             Blankline,
+        );
+    }
+
+    #[test]
+    fn link_reference_unresolved() {
+        test_parse!(
+            "[text][tag]",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("tag".into(), LinkType::Span(SpanLinkType::Unresolved)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("tag".into(), LinkType::Span(SpanLinkType::Unresolved))),
+            End(Paragraph),
+        );
+        test_parse!(
+            "![text][tag]",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Image("tag".into(), SpanLinkType::Unresolved),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Image("tag".into(), SpanLinkType::Unresolved)),
+            End(Paragraph),
         );
     }
 
