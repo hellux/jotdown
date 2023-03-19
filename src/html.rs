@@ -9,25 +9,13 @@ use crate::OrderedListNumbering::*;
 use crate::Render;
 use crate::SpanLinkType;
 
-pub struct Renderer;
-
-impl Render for Renderer {
-    fn push<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write>(
-        &self,
-        events: I,
-        out: W,
-    ) -> std::fmt::Result {
-        Writer::default().write(events, out)
-    }
-}
-
 enum Raw {
     None,
     Html,
     Other,
 }
 
-struct Writer {
+pub struct Renderer {
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
@@ -37,7 +25,7 @@ struct Writer {
     close_para: bool,
 }
 
-impl Default for Writer {
+impl Default for Renderer {
     fn default() -> Self {
         Self {
             raw: Raw::None,
@@ -51,16 +39,7 @@ impl Default for Writer {
     }
 }
 
-impl Writer {
-    fn write<'s, I, W>(&mut self, mut events: I, mut out: W) -> std::fmt::Result
-    where
-        I: Iterator<Item = Event<'s>>,
-        W: std::fmt::Write,
-    {
-        events.try_for_each(|e| self.render_event(&e, &mut out))?;
-        self.render_epilogue(&mut out)
-    }
-
+impl Render for Renderer {
     fn render_event<'s, W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
     where
         W: std::fmt::Write,
