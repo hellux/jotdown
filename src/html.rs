@@ -29,6 +29,7 @@ use crate::LinkType;
 use crate::ListKind;
 use crate::OrderedListNumbering::*;
 use crate::Render;
+use crate::SpanLinkType;
 
 pub struct Renderer;
 
@@ -163,7 +164,7 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                         Container::CodeBlock { .. } => self.out.write_str("<pre")?,
                         Container::Span | Container::Math { .. } => self.out.write_str("<span")?,
                         Container::Link(dst, ty) => {
-                            if dst.is_empty() {
+                            if matches!(ty, LinkType::Span(SpanLinkType::Unresolved)) {
                                 self.out.write_str("<a")?;
                             } else {
                                 self.out.write_str(r#"<a href=""#)?;
