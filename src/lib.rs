@@ -746,10 +746,10 @@ impl<'s> Parser<'s> {
                         }
                         inline::Container::Autolink => {
                             let url = self.inlines.src(inline.span);
-                            let (url, ty) = if url.contains('@') {
-                                (format!("mailto:{}", url).into(), LinkType::Email)
+                            let ty = if url.contains('@') {
+                                LinkType::Email
                             } else {
-                                (url, LinkType::AutoLink)
+                                LinkType::AutoLink
                             };
                             Container::Link(url, ty)
                         }

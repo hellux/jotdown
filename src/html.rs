@@ -166,6 +166,9 @@ impl<'s, I: Iterator<Item = Event<'s>>, W: std::fmt::Write> Writer<'s, I, W> {
                                 self.out.write_str("<a")?;
                             } else {
                                 self.out.write_str(r#"<a href=""#)?;
+                                if matches!(ty, LinkType::Email) {
+                                    self.out.write_str("mailto:")?;
+                                }
                                 self.write_attr(dst)?;
                                 self.out.write_char('"')?;
                             }
