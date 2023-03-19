@@ -1,26 +1,4 @@
 //! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
-//!
-//! The HTML can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
-//!
-//! # Examples
-//!
-//! Push to a [`String`] (implements [`std::fmt::Write`]):
-//!
-//! ```
-//! # use jotdown::Render;
-//! # let events = std::iter::empty();
-//! let mut html = String::new();
-//! jotdown::html::Renderer.push(events, &mut html);
-//! ```
-//!
-//! Write to standard output with buffering ([`std::io::Stdout`] implements [`std::io::Write`]):
-//!
-//! ```
-//! # use jotdown::Render;
-//! # let events = std::iter::empty();
-//! let mut out = std::io::BufWriter::new(std::io::stdout());
-//! jotdown::html::Renderer.write(events, &mut out).unwrap();
-//! ```
 
 use crate::Alignment;
 use crate::Container;

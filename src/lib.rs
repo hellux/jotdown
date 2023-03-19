@@ -67,6 +67,29 @@ pub use attr::{AttributeValue, AttributeValueParts, Attributes};
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
+/// A trait for rendering [`Event`]s to an output format.
+///
+/// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
+///
+/// # Examples
+///
+/// Push to a [`String`] (implements [`std::fmt::Write`]):
+///
+/// ```
+/// # use jotdown::Render;
+/// # let events = std::iter::empty();
+/// let mut output = String::new();
+/// jotdown::html::Renderer.push(events, &mut output);
+/// ```
+///
+/// Write to standard output with buffering ([`std::io::Stdout`] implements [`std::io::Write`]):
+///
+/// ```
+/// # use jotdown::Render;
+/// # let events = std::iter::empty();
+/// let mut out = std::io::BufWriter::new(std::io::stdout());
+/// jotdown::html::Renderer.write(events, &mut out).unwrap();
+/// ```
 pub trait Render {
     /// Push [`Event`]s to a unicode-accepting buffer or stream.
     fn push<'s, I: Iterator<Item = Event<'s>>, W: fmt::Write>(
