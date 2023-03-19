@@ -68,11 +68,11 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     let parser = jotdown::Parser::new(&content);
-    let html = jotdown::html::Renderer;
+    let mut renderer = jotdown::html::Renderer::default();
 
     match app.output {
-        Some(path) => html.write(parser, File::create(path)?)?,
-        None => html.write(parser, BufWriter::new(std::io::stdout()))?,
+        Some(path) => renderer.write(parser, File::create(path)?)?,
+        None => renderer.write(parser, BufWriter::new(std::io::stdout()))?,
     }
 
     Ok(())

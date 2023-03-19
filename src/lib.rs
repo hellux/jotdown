@@ -20,7 +20,7 @@
 //! let djot_input = "hello *world*!";
 //! let events = jotdown::Parser::new(djot_input);
 //! let mut html = String::new();
-//! jotdown::html::Renderer.push(events, &mut html);
+//! jotdown::html::Renderer::default().push(events, &mut html);
 //! assert_eq!(html, "<p>hello <strong>world</strong>!</p>\n");
 //! # }
 //! ```
@@ -41,7 +41,7 @@
 //!         e => e,
 //!     });
 //! let mut html = String::new();
-//! jotdown::html::Renderer.push(events, &mut html);
+//! jotdown::html::Renderer::default().push(events, &mut html);
 //! assert_eq!(html, "<p>a <a href=\"https://example.net\">link</a></p>\n");
 //! # }
 //! ```
@@ -71,6 +71,11 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 ///
 /// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
 ///
+/// An implementor needs to at least implement the [`Render::render_event`] function that renders a
+/// single event to the output. If anything needs to be rendered at the beginning or end of the
+/// output, the [`Render::render_prologue`] and [`Render::render_epilogue`] can be implemented as
+/// well.
+///
 /// # Examples
 ///
 /// Push to a [`String`] (implements [`std::fmt::Write`]):
@@ -79,7 +84,8 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut output = String::new();
-/// jotdown::html::Renderer.push(events, &mut output);
+/// let mut renderer = jotdown::html::Renderer::default();
+/// renderer.push(events, &mut output);
 /// ```
 ///
 /// Write to standard output with buffering ([`std::io::Stdout`] implements [`std::io::Write`]):
@@ -88,25 +94,57 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut out = std::io::BufWriter::new(std::io::stdout());
-/// jotdown::html::Renderer.write(events, &mut out).unwrap();
+/// let mut renderer = jotdown::html::Renderer::default();
+/// renderer.write(events, &mut out).unwrap();
 /// ```
 pub trait Render {
-    /// Push [`Event`]s to a unicode-accepting buffer or stream.
-    fn push<'s, I: Iterator<Item = Event<'s>>, W: fmt::Write>(
-        &self,
-        events: I,
-        out: W,
-    ) -> fmt::Result;
+    /// Render a single event.
+    fn render_event<'s, W>(&mut self, e: &Event<'s>, out: W) -> std::fmt::Result
+    where
+        W: std::fmt::Write;
+
+    /// Render something before any events have been provided.
+    ///
+    /// This does nothing by default, but an implementation may choose to prepend data at the
+    /// beginning of the output if needed.
+    fn render_prologue<W>(&mut self, _out: W) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        Ok(())
+    }
+
+    /// Render something after all events have been provided.
+    ///
+    /// This does nothing by default, but an implementation may choose to append extra data at the
+    /// end of the output if needed.
+    fn render_epilogue<W>(&mut self, _out: W) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        Ok(())
+    }
+
+    /// Push owned [`Event`]s to a unicode-accepting buffer or stream.
+    fn push<'s, I, W>(&mut self, mut events: I, mut out: W) -> fmt::Result
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: fmt::Write,
+    {
+        self.render_prologue(&mut out)?;
+        events.try_for_each(|e| self.render_event(&e, &mut out))?;
+        self.render_epilogue(&mut out)
+    }
 
     /// Write [`Event`]s to a byte sink, encoded as UTF-8.
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write<'s, I: Iterator<Item = Event<'s>>, W: io::Write>(
-        &self,
-        events: I,
-        out: W,
-    ) -> io::Result<()> {
+    fn write<'s, I, W>(&mut self, events: I, out: W) -> io::Result<()>
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: io::Write,
+    {
         struct Adapter<T: io::Write> {
             inner: T,
             error: io::Result<()>,

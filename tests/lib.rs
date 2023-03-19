@@ -14,7 +14,9 @@ macro_rules! suite_test {
         let expected = $expected;
         let p = jotdown::Parser::new(src);
         let mut actual = String::new();
-        jotdown::html::Renderer.push(p, &mut actual).unwrap();
+        jotdown::html::Renderer::default()
+            .push(p, &mut actual)
+            .unwrap();
         assert_eq!(
             actual.trim(),
             expected.trim(),

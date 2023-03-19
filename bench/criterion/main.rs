@@ -51,7 +51,9 @@ fn gen_html(c: &mut criterion::Criterion) {
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
                     |p| {
                         let mut s = String::new();
-                        jotdown::html::Renderer.push(p.into_iter(), &mut s).unwrap();
+                        jotdown::html::Renderer::default()
+                            .push(p.into_iter(), &mut s)
+                            .unwrap();
                         s
                     },
                     criterion::BatchSize::SmallInput,
@@ -72,7 +74,7 @@ fn gen_full(c: &mut criterion::Criterion) {
             |b, &input| {
                 b.iter_with_large_drop(|| {
                     let mut s = String::new();
-                    jotdown::html::Renderer
+                    jotdown::html::Renderer::default()
                         .push(jotdown::Parser::new(input), &mut s)
                         .unwrap();
                     s
