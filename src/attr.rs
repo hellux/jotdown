@@ -262,7 +262,7 @@ impl<I: Iterator<Item = char>> Parser<I> {
                     }
                 }
                 s @ (ClassFirst | IdentifierFirst) => {
-                    if is_name_start(c) {
+                    if is_name(c) {
                         match s {
                             ClassFirst => Class,
                             IdentifierFirst => Identifier,
@@ -344,12 +344,8 @@ impl<I: Iterator<Item = char>> Parser<I> {
     }
 }
 
-pub fn is_name_start(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '_' | ':')
-}
-
 pub fn is_name(c: char) -> bool {
-    is_name_start(c) || c.is_ascii_digit() || matches!(c, '-')
+    c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-')
 }
 
 enum Element {

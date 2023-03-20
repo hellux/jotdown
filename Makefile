@@ -53,14 +53,14 @@ bench:
 cov: suite suite_bench
 	LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov --features=suite,suite_bench --workspace --html --ignore-run-fail
 
-AFL_TARGET?=gen
+AFL_TARGET?=parse
 AFL_JOBS?=1
 AFL_TARGET_CRASH?=crashes
 
 afl:
 	rm -rf tests/afl/out
 	(cd tests/afl && \
-		cargo afl build --release --config profile.release.debug-assertions=true && \
+		cargo afl build --no-default-features --release --config profile.release.debug-assertions=true && \
 		(AFL_NO_UI=1 cargo afl fuzz -i in -o out -Mm target/release/${AFL_TARGET} &) && \
 		for i in $$(seq $$((${AFL_JOBS} - 1))); do \
 			AFL_NO_UI=1 cargo afl fuzz -i in -o out -Ss$$i target/release/${AFL_TARGET} & \
@@ -71,22 +71,29 @@ afl:
 afl_quick:
 	rm -rf tests/afl/out
 	(cd tests/afl && \
-		cargo afl build --release --config profile.release.debug-assertions=true && \
+		cargo afl build --no-default-features --release --config profile.release.debug-assertions=true && \
 		AFL_NO_UI=1 AFL_BENCH_UNTIL_CRASH=1 \
 			cargo afl fuzz -i in -o out -V 60 target/release/${AFL_TARGET})
 
 afl_crash:
 	set +e; \
-	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
-		echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
-		out=$$(cat $$f | RUST_BACKTRACE=1 cargo run 2>&1); \
+	failures="$$(find . -path './tmin/*') $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*')"; \
+	for f in $$failures; do \
+		echo $$f; \
+		out=$$(cat $$f | (cd tests/afl && RUST_BACKTRACE=1 cargo run ${AFL_TARGET} 2>&1)); \
 		if [ $$? -ne 0 ]; then \
 			echo; \
 			echo "FAIL"; \
 			echo "$$out"; \
-			echo "cat $$f | RUST_BACKTRACE=1 cargo run"; \
 			exit 1; \
 		fi; \
+	done
+
+afl_tmin:
+	rm -rf tmin
+	mkdir tmin
+	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
+		cargo afl tmin -i $$f -o tmin/$$(basename $$f) tests/afl/target/release/${AFL_TARGET}; \
 	done
 
 clean:
