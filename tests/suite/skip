@@ -10,7 +10,6 @@ e1f5b5e:untrimmed whitespace before linebreak
 07888f3:div close within raw block
 8423412:heading id conflict with existing id
 00a46ed:clear inline formatting from link tags
-a8e17c3:empty href
 c0a3dec:escape in url
 e66af00:url container precedence
 61876cf:roman alpha ambiguity
