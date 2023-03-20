@@ -74,6 +74,7 @@ afl_quick:
 		cargo afl build --no-default-features --release --config profile.release.debug-assertions=true && \
 		AFL_NO_UI=1 AFL_BENCH_UNTIL_CRASH=1 \
 			cargo afl fuzz -i in -o out -V 60 target/release/${AFL_TARGET})
+	[ -z "$$(find tests/afl/out/default/crashes -type f -name 'id:*')" ]
 
 afl_crash:
 	set +e; \
