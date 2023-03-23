@@ -830,14 +830,17 @@ impl<'s> Parser<'s> {
                         inline::Container::Emphasis => Container::Emphasis,
                         inline::Container::Strong => Container::Strong,
                         inline::Container::Mark => Container::Mark,
-                        inline::Container::InlineLink(url) => {
-                            Container::Link(url, LinkType::Span(SpanLinkType::Inline))
-                        }
-                        inline::Container::InlineImage(url) => {
-                            Container::Image(url, SpanLinkType::Inline)
-                        }
-                        inline::Container::ReferenceLink(ref tag)
-                        | inline::Container::ReferenceImage(ref tag) => {
+                        inline::Container::InlineLink(url) => Container::Link(
+                            self.inline_parser.store_cowstrs[url as usize].clone(),
+                            LinkType::Span(SpanLinkType::Inline),
+                        ),
+                        inline::Container::InlineImage(url) => Container::Image(
+                            self.inline_parser.store_cowstrs[url as usize].clone(),
+                            SpanLinkType::Inline,
+                        ),
+                        inline::Container::ReferenceLink(tag)
+                        | inline::Container::ReferenceImage(tag) => {
+                            let tag = &self.inline_parser.store_cowstrs[tag as usize];
                             let link_def = self
                                 .pre_pass
                                 .link_definitions
