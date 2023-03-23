@@ -799,7 +799,10 @@ impl<'s> Parser<'s> {
             inline::Event {
                 kind: inline::EventKind::Attributes { attrs, .. },
                 ..
-            } => (self.inline_parser.next(), attrs),
+            } => (
+                self.inline_parser.next(),
+                self.inline_parser.attributes_store[attrs as usize].clone(),
+            ),
             inline => (Some(inline), Attributes::new()),
         };
 
