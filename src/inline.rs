@@ -57,21 +57,23 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind<'s> {
+pub enum EventKind {
     Enter(Container),
     Exit(Container),
     Atom(Atom),
     Str,
     Attributes {
         container: bool,
-        attrs: attr::Attributes<'s>,
+        attrs: AttributesIndex,
     },
     Placeholder,
 }
 
+type AttributesIndex = u32;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event<'s> {
-    pub kind: EventKind<'s>,
+pub struct Event {
+    pub kind: EventKind,
     pub span: Span,
 }
 
@@ -208,13 +210,15 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event<'s>>,
+    events: std::collections::VecDeque<Event>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
     attributes: Option<AttributesElementType>,
     /// Storage of cow strs, used to reduce size of [`Container`].
     pub(crate) store_cowstrs: Vec<CowStr<'s>>,
+    /// Storage of attributes, used to reduce size of [`EventKind`].
+    pub(crate) store_attributes: Vec<attr::Attributes<'s>>,
 }
 
 enum ControlFlow {
@@ -238,6 +242,7 @@ impl<'s> Parser<'s> {
             verbatim: None,
             attributes: None,
             store_cowstrs: Vec::new(),
+            store_attributes: Vec::new(),
         }
     }
 
@@ -252,14 +257,15 @@ impl<'s> Parser<'s> {
         debug_assert!(self.attributes.is_none());
         debug_assert!(self.verbatim.is_none());
         self.store_cowstrs.clear();
+        self.store_attributes.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind<'s>, span: Span) -> Option<ControlFlow> {
+    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
         Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind<'s>) -> Option<ControlFlow> {
+    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
         self.push_sp(kind, self.input.span)
     }
 
@@ -470,10 +476,12 @@ impl<'s> Parser<'s> {
         self.input.lexer = lex::Lexer::new(&self.input.src[end_attr..line_end]);
 
         if !attrs.is_empty() {
+            let attr_index = self.store_attributes.len() as AttributesIndex;
+            self.store_attributes.push(attrs);
             let attr_event = Event {
                 kind: EventKind::Attributes {
                     container: matches!(elem_ty, AttributesElementType::Container { .. }),
-                    attrs,
+                    attrs: attr_index,
                 },
                 span: self.input.span,
             };
@@ -861,7 +869,7 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Span) -> Event<'s> {
+    fn merge_str_events(&mut self, span_str: Span) -> Event {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder)
@@ -888,7 +896,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Span) -> Event<'s> {
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
         if let Some(i) = span_str
             .of(self.input.src)
             .bytes()
@@ -1063,7 +1071,7 @@ impl From<Opener> for DelimEventKind {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event<'s>;
+    type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
@@ -1196,7 +1204,7 @@ mod test {
             (
                 Attributes {
                     container: true,
-                    attrs: [("id", "id")].into_iter().collect()
+                    attrs: 0,
                 },
                 "{#id}"
             ),
@@ -1387,7 +1395,7 @@ mod test {
             (
                 Attributes {
                     container: false,
-                    attrs: [("class", "cls")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.cls}"
             ),
@@ -1436,7 +1444,7 @@ mod test {
             (
                 Attributes {
                     container: true,
-                    attrs: [("class", "def")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.def}"
             ),
@@ -1454,7 +1462,7 @@ mod test {
             (
                 Attributes {
                     container: true,
-                    attrs: [("class", "bar_")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.bar_}"
             ),
@@ -1564,7 +1572,7 @@ mod test {
             (
                 Attributes {
                     container: true,
-                    attrs: [("class", "attr")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.attr}"
             ),
@@ -1598,7 +1606,7 @@ mod test {
             (
                 Attributes {
                     container: true,
-                    attrs: [("class", "a b c")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.a}{.b}{.c}"
             ),
@@ -1616,7 +1624,7 @@ mod test {
             (
                 Attributes {
                     container: false,
-                    attrs: [("a", "b")].into_iter().collect()
+                    attrs: 0,
                 },
                 "{a=b}"
             ),
@@ -1630,7 +1638,7 @@ mod test {
             (
                 Attributes {
                     container: false,
-                    attrs: [("class", "a b")].into_iter().collect(),
+                    attrs: 0,
                 },
                 "{.a}{.b}"
             ),
