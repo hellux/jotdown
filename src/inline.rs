@@ -24,8 +24,8 @@ pub enum Atom {
     Quote { ty: QuoteType, left: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Container<'s> {
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Container {
     Span,
     Subscript,
     Superscript,
@@ -39,13 +39,15 @@ pub enum Container<'s> {
     RawFormat,
     InlineMath,
     DisplayMath,
-    ReferenceLink(CowStr<'s>),
-    ReferenceImage(CowStr<'s>),
-    InlineLink(CowStr<'s>),
-    InlineImage(CowStr<'s>),
+    ReferenceLink(CowStrIndex),
+    ReferenceImage(CowStrIndex),
+    InlineLink(CowStrIndex),
+    InlineImage(CowStrIndex),
     /// Open delimiter span is URL, closing is '>'.
     Autolink,
 }
+
+type CowStrIndex = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuoteType {
@@ -54,9 +56,9 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind<'s> {
-    Enter(Container<'s>),
-    Exit(Container<'s>),
+pub enum EventKind {
+    Enter(Container),
+    Exit(Container),
     Atom(Atom),
     Str,
     Attributes { container: bool },
@@ -64,8 +66,8 @@ pub enum EventKind<'s> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event<'s> {
-    pub kind: EventKind<'s>,
+pub struct Event {
+    pub kind: EventKind,
     pub span: Span,
 }
 
@@ -193,9 +195,11 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event<'s>>,
+    events: std::collections::VecDeque<Event>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
+    /// Storage of cow strs, used to reduce size of [`Container`].
+    pub(crate) store_cowstrs: Vec<CowStr<'s>>,
 }
 
 impl<'s> Parser<'s> {
@@ -205,6 +209,7 @@ impl<'s> Parser<'s> {
             openers: Vec::new(),
             events: std::collections::VecDeque::new(),
             verbatim: None,
+            store_cowstrs: Vec::new(),
         }
     }
 
@@ -218,14 +223,15 @@ impl<'s> Parser<'s> {
         self.openers.clear();
         debug_assert!(self.events.is_empty());
         debug_assert!(self.verbatim.is_none());
+        self.store_cowstrs.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind<'s>, span: Span) -> Option<()> {
+    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<()> {
         self.events.push_back(Event { kind, span });
         Some(())
     }
 
-    fn push(&mut self, kind: EventKind<'s>) -> Option<()> {
+    fn push(&mut self, kind: EventKind) -> Option<()> {
         self.push_sp(kind, self.input.span)
     }
 
@@ -275,12 +281,12 @@ impl<'s> Parser<'s> {
                     }
                     self.input.span = span_attr;
                 };
-                let ty_opener = if let EventKind::Enter(ty) = &self.events[event_opener].kind {
+                let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                     debug_assert!(matches!(
                         ty,
                         Verbatim | RawFormat | InlineMath | DisplayMath
                     ));
-                    ty.clone()
+                    ty
                 } else {
                     panic!()
                 };
@@ -505,7 +511,7 @@ impl<'s> Parser<'s> {
                 self.openers.drain(o..);
                 let mut closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
-                        self.events[e_opener].kind = EventKind::Enter(cont.clone());
+                        self.events[e_opener].kind = EventKind::Enter(cont);
                         self.push(EventKind::Exit(cont))
                     }
                     DelimEventKind::Quote(ty) => {
@@ -597,13 +603,15 @@ impl<'s> Parser<'s> {
                             span_spec.of(self.input.src).into()
                         };
 
+                        let idx = self.store_cowstrs.len() as CowStrIndex;
+                        self.store_cowstrs.push(spec);
                         let container = match (image, inline) {
-                            (false, false) => ReferenceLink(spec.into()),
-                            (false, true) => InlineLink(spec.into()),
-                            (true, false) => ReferenceImage(spec.into()),
-                            (true, true) => InlineImage(spec.into()),
+                            (false, false) => ReferenceLink(idx),
+                            (false, true) => InlineLink(idx),
+                            (true, false) => ReferenceImage(idx),
+                            (true, true) => InlineImage(idx),
                         };
-                        self.events[event_span].kind = EventKind::Enter(container.clone());
+                        self.events[event_span].kind = EventKind::Enter(container);
                         self.events[e_opener - 1] = Event {
                             kind: EventKind::Exit(container),
                             span: Span::new(
@@ -741,7 +749,7 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Span) -> Event<'s> {
+    fn merge_str_events(&mut self, span_str: Span) -> Event {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder)
@@ -765,7 +773,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Span) -> Event<'s> {
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
         if let Some(i) = span_str
             .of(self.input.src)
             .bytes()
@@ -902,8 +910,8 @@ impl Opener {
     }
 }
 
-enum DelimEventKind<'s> {
-    Container(Container<'s>),
+enum DelimEventKind {
+    Container(Container),
     Span(SpanType),
     Quote(QuoteType),
     Link {
@@ -913,7 +921,7 @@ enum DelimEventKind<'s> {
     },
 }
 
-impl<'s> From<Opener> for DelimEventKind<'s> {
+impl From<Opener> for DelimEventKind {
     fn from(d: Opener) -> Self {
         match d {
             Opener::Span(ty) => Self::Span(ty),
@@ -940,7 +948,7 @@ impl<'s> From<Opener> for DelimEventKind<'s> {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event<'s>;
+    type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
@@ -962,12 +970,12 @@ impl<'s> Iterator for Parser<'s> {
 
         // automatically close unclosed verbatim
         if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
-            let ty_opener = if let EventKind::Enter(ty) = &self.events[event_opener].kind {
+            let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                 debug_assert!(matches!(
                     ty,
                     Verbatim | RawFormat | InlineMath | DisplayMath
                 ));
-                ty.clone()
+                ty
             } else {
                 panic!()
             };
@@ -1163,31 +1171,31 @@ mod test {
     fn span_tag() {
         test_parse!(
             "[text][tag]",
-            (Enter(ReferenceLink("tag".into())), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink("tag".into())), "][tag]"),
+            (Exit(ReferenceLink(0)), "][tag]"),
         );
         test_parse!(
             "![text][tag]",
-            (Enter(ReferenceImage("tag".into())), "!["),
+            (Enter(ReferenceImage(0)), "!["),
             (Str, "text"),
-            (Exit(ReferenceImage("tag".into())), "][tag]"),
+            (Exit(ReferenceImage(0)), "][tag]"),
         );
         test_parse!(
             "before [text][tag] after",
             (Str, "before "),
-            (Enter(ReferenceLink("tag".into())), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink("tag".into())), "][tag]"),
+            (Exit(ReferenceLink(0)), "][tag]"),
             (Str, " after"),
         );
         test_parse!(
             "[[inner][i]][o]",
-            (Enter(ReferenceLink("o".into())), "["),
-            (Enter(ReferenceLink("i".into())), "["),
+            (Enter(ReferenceLink(1)), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "inner"),
-            (Exit(ReferenceLink("i".into())), "][i]"),
-            (Exit(ReferenceLink("o".into())), "][o]"),
+            (Exit(ReferenceLink(0)), "][i]"),
+            (Exit(ReferenceLink(1)), "][o]"),
         );
     }
 
@@ -1195,15 +1203,15 @@ mod test {
     fn span_tag_empty() {
         test_parse!(
             "[text][]",
-            (Enter(ReferenceLink("text".into())), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink("text".into())), "][]"),
+            (Exit(ReferenceLink(0)), "][]"),
         );
         test_parse!(
             "![text][]",
-            (Enter(ReferenceImage("text".into())), "!["),
+            (Enter(ReferenceImage(0)), "!["),
             (Str, "text"),
-            (Exit(ReferenceImage("text".into())), "][]"),
+            (Exit(ReferenceImage(0)), "][]"),
         );
     }
 
@@ -1212,12 +1220,12 @@ mod test {
         // TODO strip non str from tag?
         test_parse!(
             "[some _text_][]",
-            (Enter(ReferenceLink("some text".into())), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "some "),
             (Enter(Emphasis), "_"),
             (Str, "text"),
             (Exit(Emphasis), "_"),
-            (Exit(ReferenceLink("some text".into())), "][]"),
+            (Exit(ReferenceLink(0)), "][]"),
         );
     }
 
@@ -1226,19 +1234,19 @@ mod test {
         test_parse!(
             "before [text](url) after",
             (Str, "before "),
-            (Enter(InlineLink("url".into())), "["),
+            (Enter(InlineLink(0)), "["),
             (Str, "text"),
-            (Exit(InlineLink("url".into())), "](url)"),
+            (Exit(InlineLink(0)), "](url)"),
             (Str, " after"),
         );
         test_parse!(
             "[outer [inner](i)](o)",
-            (Enter(InlineLink("o".into())), "["),
+            (Enter(InlineLink(1)), "["),
             (Str, "outer "),
-            (Enter(InlineLink("i".into())), "["),
+            (Enter(InlineLink(0)), "["),
             (Str, "inner"),
-            (Exit(InlineLink("i".into())), "](i)"),
-            (Exit(InlineLink("o".into())), "](o)"),
+            (Exit(InlineLink(0)), "](i)"),
+            (Exit(InlineLink(1)), "](o)"),
         );
     }
 
@@ -1257,9 +1265,9 @@ mod test {
     fn span_url_attr_closed() {
         test_parse!(
             "[text]({.cls})",
-            (Enter(InlineLink("{.cls}".into())), "["),
+            (Enter(InlineLink(0)), "["),
             (Str, "text"),
-            (Exit(InlineLink("{.cls}".into())), "]({.cls})"),
+            (Exit(InlineLink(0)), "]({.cls})"),
         );
     }
 
@@ -1268,9 +1276,9 @@ mod test {
         test_parse!(
             "before [text]() after",
             (Str, "before "),
-            (Enter(InlineLink("".into())), "["),
+            (Enter(InlineLink(0)), "["),
             (Str, "text"),
-            (Exit(InlineLink("".into())), "]()"),
+            (Exit(InlineLink(0)), "]()"),
             (Str, " after"),
         );
     }
