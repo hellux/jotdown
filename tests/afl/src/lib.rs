@@ -19,7 +19,9 @@ pub fn html(data: &[u8]) {
         if !s.contains("=html") {
             let p = jotdown::Parser::new(s);
             let mut html = "<!DOCTYPE html>\n".to_string();
-            jotdown::html::Renderer.push(p, &mut html).unwrap();
+            jotdown::html::Renderer::default()
+                .push(p, &mut html)
+                .unwrap();
             validate_html(&html);
         }
     }
