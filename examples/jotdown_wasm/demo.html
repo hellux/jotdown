@@ -3,6 +3,7 @@
     import init, {
         jotdown_render,
         jotdown_parse,
+        jotdown_parse_indent,
     } from './pkg/jotdown_wasm.js';
     await init();
 
@@ -17,6 +18,9 @@
         } else if (fmt.value == "events") {
             output.classList.add("verbatim")
             output.innerText = jotdown_parse(input.innerText);
+        } else if (fmt.value == "events_indent") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_parse_indent(input.innerText);
         } else if (fmt.value == "preview") {
             output.classList.remove("verbatim")
             output.innerHTML = jotdown_render(input.innerText);
@@ -36,6 +40,7 @@
       <option value="preview">preview</option>
       <option value="html">html</option>
       <option value="events">events</option>
+      <option value="events_indent">events (indented)</option>
     </select>
   </div>
   <div id="panes" style="display:flex;height:100%;gap:1rem">
