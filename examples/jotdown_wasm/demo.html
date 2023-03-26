@@ -1,5 +1,4 @@
-<select id="fmt"><option value="preview">preview</option><option value="html">html</option></select>
-<div id="jotdown" style="display:flex;">
+<div id="jotdown" style="flex-grow:1;display:flex;flex-direction:column">
   <script type="module">
     import init, { jotdown_render } from './pkg/jotdown_wasm.js';
     await init();
@@ -27,6 +26,14 @@
     // auto focus on input on load
     setTimeout(() => { input.focus(); }, 0);
   </script>
-  <pre id="input" contenteditable="true" placeholder="Input djot here" style="width:50%;height:100%;min-height:8em;max-height:20em;resize:none;margin:0">*Hello world!*</pre>
-  <pre id="output" readonly style="width:50%;height:100%;margin:0;min-height:8em;max-height:20em"></pre>
+  <div>
+    <select id="fmt">
+      <option value="preview">preview</option>
+      <option value="html">html</option>
+    </select>
+  </div>
+  <div id="panes" style="display:flex;height:100%;gap:1rem">
+    <pre id="input" contenteditable="true" placeholder="Input djot here" style="width:50%;height:100%;overflow:scroll;resize:none;box-sizing:border-box;margin:0">*Hello world!*</pre>
+    <pre id="output" readonly style="width:50%;height:100%;overflow:scroll;box-sizing:border-box;margin:0"></pre>
+  </div>
 </div>
