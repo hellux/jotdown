@@ -1,6 +1,9 @@
 <div id="jotdown" style="flex-grow:1;display:flex;flex-direction:column">
   <script type="module">
-    import init, { jotdown_render } from './pkg/jotdown_wasm.js';
+    import init, {
+        jotdown_render,
+        jotdown_parse,
+    } from './pkg/jotdown_wasm.js';
     await init();
 
     let output = document.getElementById("output");
@@ -8,13 +11,15 @@
     let fmt = document.getElementById("fmt");
 
     function render() {
-        let html = jotdown_render(input.innerText);
         if (fmt.value == "html") {
             output.classList.add("verbatim")
-            output.innerText = html;
+            output.innerText = jotdown_render(input.innerText);
+        } else if (fmt.value == "events") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_parse(input.innerText);
         } else if (fmt.value == "preview") {
             output.classList.remove("verbatim")
-            output.innerHTML = html;
+            output.innerHTML = jotdown_render(input.innerText);
         }
     }
 
@@ -30,6 +35,7 @@
     <select id="fmt">
       <option value="preview">preview</option>
       <option value="html">html</option>
+      <option value="events">events</option>
     </select>
   </div>
   <div id="panes" style="display:flex;height:100%;gap:1rem">
