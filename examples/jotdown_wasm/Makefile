@@ -12,7 +12,7 @@ index.html: Makefile demo.html
 	echo '<head>' >> $@
 	echo '<title>Jotdown Demo</title>' >> $@
 	echo '</head>' >> $@
-	echo '<body>' >> $@
+	echo '<body style="display:flex;flex-direction:column;height:100vh;margin:0">' >> $@
 	cat demo.html >> $@
 	echo '</body>' >> $@
 	echo '</html>' >> $@
