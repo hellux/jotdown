@@ -62,9 +62,12 @@ It will be placed in `~/.cargo/bin/jotdown`.
 
 ### Web demo
 
-A version of Jotdown compiled to WebAssembly and runnable in a web browser is
-available at <https://hllmn.net/projects/jotdown/demo>. It can also be run
-locally:
+The web demo is a version of Jotdown compiled to WebAssembly and runnable in a
+web browser. It is useful for experimenting with the djot syntax and exploring
+what events are emitted or what output is rendered.
+
+An online version is available at <https://hllmn.net/projects/jotdown/demo>. It
+can also be run locally:
 
 ```
 $ cd examples/jotdown_wasm
