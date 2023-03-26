@@ -26,7 +26,7 @@ Jotdown supports Rust edition 2021, i.e. Rust 1.56 and above.
 ## Usage
 
 Jotdown is primarily a parsing library but also has a minimal CLI
-implementation and a simple online demo version.
+implementation and a simple web demo version.
 
 ### Library
 
