@@ -12,3 +12,11 @@ pub fn jotdown_render(djot: &str) -> String {
         .unwrap();
     html
 }
+
+#[must_use]
+#[wasm_bindgen]
+pub fn jotdown_parse(djot: &str) -> String {
+    jotdown::Parser::new(djot)
+        .map(|e| format!("{:?}\n", e))
+        .collect()
+}
