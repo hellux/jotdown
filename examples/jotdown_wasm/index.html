@@ -10,7 +10,6 @@
 
     function render() {
         let html = jotdown_render(input.innerText);
-        console.log(fmt.value);
         if (fmt.value == "html") {
             output.classList.add("verbatim")
             output.innerText = html;
