@@ -1,0 +1,50 @@
+<div id="jotdown" style="flex-grow:1;display:flex;flex-direction:column">
+  <script type="module">
+    import init, {
+        jotdown_render,
+        jotdown_parse,
+        jotdown_parse_indent,
+    } from './pkg/jotdown_wasm.js';
+    await init();
+
+    let output = document.getElementById("output");
+    let input = document.getElementById("input");
+    let fmt = document.getElementById("fmt");
+
+    function render() {
+        if (fmt.value == "html") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_render(input.innerText);
+        } else if (fmt.value == "events") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_parse(input.innerText);
+        } else if (fmt.value == "events_indent") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_parse_indent(input.innerText);
+        } else if (fmt.value == "preview") {
+            output.classList.remove("verbatim")
+            output.innerHTML = jotdown_render(input.innerText);
+        }
+    }
+
+    render()
+
+    input.onkeyup = render;
+    fmt.onchange = render;
+
+    // auto focus on input on load
+    setTimeout(() => { input.focus(); }, 0);
+  </script>
+  <div>
+    <select id="fmt">
+      <option value="preview">preview</option>
+      <option value="html">html</option>
+      <option value="events">events</option>
+      <option value="events_indent">events (indented)</option>
+    </select>
+  </div>
+  <div id="panes" style="display:flex;height:100%;gap:1rem">
+    <pre id="input" contenteditable="true" placeholder="Input djot here" style="width:50%;height:100%;overflow:scroll;resize:none;box-sizing:border-box;margin:0">*Hello world!*</pre>
+    <pre id="output" readonly style="width:50%;height:100%;overflow:scroll;box-sizing:border-box;margin:0"></pre>
+  </div>
+</div>

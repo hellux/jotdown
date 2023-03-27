@@ -98,7 +98,7 @@ impl<'s> Iterator for AttributeValueParts<'s> {
 // Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
 // indirection instead of always 24 bytes.
 #[allow(clippy::box_vec)]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct Attributes<'s>(Option<Box<Vec<(&'s str, AttributeValue<'s>)>>>);
 
 impl<'s> Attributes<'s> {
@@ -199,6 +199,21 @@ impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
         } else {
             Attributes(Some(attrs.into()))
         }
+    }
+}
+
+impl<'s> std::fmt::Debug for Attributes<'s> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        let mut first = true;
+        for (k, v) in self.iter() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            first = false;
+            write!(f, "{}=\"{}\"", k, v.raw)?;
+        }
+        write!(f, "}}")
     }
 }
 
