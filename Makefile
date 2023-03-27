@@ -104,6 +104,6 @@ clean:
 	(cd tests/suite && make clean)
 	rm -f tests/bench/*.dj
 	(cd tests/bench && make clean)
-	rm -f bench/*.dj
+	find bench -type l -path 'bench/*.dj' -print0 | xargs -0 rm -f
 	rm -rf tests/afl/out
 	(cd examples/jotdown_wasm && make clean)
