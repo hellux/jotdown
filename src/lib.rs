@@ -1687,6 +1687,76 @@ mod test {
         );
     }
 
+    #[ignore = "broken"]
+    #[test]
+    fn attr_inline_consecutive() {
+        test_parse!(
+            "_abc def_{.a}{.b #i}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            End(Paragraph),
+        );
+        test_parse!(
+            "_abc def_{.a}{%%}{.b #i}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            End(Paragraph),
+        );
+    }
+
+    #[ignore = "broken"]
+    #[test]
+    fn attr_inline_consecutive_invalid() {
+        test_parse!(
+            "_abc def_{.a}{.b #i}{.c invalid}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c invalid}".into()),
+            End(Paragraph),
+        );
+        test_parse!(
+            "_abc def_{.a}{.b #i}{%%}{.c invalid}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c invalid}".into()),
+            End(Paragraph),
+        );
+        test_parse!(
+            concat!("_abc def_{.a}{.b #i}{%%}{.c\n", "invalid}\n"),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c".into()),
+            Softbreak,
+            Str("invalid}".into()),
+            End(Paragraph),
+        );
+    }
+
     #[test]
     fn attr_inline_multiline() {
         test_parse!(
