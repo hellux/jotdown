@@ -1,0 +1,82 @@
+Inline{.a} attributes{#b} attached{c=d} to{.e} words{#f} probably{g=h}
+only{i=j} contain{.m} a{#n} single{o=pqrstuv} attribute{.wxyz} in{#å-ä-ö}
+the{абв=где} vast{.ёжз} majority{#ийк} of{мно=прс} cases{.туф}.
+
+However{.they #could potentially=contain .any #number of="attributes," .also
+#spanning multiple="lines," .even #the values="may span multiple lines
+like this,
+or even this"}. Attributes{.may}{#also}{be=concatenated}{.like}{#this}.
+
+[Attributes]{.abc} *may also*{ghi=jkl} _be attached to containers_{mno=pqr},
+{=they will most likely also contain a single attribute=}{.stu}.
+
+[{^Containers [_may *also*{.first}_{#second} be]{.third}^}{.fourth} nested]{#fifth}
+
+Attribute{values="can
+span
+any
+number
+of
+lines
+like
+a
+lot
+of
+lineee
+e
+ee
+e
+e
+e
+e
+s"
+%same
+with
+comments
+they
+can
+be
+lo
+o
+o
+o
+o
+ng%}
+
+Attribute{values="can
+span
+any
+number
+of
+lines
+like
+a
+lot
+of
+lineee
+e
+ee
+e
+e
+e
+e
+s"
+%even
+though
+they
+are
+long
+they
+could
+_*turn*_
+out
+to
+not
+be
+"attributes"
+at
+all
+in
+the
+end
+}
