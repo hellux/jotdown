@@ -239,6 +239,7 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     }
 }
 
+#[derive(Clone)]
 pub struct Validator {
     state: State,
 }

@@ -198,6 +198,14 @@ struct VerbatimState {
 }
 
 #[derive(Clone)]
+struct AttributesState {
+    elem_ty: AttributesElementType,
+    end_attr: usize,
+    valid_lines: usize,
+    validator: attr::Validator,
+}
+
+#[derive(Clone)]
 enum AttributesElementType {
     Container { e_placeholder: usize },
     Word,
@@ -214,7 +222,7 @@ pub struct Parser<'s> {
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
-    attributes: Option<AttributesElementType>,
+    attributes: Option<AttributesState>,
     /// Storage of cow strs, used to reduce size of [`Container`].
     pub(crate) store_cowstrs: Vec<CowStr<'s>>,
     /// Storage of attributes, used to reduce size of [`EventKind`].
@@ -389,11 +397,11 @@ impl<'s> Parser<'s> {
 
     fn parse_attributes(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Open(Delimiter::Brace) {
-            let elem_ty = self
-                .attributes
-                .take()
-                .unwrap_or(AttributesElementType::Word);
-            self.ahead_attributes(elem_ty, true)
+            if let Some(state) = self.attributes.take() {
+                self.resume_attributes(state, true, false)
+            } else {
+                self.ahead_attributes(AttributesElementType::Word, true)
+            }
         } else {
             debug_assert!(self.attributes.is_none());
             None
@@ -405,28 +413,49 @@ impl<'s> Parser<'s> {
         elem_ty: AttributesElementType,
         opener_eaten: bool,
     ) -> Option<ControlFlow> {
+        let state = AttributesState {
+            elem_ty,
+            end_attr: self.input.span.end() - usize::from(opener_eaten),
+            valid_lines: 0,
+            validator: attr::Validator::new(),
+        };
+        self.resume_attributes(state, opener_eaten, true)
+    }
+
+    fn resume_attributes(
+        &mut self,
+        mut state: AttributesState,
+        opener_eaten: bool,
+        first: bool,
+    ) -> Option<ControlFlow> {
         let start_attr = self.input.span.end() - usize::from(opener_eaten);
         debug_assert!(self.input.src[start_attr..].starts_with('{'));
 
-        let mut end_attr = start_attr;
-        let mut line_next = 0;
-        let mut valid_lines = 0;
-        let mut line_end = self.input.span_line.end();
+        let (mut line_next, mut line_start, mut line_end) = if first {
+            (0, start_attr, self.input.span_line.end())
+        } else {
+            let last = self.input.ahead.len() - 1;
+            (
+                self.input.ahead.len(),
+                self.input.ahead[last].start(),
+                self.input.ahead[last].end(),
+            )
+        };
         {
-            let mut line_start = start_attr;
-            let mut validator = attr::Validator::new();
-            let mut res = validator.parse(&self.input.src[line_start..line_end]);
+            let mut res = state.validator.parse(&self.input.src[line_start..line_end]);
             loop {
                 if let Some(len) = res.take() {
                     if len == 0 {
                         break;
                     }
-                    valid_lines = line_next;
-                    end_attr = line_start + len;
-                    if self.input.src[end_attr..].starts_with('{') {
-                        line_start = end_attr;
-                        validator.restart();
-                        res = validator.parse(&self.input.src[end_attr..line_end]);
+                    state.valid_lines = line_next;
+                    state.end_attr = line_start + len;
+                    if self.input.src[state.end_attr..].starts_with('{') {
+                        line_start = state.end_attr;
+                        state.validator.restart();
+                        res = state
+                            .validator
+                            .parse(&self.input.src[state.end_attr..line_end]);
                     } else {
                         break;
                     }
@@ -434,12 +463,12 @@ impl<'s> Parser<'s> {
                     line_next += 1;
                     line_start = l.start();
                     line_end = l.end();
-                    res = validator.parse(l.of(self.input.src));
+                    res = state.validator.parse(l.of(self.input.src));
                 } else if self.input.complete {
                     // no need to ask for more input
                     break;
                 } else {
-                    self.attributes = Some(elem_ty);
+                    self.attributes = Some(state);
                     if opener_eaten {
                         self.input.span = Span::empty_at(start_attr);
                         self.input.lexer = lex::Lexer::new(
@@ -451,7 +480,7 @@ impl<'s> Parser<'s> {
             }
         }
 
-        if start_attr == end_attr {
+        if start_attr == state.end_attr {
             return None;
         }
 
@@ -459,10 +488,10 @@ impl<'s> Parser<'s> {
         let attrs = {
             let first = Span::new(start_attr, self.input.span_line.end());
             let mut parser = attr::Parser::new(attr::Attributes::new());
-            for line in
-                std::iter::once(first).chain(self.input.ahead.iter().take(valid_lines).copied())
+            for line in std::iter::once(first)
+                .chain(self.input.ahead.iter().take(state.valid_lines).copied())
             {
-                let line = line.start()..usize::min(end_attr, line.end());
+                let line = line.start()..usize::min(state.end_attr, line.end());
                 parser.parse(&self.input.src[line]);
             }
             parser.finish()
@@ -472,20 +501,20 @@ impl<'s> Parser<'s> {
             let l = self.input.ahead.pop_front().unwrap();
             self.input.set_current_line(l);
         }
-        self.input.span = Span::new(start_attr, end_attr);
-        self.input.lexer = lex::Lexer::new(&self.input.src[end_attr..line_end]);
+        self.input.span = Span::new(start_attr, state.end_attr);
+        self.input.lexer = lex::Lexer::new(&self.input.src[state.end_attr..line_end]);
 
         if !attrs.is_empty() {
             let attr_index = self.store_attributes.len() as AttributesIndex;
             self.store_attributes.push(attrs);
             let attr_event = Event {
                 kind: EventKind::Attributes {
-                    container: matches!(elem_ty, AttributesElementType::Container { .. }),
+                    container: matches!(state.elem_ty, AttributesElementType::Container { .. }),
                     attrs: attr_index,
                 },
                 span: self.input.span,
             };
-            match elem_ty {
+            match state.elem_ty {
                 AttributesElementType::Container { e_placeholder } => {
                     self.events[e_placeholder] = attr_event;
                     if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
