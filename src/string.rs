@@ -6,6 +6,9 @@ use std::{borrow::Borrow, fmt::Display, ops::Deref, str::from_utf8};
 // tag and length.
 const MAX_INLINE_STR_LEN: usize = 4 * std::mem::size_of::<usize>() - 2;
 
+/// A clone-on-write string that is inlined if it is small enough.
+///
+/// Minimizes the number of heap allocations when working with small strings.
 #[derive(Debug, Eq)]
 pub enum CowStr<'s> {
     Owned(String),
@@ -14,6 +17,9 @@ pub enum CowStr<'s> {
 }
 
 impl<'s> CowStr<'s> {
+    /// Replaces all occurrences of `from` with `to`.
+    ///
+    /// Takes ownership of self and returns a new [`CowStr`].
     pub fn replace(self, from: &str, to: &str) -> Self {
         if from.is_empty() {
             return self;
@@ -69,6 +75,7 @@ impl<'s> CowStr<'s> {
         }
     }
 
+    /// Pushes a character to the end of the [`CowStr`].
     pub fn push(&mut self, c: char) {
         match self {
             CowStr::Owned(this) => this.push(c),
@@ -99,6 +106,7 @@ impl<'s> CowStr<'s> {
         }
     }
 
+    /// Pushes a string slice to the end of the [`CowStr`].
     pub fn push_str(&mut self, s: &str) {
         if s.is_empty() {
             return;
