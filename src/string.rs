@@ -215,3 +215,130 @@ impl<'s, 'a> FromIterator<&'a str> for CowStr<'s> {
         CowStr::Owned(FromIterator::from_iter(iter))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    macro_rules! assert_matches {
+        ($expression:expr, $pattern:pat) => {
+            match $expression {
+                $pattern => (),
+                ref e => panic!(
+                    "assertion failed: `{:?}` does not match `{}`",
+                    e,
+                    stringify!($pattern)
+                ),
+            }
+        };
+    }
+
+    use super::*;
+
+    #[test]
+    fn push_to_borrowed() {
+        let mut s = CowStr::Borrowed("hello");
+        s.push_str("a".repeat(MAX_INLINE_STR_LEN - 6).as_str());
+        assert_matches!(s, CowStr::Inlined(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Inlined(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Owned(..));
+    }
+
+    #[test]
+    fn push_to_inlined() {
+        let mut s = CowStr::Inlined([0; MAX_INLINE_STR_LEN], 0);
+        s.push_str("a".repeat(MAX_INLINE_STR_LEN - 1).as_str());
+        assert_matches!(s, CowStr::Inlined(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Inlined(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Owned(..));
+    }
+
+    #[test]
+    fn push_to_owned() {
+        let mut s = CowStr::Owned("hello".to_string());
+        s.push_str("a".repeat(MAX_INLINE_STR_LEN - 6).as_str());
+        assert_matches!(s, CowStr::Owned(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Owned(..));
+        s.push('a');
+        assert_matches!(s, CowStr::Owned(..));
+    }
+
+    #[test]
+    fn push_empty() {
+        let max_min1 = "a".repeat(MAX_INLINE_STR_LEN - 1);
+        let mut s = CowStr::Borrowed(&max_min1);
+        s.push_str("");
+        assert_matches!(s, CowStr::Borrowed(..));
+
+        let max = "a".repeat(MAX_INLINE_STR_LEN);
+        let mut s = CowStr::Borrowed(&max);
+        s.push_str("");
+        assert_matches!(s, CowStr::Borrowed(..));
+
+        let max_plus1 = "a".repeat(MAX_INLINE_STR_LEN + 1);
+        let mut s = CowStr::Borrowed(&max_plus1);
+        s.push_str("");
+        assert_matches!(s, CowStr::Borrowed(..));
+    }
+
+    #[test]
+    fn replace_borrowed() {
+        let string = "a".repeat(MAX_INLINE_STR_LEN - 1) + "b";
+        let s = CowStr::Borrowed(&string);
+        assert_matches!(s.clone().replace("b", ""), CowStr::Inlined(..));
+        assert_matches!(s.clone().replace("b", "c"), CowStr::Inlined(..));
+        assert_matches!(s.clone().replace("b", "cd"), CowStr::Owned(..));
+    }
+
+    #[test]
+    fn replace_inlined() {
+        let mut arr = [65; MAX_INLINE_STR_LEN];
+        arr[0] = 66;
+        let s = CowStr::Inlined(arr, MAX_INLINE_STR_LEN as u8);
+        assert_matches!(s.clone().replace("B", ""), CowStr::Inlined(..));
+        assert_matches!(s.clone().replace("B", "C"), CowStr::Inlined(..));
+        assert_matches!(s.clone().replace("B", "CD"), CowStr::Owned(..));
+    }
+
+    #[test]
+    fn replace_owned() {
+        let string = "a".repeat(MAX_INLINE_STR_LEN - 1) + "b";
+        // We need to create a new `s` each time, because we want to make sure the CowStr is of the
+        // Owned variant before replacing. Cloning the CowStr would inline it given the chance.
+        let s = CowStr::Owned(string.clone());
+        assert_matches!(s.replace("b", ""), CowStr::Owned(..));
+        let s = CowStr::Owned(string.clone());
+        assert_matches!(s.replace("b", "c"), CowStr::Owned(..));
+        let s = CowStr::Owned(string);
+        assert_matches!(s.replace("b", "cd"), CowStr::Owned(..));
+    }
+
+    #[test]
+    fn inline_replace() {
+        let mut s = CowStr::Borrowed("hello hello");
+        s.push_str(" hellohello");
+        assert_eq!(
+            s.clone().replace("djot", "jotdown").as_ref(),
+            "hello hello hellohello"
+        );
+        assert_eq!(s.clone().replace("hello", "hi").as_ref(), "hi hi hihi");
+
+        let mut s = CowStr::Borrowed("start middle");
+        s.push_str(" end");
+        assert_eq!(
+            s.clone().replace("start", "replaced").as_ref(),
+            "replaced middle end"
+        );
+        assert_eq!(
+            s.clone().replace("middle", "replaced").as_ref(),
+            "start replaced end"
+        );
+        assert_eq!(
+            s.clone().replace("end", "replaced").as_ref(),
+            "start middle replaced"
+        );
+    }
+}
