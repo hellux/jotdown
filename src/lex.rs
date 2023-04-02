@@ -13,7 +13,6 @@ pub(crate) struct Token {
 pub enum Kind {
     Text,
     Newline,
-    Whitespace,
     Nbsp,
     Hardbreak,
     Escape,
@@ -21,6 +20,7 @@ pub enum Kind {
     Close(Delimiter),
     Sym(Symbol),
     Seq(Sequence),
+    DollarBacktick(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +36,7 @@ pub enum Delimiter {
     Bracket,
     BraceQuote1,
     BraceQuote2,
+    Paren,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +56,6 @@ pub enum Symbol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sequence {
     Backtick,
-    Dollar,
     Hyphen,
     Period,
 }
@@ -64,7 +64,6 @@ impl Sequence {
     fn ch(self) -> char {
         match self {
             Self::Backtick => '`',
-            Self::Dollar => '$',
             Self::Period => '.',
             Self::Hyphen => '-',
         }
@@ -72,9 +71,9 @@ impl Sequence {
 }
 
 #[derive(Clone)]
-pub(crate) struct Lexer<I: Iterator + Clone> {
-    chars: I,
-    chars_non_peeked: I,
+pub(crate) struct Lexer<'s> {
+    src: &'s str,
+    chars: std::str::Chars<'s>,
     /// Next character should be escaped.
     escape: bool,
     /// Token to be peeked or next'ed.
@@ -83,11 +82,11 @@ pub(crate) struct Lexer<I: Iterator + Clone> {
     len: usize,
 }
 
-impl<I: Iterator<Item = char> + Clone> Lexer<I> {
-    pub fn new(chars: I) -> Lexer<I> {
+impl<'s> Lexer<'s> {
+    pub fn new(src: &'s str) -> Self {
         Lexer {
-            chars: chars.clone(),
-            chars_non_peeked: chars,
+            src,
+            chars: src.chars(),
             escape: false,
             next: None,
             len: 0,
@@ -103,13 +102,16 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
         self.next.as_ref()
     }
 
-    pub fn chars(&self) -> I {
-        self.chars_non_peeked.clone()
+    pub fn ahead(&self) -> &'s str {
+        &self.src[self.pos()..]
+    }
+
+    fn pos(&self) -> usize {
+        self.src.len() - self.chars.as_str().len() - self.next.as_ref().map_or(0, |t| t.len)
     }
 
     fn next_token(&mut self) -> Option<Token> {
         let mut current = self.token();
-        self.chars_non_peeked = self.chars.clone();
 
         // concatenate text tokens
         if let Some(Token { kind: Text, len }) = &mut current {
@@ -148,7 +150,6 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 
     fn token(&mut self) -> Option<Token> {
-        self.chars_non_peeked = self.chars.clone();
         self.len = 0;
 
         let first = self.eat_char()?;
@@ -167,6 +168,8 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             _ if escape && first == ' ' => Nbsp,
             _ if escape => Text,
 
+            '\n' => Newline,
+
             '\\' => {
                 if self
                     .peek_char()
@@ -179,14 +182,10 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                 }
             }
 
-            '\n' => Newline,
-            _ if first.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
-                Whitespace
-            }
-
             '[' => Open(Bracket),
             ']' => Close(Bracket),
+            '(' => Open(Paren),
+            ')' => Close(Paren),
             '{' => {
                 let explicit = match self.peek_char() {
                     Some('*') => Some(Open(BraceAsterisk)),
@@ -207,6 +206,7 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
                     Open(Brace)
                 }
             }
+            '}' => Close(Brace),
             '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
             '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
             '=' => self.maybe_eat_close_brace(Text, BraceEqual),
@@ -236,8 +236,21 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
             ':' => Sym(Colon),
 
             '`' => self.eat_seq(Backtick),
-            '$' => self.eat_seq(Dollar),
             '.' => self.eat_seq(Period),
+            '$' => {
+                self.eat_while(|c| c == '$');
+                let mut n_ticks: u8 = 0;
+                self.eat_while(|c| {
+                    if c == '`' {
+                        if let Some(l) = n_ticks.checked_add(1) {
+                            n_ticks = l;
+                            return true;
+                        }
+                    }
+                    false
+                });
+                DollarBacktick(n_ticks)
+            }
 
             _ => Text,
         };
@@ -267,17 +280,11 @@ impl<I: Iterator<Item = char> + Clone> Lexer<I> {
     }
 }
 
-impl<I: Iterator<Item = char> + Clone> Iterator for Lexer<I> {
+impl<'s> Iterator for Lexer<'s> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next
-            .take()
-            .map(|x| {
-                self.chars_non_peeked = self.chars.clone();
-                x
-            })
-            .or_else(|| self.next_token())
+        self.next.take().or_else(|| self.next_token())
     }
 }
 
@@ -291,7 +298,7 @@ mod test {
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src.chars()).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };
@@ -313,18 +320,11 @@ mod test {
         test_lex!("abc", Text.l(3));
         test_lex!(
             "para w/ some _emphasis_ and *strong*.",
-            Text.l(4),
-            Whitespace.l(1),
-            Text.l(2),
-            Whitespace.l(1),
-            Text.l(4),
-            Whitespace.l(1),
+            Text.l(13),
             Sym(Underscore).l(1),
             Text.l(8),
             Sym(Underscore).l(1),
-            Whitespace.l(1),
-            Text.l(3),
-            Whitespace.l(1),
+            Text.l(5),
             Sym(Asterisk).l(1),
             Text.l(6),
             Sym(Asterisk).l(1),
@@ -383,11 +383,17 @@ mod test {
         test_lex!("`", Seq(Backtick).l(1));
         test_lex!("```", Seq(Backtick).l(3));
         test_lex!(
-            "`$-.",
+            "`-.",
             Seq(Backtick).l(1),
-            Seq(Dollar).l(1),
             Seq(Hyphen).l(1),
             Seq(Period).l(1),
         );
+    }
+
+    #[test]
+    fn dollar_backtick() {
+        test_lex!("$`", DollarBacktick(1).l(2));
+        test_lex!("$$$`", DollarBacktick(1).l(4));
+        test_lex!("$$````", DollarBacktick(4).l(6));
     }
 }

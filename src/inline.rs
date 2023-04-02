@@ -1,12 +1,15 @@
 use crate::attr;
 use crate::lex;
+use crate::CowStr;
 use crate::Span;
 
 use lex::Delimiter;
+use lex::Sequence;
 use lex::Symbol;
 
 use Atom::*;
 use Container::*;
+use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom {
@@ -37,17 +40,15 @@ pub enum Container {
     RawFormat,
     InlineMath,
     DisplayMath,
-    /// Span is the reference link tag.
-    ReferenceLink,
-    /// Span is the reference link tag.
-    ReferenceImage,
-    /// Span is the URL.
-    InlineLink,
-    /// Span is the URL.
-    InlineImage,
+    ReferenceLink(CowStrIndex),
+    ReferenceImage(CowStrIndex),
+    InlineLink(CowStrIndex),
+    InlineImage(CowStrIndex),
     /// Open delimiter span is URL, closing is '>'.
     Autolink,
 }
+
+type CowStrIndex = u32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuoteType {
@@ -61,10 +62,14 @@ pub enum EventKind {
     Exit(Container),
     Atom(Atom),
     Str,
-    Whitespace,
-    Attributes,
+    Attributes {
+        container: bool,
+        attrs: AttributesIndex,
+    },
     Placeholder,
 }
+
+type AttributesIndex = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
@@ -72,26 +77,62 @@ pub struct Event {
     pub span: Span,
 }
 
-pub struct Parser<I: Iterator + Clone> {
-    /// Lexer, hosting upcoming source.
-    lexer: lex::Lexer<I>,
+#[derive(Clone)]
+pub struct Input<'s> {
+    src: &'s str,
+    /// Lexer.
+    lexer: lex::Lexer<'s>,
+    /// The block is complete, the final line has been provided.
+    complete: bool,
+    /// Span of current line.
+    span_line: Span,
+    /// Upcoming lines within the current block.
+    ahead: std::collections::VecDeque<Span>,
     /// Span of current event.
     span: Span,
-    /// Stack with kind and index of _potential_ openers for containers.
-    openers: Vec<(Delim, usize)>,
-    /// Buffer queue for next events. Events are buffered until no modifications due to future
-    /// characters are needed.
-    events: std::collections::VecDeque<Event>,
 }
 
-impl<I: Iterator<Item = char> + Clone> Parser<I> {
-    pub fn new(chars: I) -> Self {
+impl<'s> Input<'s> {
+    fn new(src: &'s str) -> Self {
         Self {
-            lexer: lex::Lexer::new(chars),
-            span: Span::new(0, 0),
-            openers: Vec::new(),
-            events: std::collections::VecDeque::new(),
+            src,
+            lexer: lex::Lexer::new(""),
+            complete: false,
+            span_line: Span::new(0, 0),
+            ahead: std::collections::VecDeque::new(),
+            span: Span::empty_at(0),
         }
+    }
+
+    fn feed_line(&mut self, line: Span, last: bool) {
+        self.complete = last;
+        if self.lexer.ahead().is_empty() {
+            if let Some(next) = self.ahead.pop_front() {
+                self.set_current_line(next);
+                self.ahead.push_back(line);
+            } else {
+                self.set_current_line(line);
+            }
+        } else {
+            self.ahead.push_back(line);
+        }
+    }
+
+    fn set_current_line(&mut self, line: Span) {
+        self.lexer = lex::Lexer::new(line.of(self.src));
+        self.span = line.empty_before();
+        self.span_line = line;
+    }
+
+    fn reset(&mut self) {
+        self.lexer = lex::Lexer::new("");
+        self.complete = false;
+        self.ahead.clear();
+        self.span = Span::empty_at(0);
+    }
+
+    fn last(&self) -> bool {
+        self.complete && self.ahead.is_empty()
     }
 
     fn eat(&mut self) -> Option<lex::Token> {
@@ -110,227 +151,344 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
         self.span = self.span.empty_after();
     }
 
-    fn parse_event(&mut self) -> Option<Event> {
-        self.reset_span();
-        self.eat().map(|first| {
-            self.parse_verbatim(&first)
-                .or_else(|| self.parse_attributes(&first))
+    fn ahead_raw_format(&mut self) -> Option<Span> {
+        if matches!(
+            self.lexer.peek().map(|t| &t.kind),
+            Some(lex::Kind::Open(Delimiter::BraceEqual))
+        ) {
+            let mut ahead = self.lexer.ahead().chars();
+            let mut end = false;
+            let len = (&mut ahead)
+                .skip(2) // {=
+                .take_while(|c| {
+                    if *c == '{' {
+                        return false;
+                    }
+                    if *c == '}' {
+                        end = true;
+                    };
+                    !end && !c.is_whitespace()
+                })
+                .map(char::len_utf8)
+                .sum();
+            (len > 0 && end).then(|| {
+                let tok = self.eat();
+                debug_assert_eq!(
+                    tok,
+                    Some(lex::Token {
+                        kind: lex::Kind::Open(Delimiter::BraceEqual),
+                        len: 2,
+                    })
+                );
+                self.lexer = lex::Lexer::new(ahead.as_str());
+                self.span.after(len)
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct VerbatimState {
+    event_opener: usize,
+    len_opener: u8,
+    non_whitespace_encountered: bool,
+    non_whitespace_last: Option<(lex::Kind, usize)>,
+}
+
+#[derive(Clone)]
+pub enum AttributesElementType {
+    Container { e_placeholder: usize },
+    Word,
+}
+
+#[derive(Clone)]
+pub struct Parser<'s> {
+    input: Input<'s>,
+    /// Stack with kind and index of _potential_ openers for containers.
+    openers: Vec<(Opener, usize)>,
+    /// Buffer queue for next events. Events are buffered until no modifications due to future
+    /// characters are needed.
+    events: std::collections::VecDeque<Event>,
+    /// State if inside a verbatim container.
+    verbatim: Option<VerbatimState>,
+    /// State if currently parsing potential attributes.
+    attributes: Option<AttributesElementType>,
+    /// Storage of cow strs, used to reduce size of [`Container`].
+    pub(crate) cow_strs: Vec<CowStr<'s>>,
+    /// Storage of attributes, used to reduce size of [`Container`].
+    pub(crate) attributes_store: Vec<attr::Attributes<'s>>,
+}
+
+pub enum ControlFlow {
+    /// At least one event has been emitted, continue parsing the line.
+    Continue,
+    /// Next line is needed to emit an event.
+    Next,
+    /// More lines are needed to emit an event. Unlike for the `Next` variant, the internal ahead
+    /// buffer has already been examined, and more lines need to retrieved from the block parser.
+    More,
+    /// Parsing of the line is completed.
+    Done,
+}
+
+impl<'s> Parser<'s> {
+    pub fn new(src: &'s str) -> Self {
+        Self {
+            input: Input::new(src),
+            openers: Vec::new(),
+            events: std::collections::VecDeque::new(),
+            verbatim: None,
+            attributes: None,
+            cow_strs: Vec::new(),
+            attributes_store: Vec::new(),
+        }
+    }
+
+    pub fn feed_line(&mut self, line: Span, last: bool) {
+        self.input.feed_line(line, last);
+    }
+
+    pub fn reset(&mut self) {
+        debug_assert!(self.events.is_empty());
+        self.input.reset();
+        self.openers.clear();
+        debug_assert!(self.attributes.is_none());
+        debug_assert!(self.verbatim.is_none());
+    }
+
+    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
+        self.events.push_back(Event { kind, span });
+        Some(Continue)
+    }
+
+    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
+        self.push_sp(kind, self.input.span)
+    }
+
+    fn parse_event(&mut self) -> ControlFlow {
+        self.input.reset_span();
+
+        if let Some(first) = self.input.eat() {
+            self.parse_attributes(&first)
+                .or_else(|| self.parse_verbatim(&first))
                 .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_symbol(&first))
                 .or_else(|| self.parse_footnote_reference(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
-                .unwrap_or(Event {
-                    kind: if matches!(first.kind, lex::Kind::Whitespace) {
-                        EventKind::Whitespace
-                    } else {
-                        EventKind::Str
-                    },
-                    span: self.span,
-                })
-        })
-    }
-
-    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<Event> {
-        match first.kind {
-            lex::Kind::Seq(lex::Sequence::Dollar) => {
-                let math_opt = (first.len <= 2)
-                    .then(|| {
-                        if let Some(lex::Token {
-                            kind: lex::Kind::Seq(lex::Sequence::Backtick),
-                            len,
-                        }) = self.peek()
-                        {
-                            Some((
-                                if first.len == 2 {
-                                    DisplayMath
-                                } else {
-                                    InlineMath
-                                },
-                                *len,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten();
-                if math_opt.is_some() {
-                    self.eat(); // backticks
-                }
-                math_opt
-            }
-            lex::Kind::Seq(lex::Sequence::Backtick) => Some((Verbatim, first.len)),
-            _ => None,
+                .unwrap_or_else(|| self.push(EventKind::Str).unwrap())
+        } else if self.input.last() {
+            Done
+        } else {
+            Next
         }
-        .map(|(mut kind, opener_len)| {
-            let e_attr = self.events.len();
-            self.events.push_back(Event {
-                kind: EventKind::Placeholder,
-                span: Span::empty_at(self.span.start()),
-            });
-            let opener_event = self.events.len();
-            self.events.push_back(Event {
-                kind: EventKind::Enter(kind),
-                span: self.span,
-            });
-
-            let mut span_inner = self.span.empty_after();
-            let mut span_outer = None;
-
-            let mut non_whitespace_first = None;
-            let mut non_whitespace_last = None;
-
-            while let Some(t) = self.eat() {
-                if matches!(t.kind, lex::Kind::Seq(lex::Sequence::Backtick)) && t.len == opener_len
-                {
-                    if matches!(kind, Verbatim)
-                        && matches!(
-                            self.lexer.peek().map(|t| &t.kind),
-                            Some(lex::Kind::Open(Delimiter::BraceEqual))
-                        )
-                    {
-                        let mut ahead = self.lexer.chars();
-                        let mut end = false;
-                        let len = (&mut ahead)
-                            .skip(2) // {=
-                            .take_while(|c| {
-                                if *c == '{' {
-                                    return false;
-                                }
-                                if *c == '}' {
-                                    end = true;
-                                };
-                                !end && !c.is_whitespace()
-                            })
-                            .map(char::len_utf8)
-                            .sum();
-                        if len > 0 && end {
-                            let tok = self.eat();
-                            debug_assert_eq!(
-                                tok,
-                                Some(lex::Token {
-                                    kind: lex::Kind::Open(Delimiter::BraceEqual),
-                                    len: 2,
-                                })
-                            );
-                            self.lexer = lex::Lexer::new(ahead);
-                            let span_format = self.span.after(len);
-                            kind = RawFormat;
-                            self.events[opener_event].kind = EventKind::Enter(kind);
-                            self.events[opener_event].span = span_format;
-                            self.span = span_format.translate(1); // }
-                            span_outer = Some(span_format);
-                        }
-                    }
-                    break;
-                }
-                if !matches!(t.kind, lex::Kind::Whitespace) {
-                    if non_whitespace_first.is_none() {
-                        non_whitespace_first = Some((t.kind, span_inner.end()));
-                    }
-                    non_whitespace_last = Some((t.kind, span_inner.end() + t.len));
-                }
-                span_inner = span_inner.extend(t.len);
-                self.reset_span();
-            }
-
-            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_first {
-                span_inner = span_inner.with_start(pos);
-            }
-            if let Some((lex::Kind::Seq(lex::Sequence::Backtick), pos)) = non_whitespace_last {
-                span_inner = span_inner.with_end(pos);
-            }
-
-            self.events.push_back(Event {
-                kind: EventKind::Str,
-                span: span_inner,
-            });
-
-            let ev = Event {
-                kind: EventKind::Exit(kind),
-                span: span_outer.unwrap_or(self.span),
-            };
-
-            if let Some((non_empty, span)) = self.ahead_attributes() {
-                self.span = span;
-                if non_empty {
-                    self.events[e_attr] = Event {
-                        kind: EventKind::Attributes,
-                        span,
-                    };
-                }
-            }
-
-            ev
-        })
     }
 
-    fn parse_attributes(&mut self, first: &lex::Token) -> Option<Event> {
-        if first.kind == lex::Kind::Open(Delimiter::Brace) {
-            let mut ahead = self.lexer.chars();
-            let (mut attr_len, mut has_attr) = attr::valid(std::iter::once('{').chain(&mut ahead));
-            attr_len = attr_len.saturating_sub(1); // rm {
-            if attr_len > 0 {
-                while attr_len > 0 {
-                    self.span = self.span.extend(attr_len);
-                    self.lexer = lex::Lexer::new(ahead.clone());
-
-                    let (l, non_empty) = attr::valid(&mut ahead);
-                    attr_len = l;
-                    has_attr |= non_empty;
+    fn parse_verbatim(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        if let Some(VerbatimState {
+            event_opener,
+            len_opener,
+            non_whitespace_encountered,
+            non_whitespace_last,
+        }) = &mut self.verbatim
+        {
+            let event_opener = *event_opener;
+            let len_opener = *len_opener;
+            if usize::from(len_opener) == first.len
+                && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
+            {
+                let raw_format = self.input.ahead_raw_format();
+                let mut span_closer = self.input.span;
+                if let Some(span_format) = raw_format {
+                    self.events[event_opener].kind = EventKind::Enter(RawFormat);
+                    self.events[event_opener].span = span_format;
+                    self.input.span = span_format.translate(1);
+                    span_closer = span_format;
+                };
+                let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
+                    debug_assert!(matches!(
+                        ty,
+                        Verbatim | RawFormat | InlineMath | DisplayMath
+                    ));
+                    ty
+                } else {
+                    panic!()
+                };
+                if let Some((lex::Kind::Seq(Sequence::Backtick), event_skip)) = non_whitespace_last
+                {
+                    self.events.drain(*event_skip..);
                 }
-
-                let set_attr = has_attr
-                    && self
-                        .events
-                        .back()
-                        .map_or(false, |e| e.kind == EventKind::Str);
-
-                Some(if set_attr {
-                    let i = self
-                        .events
-                        .iter()
-                        .rposition(|e| e.kind != EventKind::Str)
-                        .map_or(0, |i| i + 1);
-                    let span_str = self.events[i]
-                        .span
-                        .union(self.events[self.events.len() - 1].span);
-                    self.events.drain(i..);
-
-                    self.events.push_back(Event {
-                        kind: EventKind::Attributes,
-                        span: self.span,
-                    });
-                    self.events.push_back(Event {
-                        kind: EventKind::Enter(Container::Span),
-                        span: span_str.empty_before(),
-                    });
-                    self.events.push_back(Event {
-                        kind: EventKind::Str,
-                        span: span_str,
-                    });
-
-                    Event {
-                        kind: EventKind::Exit(Container::Span),
-                        span: span_str.empty_after(),
+                self.push_sp(EventKind::Exit(ty_opener), span_closer);
+                if raw_format.is_none()
+                    && self.input.peek().map_or(false, |t| {
+                        matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
+                    })
+                {
+                    self.ahead_attributes(
+                        AttributesElementType::Container {
+                            e_placeholder: event_opener - 1,
+                        },
+                        false,
+                    );
+                }
+                self.verbatim = None;
+            } else {
+                // continue verbatim
+                let is_whitespace = self
+                    .input
+                    .span
+                    .of(self.input.src)
+                    .chars()
+                    .all(char::is_whitespace);
+                if is_whitespace {
+                    if !*non_whitespace_encountered
+                        && self.input.peek().map_or(false, |t| {
+                            matches!(
+                                t.kind,
+                                lex::Kind::Seq(Sequence::Backtick) if t.len != len_opener.into(),
+                            )
+                        })
+                    {
+                        return Some(Continue); // skip whitespace
                     }
                 } else {
-                    Event {
-                        kind: EventKind::Placeholder,
-                        span: self.span.empty_before(),
-                    }
-                })
-            } else {
-                None
-            }
+                    *non_whitespace_encountered = true;
+                    *non_whitespace_last = Some((first.kind, self.events.len() + 1));
+                }
+                self.push(EventKind::Str);
+            };
+            Some(Continue)
+        } else {
+            let (ty, len_opener) = match first.kind {
+                lex::Kind::DollarBacktick(l) if first.len - l as usize == 1 => {
+                    Some((InlineMath, l))
+                }
+                lex::Kind::DollarBacktick(l) if first.len - l as usize == 2 => {
+                    Some((DisplayMath, l))
+                }
+                lex::Kind::Seq(Sequence::Backtick) if first.len < 256 => {
+                    Some((Verbatim, first.len as u8))
+                }
+                _ => None,
+            }?;
+            self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
+            self.verbatim = Some(VerbatimState {
+                event_opener: self.events.len(),
+                len_opener,
+                non_whitespace_encountered: false,
+                non_whitespace_last: None,
+            });
+            self.attributes = None;
+            self.push(EventKind::Enter(ty))
+        }
+    }
+
+    fn parse_attributes(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        if first.kind == lex::Kind::Open(Delimiter::Brace) {
+            let elem_ty = self
+                .attributes
+                .take()
+                .unwrap_or(AttributesElementType::Word);
+            self.ahead_attributes(elem_ty, true)
         } else {
             None
         }
     }
 
-    fn parse_autolink(&mut self, first: &lex::Token) -> Option<Event> {
+    fn ahead_attributes(
+        &mut self,
+        elem_ty: AttributesElementType,
+        opener_eaten: bool,
+    ) -> Option<ControlFlow> {
+        let start_attr = self.input.span.end() - usize::from(opener_eaten);
+        debug_assert!(self.input.src[start_attr..].starts_with('{'));
+
+        let mut line_start = start_attr;
+        let mut line_end = self.input.span_line.end();
+        let mut line = 0;
+        let mut end_attr = start_attr;
+        let mut attrs = attr::Attributes::new();
+        let mut parser = attr::Parser::new(&mut attrs, &self.input.src[start_attr..line_end]);
+
+        loop {
+            match parser.step() {
+                attr::StepResult::Done => {
+                    end_attr = line_start + parser.len();
+                    if self.input.src[end_attr..].starts_with('{') {
+                        parser.restart();
+                    } else {
+                        break;
+                    }
+                }
+                attr::StepResult::Invalid => break,
+                attr::StepResult::Valid => {}
+                attr::StepResult::More => {
+                    if let Some(l) = self.input.ahead.get(line) {
+                        line += 1;
+                        line_start = l.start();
+                        line_end = l.end();
+                        parser.set_input(l.of(self.input.src));
+                    } else if self.input.complete {
+                        // no need to ask for more input
+                        break;
+                    } else {
+                        self.attributes = Some(elem_ty);
+                        if opener_eaten {
+                            self.input.span = Span::empty_at(start_attr);
+                            self.input.lexer = lex::Lexer::new(
+                                &self.input.src[start_attr..self.input.span_line.end()],
+                            );
+                        }
+                        return Some(More);
+                    }
+                }
+            }
+        }
+
+        if start_attr == end_attr {
+            return None;
+        }
+
+        for _ in 0..line {
+            let l = self.input.ahead.pop_front().unwrap();
+            self.input.set_current_line(l);
+        }
+        self.input.span = Span::new(start_attr, end_attr);
+        self.input.lexer = lex::Lexer::new(&self.input.src[end_attr..line_end]);
+
+        if !attrs.is_empty() {
+            let attr_index = self.attributes_store.len() as AttributesIndex;
+            self.attributes_store.push(attrs);
+            let attr_event = Event {
+                kind: EventKind::Attributes {
+                    container: matches!(elem_ty, AttributesElementType::Container { .. }),
+                    attrs: attr_index,
+                },
+                span: self.input.span,
+            };
+            match elem_ty {
+                AttributesElementType::Container { e_placeholder } => {
+                    self.events[e_placeholder] = attr_event;
+                    if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
+                        self.events[e_placeholder + 1].kind = EventKind::Enter(Span);
+                        let last = self.events.len() - 1;
+                        self.events[last].kind = EventKind::Exit(Span);
+                    }
+                }
+                AttributesElementType::Word => {
+                    self.events.push_back(attr_event);
+                }
+            }
+        }
+
+        Some(Continue)
+    }
+
+    fn parse_autolink(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Lt) {
-            let mut ahead = self.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut is_url = false;
             let len = (&mut ahead)
@@ -348,31 +506,21 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
                 .map(char::len_utf8)
                 .sum();
-            (end && is_url).then(|| {
-                self.lexer = lex::Lexer::new(ahead);
-                self.span = self.span.after(len);
-                self.events.push_back(Event {
-                    kind: EventKind::Enter(Autolink),
-                    span: self.span,
-                });
-                self.events.push_back(Event {
-                    kind: EventKind::Str,
-                    span: self.span,
-                });
-                self.span = self.span.after(1);
-                Event {
-                    kind: EventKind::Exit(Autolink),
-                    span: self.span,
-                }
-            })
-        } else {
-            None
+            if end && is_url {
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.span = self.input.span.after(len);
+                self.push(EventKind::Enter(Autolink));
+                self.push(EventKind::Str);
+                self.input.span = self.input.span.after(1);
+                return self.push(EventKind::Exit(Autolink));
+            }
         }
+        None
     }
 
-    fn parse_symbol(&mut self, first: &lex::Token) -> Option<Event> {
+    fn parse_symbol(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Colon) {
-            let mut ahead = self.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut valid = true;
             let len = (&mut ahead)
@@ -386,32 +534,28 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
                 .map(char::len_utf8)
                 .sum();
-            (end && valid).then(|| {
-                self.lexer = lex::Lexer::new(ahead);
-                self.span = self.span.after(len);
-                let span = self.span;
-                self.span = self.span.after(1);
-                Event {
-                    kind: EventKind::Atom(Symbol),
-                    span,
-                }
-            })
-        } else {
-            None
+            if end && valid {
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.span = self.input.span.after(len);
+                self.push(EventKind::Atom(Symbol));
+                self.input.span = self.input.span.after(1);
+                return Some(Continue);
+            }
         }
+        None
     }
 
-    fn parse_footnote_reference(&mut self, first: &lex::Token) -> Option<Event> {
+    fn parse_footnote_reference(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Open(Delimiter::Bracket)
             && matches!(
-                self.peek(),
+                self.input.peek(),
                 Some(lex::Token {
                     kind: lex::Kind::Sym(Symbol::Caret),
                     ..
                 })
             )
         {
-            let tok = self.eat();
+            let tok = self.input.eat();
             debug_assert_eq!(
                 tok,
                 Some(lex::Token {
@@ -419,7 +563,7 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                     len: 1,
                 })
             );
-            let mut ahead = self.lexer.chars();
+            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let len = (&mut ahead)
                 .take_while(|c| {
@@ -433,280 +577,343 @@ impl<I: Iterator<Item = char> + Clone> Parser<I> {
                 })
                 .map(char::len_utf8)
                 .sum();
-            end.then(|| {
-                self.lexer = lex::Lexer::new(ahead);
-                self.span = self.span.after(len);
-                let ev = Event {
-                    kind: EventKind::Atom(FootnoteReference),
-                    span: self.span,
-                };
-                self.span = self.span.after(1);
-                ev
-            })
-        } else {
-            None
+            if end {
+                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.span = self.input.span.after(len);
+                self.push(EventKind::Atom(FootnoteReference));
+                self.input.span = self.input.span.after(1);
+                return Some(Continue);
+            }
         }
+        None
     }
 
-    fn parse_container(&mut self, first: &lex::Token) -> Option<Event> {
-        Delim::from_token(first.kind).and_then(|(delim, dir)| {
-            self.openers
-                .iter()
-                .rposition(|(d, _)| {
-                    *d == delim || matches!((d, delim), (Delim::Span(..), Delim::Span(..)))
-                })
-                .and_then(|o| {
-                    if matches!(dir, Dir::Open) {
-                        return None;
-                    }
-                    let whitespace_after = self.events.back().map_or(false, |ev| {
-                        matches!(ev.kind, EventKind::Whitespace | EventKind::Atom(Softbreak))
-                    });
-                    if matches!(dir, Dir::Both) && whitespace_after {
-                        return None;
-                    }
+    fn parse_container(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        self.openers
+            .iter()
+            .rposition(|(o, _)| o.closed_by(first.kind))
+            .and_then(|o| {
+                let (opener, e) = self.openers[o];
+                let (e_attr, e_opener) = if let Opener::Link { event_span, .. } = opener {
+                    (event_span - 1, e)
+                } else {
+                    (e, e + 1)
+                };
 
-                    let (d, e) = self.openers[o];
-                    let e_attr = e;
-                    let e_opener = e + 1;
-                    if e_opener == self.events.len() - 1 {
-                        // empty container
-                        return None;
+                if e_opener == self.events.len() - 1 && !matches!(opener, Opener::Link { .. }) {
+                    // empty container
+                    return None;
+                }
+                let whitespace_before = self.events.back().map_or(false, |ev| {
+                    ev.span
+                        .of(self.input.src)
+                        .chars()
+                        .last()
+                        .map_or(false, char::is_whitespace)
+                });
+                if opener.bidirectional() && whitespace_before {
+                    return None;
+                }
+
+                self.openers.drain(o..);
+                let closed = match DelimEventKind::from(opener) {
+                    DelimEventKind::Container(cont) => {
+                        self.events[e_opener].kind = EventKind::Enter(cont);
+                        self.push(EventKind::Exit(cont))
                     }
-
-                    let inner_span = self.events[e_opener].span.between(self.span);
-                    let mut event_closer = match DelimEventKind::from(d) {
-                        DelimEventKind::Container(cont) => {
-                            self.events[e_opener].kind = EventKind::Enter(cont);
-                            Some(Event {
-                                kind: EventKind::Exit(cont),
-                                span: self.span,
-                            })
-                        }
-                        DelimEventKind::Quote(ty) => {
-                            self.events[e_opener].kind =
-                                EventKind::Atom(Atom::Quote { ty, left: true });
-                            Some(Event {
-                                kind: EventKind::Atom(Atom::Quote { ty, left: false }),
-                                span: self.span,
-                            })
-                        }
-                        DelimEventKind::Span(ty) => self.post_span(ty, e_opener),
-                    };
-                    self.openers.drain(o..);
-
-                    if let Some(event_closer) = &mut event_closer {
-                        if event_closer.span.is_empty()
-                            && matches!(
-                                event_closer.kind,
-                                EventKind::Exit(
-                                    Container::ReferenceLink | Container::ReferenceImage
-                                )
-                            )
+                    DelimEventKind::Quote(ty) => {
+                        self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
+                        self.push(EventKind::Atom(Quote { ty, left: false }))
+                    }
+                    DelimEventKind::Span(ty) => {
+                        if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
+                            self.input.peek().map(|t| t.kind)
                         {
-                            assert_eq!(self.events[e_opener].span, event_closer.span);
-                            event_closer.span = inner_span;
-                            self.events[e_opener].span = inner_span;
+                            self.push(EventKind::Str); // ]
+                            self.openers.push((
+                                Opener::Link {
+                                    event_span: e_opener,
+                                    image: matches!(ty, SpanType::Image),
+                                    inline: matches!(d, Delimiter::Paren),
+                                },
+                                self.events.len(),
+                            ));
+                            self.input.reset_span();
+                            self.input.eat(); // [ or (
+                            return self.push(EventKind::Str);
+                        } else {
+                            self.push(EventKind::Str) // ]
                         }
                     }
+                    DelimEventKind::Link {
+                        event_span,
+                        inline,
+                        image,
+                    } => {
+                        let span_spec = self.events[e_opener].span.between(self.input.span);
+                        let multiline =
+                            self.events[e_opener].span.start() < self.input.span_line.start();
 
-                    if let Some((non_empty, span)) = self.ahead_attributes() {
-                        if non_empty {
-                            self.events[e_attr] = Event {
-                                kind: EventKind::Attributes,
-                                span,
+                        let spec: CowStr = if span_spec.is_empty() && !inline {
+                            let span_spec = self.events[event_span]
+                                .span
+                                .between(self.events[e_opener - 1].span);
+                            let events_text = self
+                                .events
+                                .iter()
+                                .skip(event_span + 1)
+                                .take(e_opener - event_span - 2);
+
+                            if multiline
+                                || events_text.clone().any(|ev| {
+                                    !matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
+                                })
+                            {
+                                let mut spec = CowStr::Borrowed("");
+                                for text in events_text
+                                    .filter(|ev| {
+                                        matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
+                                    })
+                                    .map(|ev| ev.span.of(self.input.src))
+                                {
+                                    spec.push_str(text);
+                                }
+                                spec
+                            } else {
+                                span_spec.of(self.input.src).into()
+                            }
+                        } else if multiline {
+                            let mut spec = CowStr::Borrowed("");
+                            let mut first_part = true;
+                            let mut span = self.events[e_opener].span.empty_after();
+
+                            let mut append = |span: Span| {
+                                span.of(self.input.src).split('\n').for_each(|s| {
+                                    if !s.is_empty() {
+                                        if !inline && !first_part {
+                                            spec.push(' ');
+                                        }
+                                        spec.push_str(s);
+                                        first_part = false;
+                                    }
+                                })
                             };
-                        }
 
-                        if event_closer.is_none() {
-                            self.events[e_opener].kind = EventKind::Enter(Container::Span);
-                            event_closer = Some(Event {
-                                kind: EventKind::Exit(Container::Span),
-                                span: self.span,
-                            });
-                        }
+                            for ev in self.events.iter().skip(e_opener + 1) {
+                                if span.end() == ev.span.start() {
+                                    span = Span::new(span.start(), ev.span.end());
+                                } else {
+                                    append(span);
+                                    span = ev.span;
+                                }
+                            }
+                            append(span);
 
-                        self.span = span;
-                    }
-
-                    event_closer
-                })
-                .or_else(|| {
-                    if matches!(dir, Dir::Close) {
-                        return None;
-                    }
-                    if matches!(dir, Dir::Both)
-                        && self
-                            .peek()
-                            .map_or(true, |t| matches!(t.kind, lex::Kind::Whitespace))
-                    {
-                        return None;
-                    }
-                    if matches!(delim, Delim::SingleQuoted | Delim::DoubleQuoted)
-                        && self
-                            .events
-                            .back()
-                            .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
-                    {
-                        return None;
-                    }
-                    self.openers.push((delim, self.events.len()));
-                    // push dummy event in case attributes are encountered after closing delimiter
-                    self.events.push_back(Event {
-                        kind: EventKind::Placeholder,
-                        span: Span::empty_at(self.span.start()),
-                    });
-                    // use non-opener for now, replace if closed later
-                    Some(Event {
-                        kind: match delim {
-                            Delim::SingleQuoted => EventKind::Atom(Quote {
-                                ty: QuoteType::Single,
-                                left: false,
-                            }),
-                            Delim::DoubleQuoted => EventKind::Atom(Quote {
-                                ty: QuoteType::Double,
-                                left: true,
-                            }),
-                            _ => EventKind::Str,
-                        },
-                        span: self.span,
-                    })
-                })
-        })
-    }
-
-    fn ahead_attributes(&mut self) -> Option<(bool, Span)> {
-        let mut span = self.span.empty_after();
-        let mut ahead = self.lexer.chars();
-        let (mut attr_len, mut has_attr) = attr::valid(&mut ahead);
-        if attr_len > 0 {
-            while attr_len > 0 {
-                span = span.extend(attr_len);
-                self.lexer = lex::Lexer::new(ahead.clone());
-
-                let (l, non_empty) = attr::valid(&mut ahead);
-                has_attr |= non_empty;
-                attr_len = l;
-            }
-            Some((has_attr, span))
-        } else {
-            None
-        }
-    }
-
-    fn post_span(&mut self, ty: SpanType, opener_event: usize) -> Option<Event> {
-        let mut ahead = self.lexer.chars();
-        match ahead.next() {
-            Some(opener @ ('[' | '(')) => {
-                let img = ty == SpanType::Image;
-                let (closer, kind) = match opener {
-                    '[' => (']', if img { ReferenceImage } else { ReferenceLink }),
-                    '(' => (')', if img { InlineImage } else { InlineLink }),
-                    _ => unreachable!(),
-                };
-                let mut end = false;
-                let len = (&mut ahead)
-                    .take_while(|c| {
-                        if *c == opener {
-                            return false;
-                        }
-                        if *c == closer {
-                            end = true;
+                            spec
+                        } else {
+                            span_spec.of(self.input.src).into()
                         };
-                        !end
-                    })
-                    .map(char::len_utf8)
-                    .sum();
-                end.then(|| {
-                    let span = self.span.after(len).translate(1);
-                    (kind, span)
+
+                        let idx = self.cow_strs.len() as CowStrIndex;
+                        self.cow_strs.push(spec);
+                        let container = match (image, inline) {
+                            (false, false) => ReferenceLink(idx),
+                            (false, true) => InlineLink(idx),
+                            (true, false) => ReferenceImage(idx),
+                            (true, true) => InlineImage(idx),
+                        };
+                        self.events[event_span].kind = EventKind::Enter(container);
+                        self.events[e_opener - 1] = Event {
+                            kind: EventKind::Exit(container),
+                            span: Span::new(
+                                self.events[e_opener - 1].span.start(),
+                                span_spec.end() + 1,
+                            ),
+                        };
+                        self.events.drain(e_opener..);
+                        Some(Continue)
+                    }
+                };
+
+                if self.input.peek().map_or(false, |t| {
+                    matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
+                }) {
+                    self.ahead_attributes(
+                        AttributesElementType::Container {
+                            e_placeholder: e_attr,
+                        },
+                        false,
+                    )
+                } else {
+                    closed
+                }
+            })
+            .or_else(|| {
+                let opener = Opener::from_token(first.kind)?;
+                let whitespace_after = self
+                    .input
+                    .lexer
+                    .ahead()
+                    .chars()
+                    .next()
+                    .map_or(true, char::is_whitespace);
+                if opener.bidirectional() && whitespace_after {
+                    return None;
+                }
+                let whitespace_before = self.events.back().map_or(false, |ev| {
+                    ev.span
+                        .of(self.input.src)
+                        .chars()
+                        .last()
+                        .map_or(false, char::is_whitespace)
+                });
+                if matches!(opener, Opener::SingleQuoted | Opener::DoubleQuoted)
+                    && self
+                        .events
+                        .back()
+                        .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                    && !whitespace_before
+                {
+                    return None;
+                }
+                self.openers.push((opener, self.events.len()));
+                // push dummy event in case attributes are encountered after closing delimiter
+                self.push_sp(
+                    EventKind::Placeholder,
+                    Span::empty_at(self.input.span.start()),
+                );
+                // use non-opener for now, replace if closed later
+                self.push(match opener {
+                    Opener::SingleQuoted => EventKind::Atom(Quote {
+                        ty: QuoteType::Single,
+                        left: false,
+                    }),
+                    Opener::DoubleQuoted => EventKind::Atom(Quote {
+                        ty: QuoteType::Double,
+                        left: true,
+                    }),
+                    _ => EventKind::Str,
                 })
+            })
+    }
+
+    fn parse_atom(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        let atom = match first.kind {
+            lex::Kind::Newline => Softbreak,
+            lex::Kind::Hardbreak => Hardbreak,
+            lex::Kind::Escape => Escape,
+            lex::Kind::Nbsp => Nbsp,
+            lex::Kind::Seq(Sequence::Period) if first.len >= 3 => {
+                while self.input.span.len() > 3 {
+                    self.push_sp(EventKind::Atom(Ellipsis), self.input.span.with_len(3));
+                    self.input.span = self.input.span.skip(3);
+                }
+                if self.input.span.len() == 3 {
+                    Ellipsis
+                } else {
+                    return self.push(EventKind::Str);
+                }
             }
-            _ => None,
+            lex::Kind::Seq(Sequence::Hyphen) if first.len >= 2 => {
+                let (m, n) = if first.len % 3 == 0 {
+                    (first.len / 3, 0)
+                } else if first.len % 2 == 0 {
+                    (0, first.len / 2)
+                } else {
+                    let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
+                    ((first.len - 2 * n) / 3, n)
+                };
+                std::iter::repeat(EmDash)
+                    .take(m)
+                    .chain(std::iter::repeat(EnDash).take(n))
+                    .for_each(|atom| {
+                        let l = if matches!(atom, EnDash) { 2 } else { 3 };
+                        self.push_sp(EventKind::Atom(atom), self.input.span.with_len(l));
+                        self.input.span = self.input.span.skip(l);
+                    });
+                return Some(Continue);
+            }
+            lex::Kind::Open(Delimiter::BraceQuote1) => Quote {
+                ty: QuoteType::Single,
+                left: true,
+            },
+            lex::Kind::Sym(Symbol::Quote1) | lex::Kind::Close(Delimiter::BraceQuote1) => Quote {
+                ty: QuoteType::Single,
+                left: false,
+            },
+            lex::Kind::Open(Delimiter::BraceQuote2) => Quote {
+                ty: QuoteType::Double,
+                left: true,
+            },
+            lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2) => Quote {
+                ty: QuoteType::Double,
+                left: false,
+            },
+            _ => return None,
+        };
+
+        self.push(EventKind::Atom(atom))
+    }
+
+    fn merge_str_events(&mut self, span_str: Span) -> Event {
+        let mut span = span_str;
+        let should_merge = |e: &Event, span: Span| {
+            matches!(e.kind, EventKind::Str | EventKind::Placeholder)
+                && span.end() == e.span.start()
+        };
+        while self.events.front().map_or(false, |e| should_merge(e, span)) {
+            let ev = self.events.pop_front().unwrap();
+            span = span.union(ev.span);
         }
-        .map(|(kind, span)| {
-            self.lexer = lex::Lexer::new(ahead);
-            self.events[opener_event].kind = EventKind::Enter(kind);
-            self.events[opener_event].span = span;
-            self.span = span.translate(1);
+
+        if matches!(
+            self.events.front().map(|ev| &ev.kind),
+            Some(EventKind::Attributes {
+                container: false,
+                ..
+            })
+        ) {
+            self.apply_word_attributes(span)
+        } else {
             Event {
-                kind: EventKind::Exit(kind),
+                kind: EventKind::Str,
                 span,
             }
-        })
+        }
     }
 
-    fn parse_atom(&mut self, first: &lex::Token) -> Option<Event> {
-        let atom =
-            match first.kind {
-                lex::Kind::Newline => Softbreak,
-                lex::Kind::Hardbreak => Hardbreak,
-                lex::Kind::Escape => Escape,
-                lex::Kind::Nbsp => Nbsp,
-                lex::Kind::Seq(lex::Sequence::Period) if first.len >= 3 => {
-                    while self.span.len() > 3 {
-                        self.events.push_back(Event {
-                            kind: EventKind::Atom(Ellipsis),
-                            span: self.span.with_len(3),
-                        });
-                        self.span = self.span.skip(3);
-                    }
-                    if self.span.len() == 3 {
-                        Ellipsis
-                    } else {
-                        return Some(Event {
-                            kind: EventKind::Str,
-                            span: self.span,
-                        });
-                    }
-                }
-                lex::Kind::Seq(lex::Sequence::Hyphen) if first.len >= 2 => {
-                    let (m, n) = if first.len % 3 == 0 {
-                        (first.len / 3, 0)
-                    } else if first.len % 2 == 0 {
-                        (0, first.len / 2)
-                    } else {
-                        let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
-                        ((first.len - 2 * n) / 3, n)
-                    };
-                    std::iter::repeat(EmDash)
-                        .take(m)
-                        .chain(std::iter::repeat(EnDash).take(n))
-                        .for_each(|atom| {
-                            let l = if matches!(atom, EnDash) { 2 } else { 3 };
-                            self.events.push_back(Event {
-                                kind: EventKind::Atom(atom),
-                                span: self.span.with_len(l),
-                            });
-                            self.span = self.span.skip(l);
-                        });
-                    return self.events.pop_back();
-                }
-                lex::Kind::Open(lex::Delimiter::BraceQuote1) => Quote {
-                    ty: QuoteType::Single,
-                    left: true,
-                },
-                lex::Kind::Sym(lex::Symbol::Quote1)
-                | lex::Kind::Close(lex::Delimiter::BraceQuote1) => Quote {
-                    ty: QuoteType::Single,
-                    left: false,
-                },
-                lex::Kind::Open(lex::Delimiter::BraceQuote2) => Quote {
-                    ty: QuoteType::Double,
-                    left: true,
-                },
-                lex::Kind::Sym(lex::Symbol::Quote2)
-                | lex::Kind::Close(lex::Delimiter::BraceQuote2) => Quote {
-                    ty: QuoteType::Double,
-                    left: false,
-                },
-                _ => return None,
-            };
-
-        Some(Event {
-            kind: EventKind::Atom(atom),
-            span: self.span,
-        })
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
+        if let Some(i) = span_str
+            .of(self.input.src)
+            .bytes()
+            .rposition(|c| c.is_ascii_whitespace())
+        {
+            let before = span_str.with_len(i + 1);
+            let word = span_str.skip(i + 1);
+            self.events.push_front(Event {
+                kind: EventKind::Str,
+                span: word,
+            });
+            Event {
+                kind: EventKind::Str,
+                span: before,
+            }
+        } else {
+            let attr = self.events.pop_front().unwrap();
+            self.events.push_front(Event {
+                kind: EventKind::Exit(Span),
+                span: span_str.empty_after(),
+            });
+            self.events.push_front(Event {
+                kind: EventKind::Str,
+                span: span_str,
+            });
+            self.events.push_front(Event {
+                kind: EventKind::Enter(Span),
+                span: span_str.empty_before(),
+            });
+            attr
+        }
     }
 }
 
@@ -723,7 +930,7 @@ enum SpanType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Delim {
+enum Opener {
     Span(SpanType),
     Strong(Directionality),
     Emphasis(Directionality),
@@ -734,52 +941,81 @@ enum Delim {
     Insert,
     SingleQuoted,
     DoubleQuoted,
+    Link {
+        event_span: usize,
+        image: bool,
+        inline: bool,
+    },
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Dir {
-    Open,
-    Close,
-    Both,
-}
-
-impl Delim {
-    fn from_token(kind: lex::Kind) -> Option<(Self, Dir)> {
-        use Delim::*;
-        use Dir::{Both, Close, Open};
+impl Opener {
+    fn from_token(kind: lex::Kind) -> Option<Self> {
         use Directionality::{Bi, Uni};
+        use Opener::*;
         use SpanType::{General, Image};
 
         match kind {
-            lex::Kind::Sym(Symbol::Asterisk) => Some((Strong(Bi), Both)),
-            lex::Kind::Sym(Symbol::Underscore) => Some((Emphasis(Bi), Both)),
-            lex::Kind::Sym(Symbol::Caret) => Some((Superscript(Bi), Both)),
-            lex::Kind::Sym(Symbol::Tilde) => Some((Subscript(Bi), Both)),
-            lex::Kind::Sym(Symbol::Quote1) => Some((SingleQuoted, Both)),
-            lex::Kind::Sym(Symbol::Quote2) => Some((DoubleQuoted, Both)),
-            lex::Kind::Sym(Symbol::ExclaimBracket) => Some((Span(Image), Open)),
-            lex::Kind::Open(Delimiter::Bracket) => Some((Span(General), Open)),
-            lex::Kind::Close(Delimiter::Bracket) => Some((Span(General), Close)),
-            lex::Kind::Open(Delimiter::BraceAsterisk) => Some((Strong(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceAsterisk) => Some((Strong(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceUnderscore) => Some((Emphasis(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceCaret) => Some((Superscript(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceCaret) => Some((Superscript(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceTilde) => Some((Subscript(Uni), Open)),
-            lex::Kind::Close(Delimiter::BraceTilde) => Some((Subscript(Uni), Close)),
-            lex::Kind::Open(Delimiter::BraceEqual) => Some((Mark, Open)),
-            lex::Kind::Close(Delimiter::BraceEqual) => Some((Mark, Close)),
-            lex::Kind::Open(Delimiter::BraceHyphen) => Some((Delete, Open)),
-            lex::Kind::Close(Delimiter::BraceHyphen) => Some((Delete, Close)),
-            lex::Kind::Open(Delimiter::BracePlus) => Some((Insert, Open)),
-            lex::Kind::Close(Delimiter::BracePlus) => Some((Insert, Close)),
-            lex::Kind::Open(Delimiter::BraceQuote1) => Some((SingleQuoted, Open)),
-            lex::Kind::Close(Delimiter::BraceQuote1) => Some((SingleQuoted, Close)),
-            lex::Kind::Open(Delimiter::BraceQuote2) => Some((DoubleQuoted, Open)),
-            lex::Kind::Close(Delimiter::BraceQuote2) => Some((DoubleQuoted, Close)),
+            lex::Kind::Sym(Symbol::Asterisk) => Some(Strong(Bi)),
+            lex::Kind::Sym(Symbol::Underscore) => Some(Emphasis(Bi)),
+            lex::Kind::Sym(Symbol::Caret) => Some(Superscript(Bi)),
+            lex::Kind::Sym(Symbol::Tilde) => Some(Subscript(Bi)),
+            lex::Kind::Sym(Symbol::Quote1) => Some(SingleQuoted),
+            lex::Kind::Sym(Symbol::Quote2) => Some(DoubleQuoted),
+            lex::Kind::Sym(Symbol::ExclaimBracket) => Some(Span(Image)),
+            lex::Kind::Open(Delimiter::Bracket) => Some(Span(General)),
+            lex::Kind::Open(Delimiter::BraceAsterisk) => Some(Strong(Uni)),
+            lex::Kind::Open(Delimiter::BraceUnderscore) => Some(Emphasis(Uni)),
+            lex::Kind::Open(Delimiter::BraceCaret) => Some(Superscript(Uni)),
+            lex::Kind::Open(Delimiter::BraceTilde) => Some(Subscript(Uni)),
+            lex::Kind::Open(Delimiter::BraceEqual) => Some(Mark),
+            lex::Kind::Open(Delimiter::BraceHyphen) => Some(Delete),
+            lex::Kind::Open(Delimiter::BracePlus) => Some(Insert),
+            lex::Kind::Open(Delimiter::BraceQuote1) => Some(SingleQuoted),
+            lex::Kind::Open(Delimiter::BraceQuote2) => Some(DoubleQuoted),
             _ => None,
         }
+    }
+
+    fn closed_by(&self, kind: lex::Kind) -> bool {
+        use Directionality::{Bi, Uni};
+        use Opener::*;
+
+        match self {
+            Span(..) => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
+            Strong(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Asterisk)),
+            Strong(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceAsterisk)),
+            Emphasis(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Underscore)),
+            Emphasis(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceUnderscore)),
+            Superscript(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Caret)),
+            Superscript(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceCaret)),
+            Subscript(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Tilde)),
+            Subscript(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceTilde)),
+            Mark => matches!(kind, lex::Kind::Close(Delimiter::BraceEqual)),
+            Delete => matches!(kind, lex::Kind::Close(Delimiter::BraceHyphen)),
+            Insert => matches!(kind, lex::Kind::Close(Delimiter::BracePlus)),
+            SingleQuoted => matches!(
+                kind,
+                lex::Kind::Sym(Symbol::Quote1) | lex::Kind::Close(Delimiter::BraceQuote1)
+            ),
+            DoubleQuoted => matches!(
+                kind,
+                lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2)
+            ),
+            Link { inline: false, .. } => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
+            Link { inline: true, .. } => matches!(kind, lex::Kind::Close(Delimiter::Paren)),
+        }
+    }
+
+    fn bidirectional(&self) -> bool {
+        matches!(
+            self,
+            Opener::Strong(Directionality::Bi)
+                | Opener::Emphasis(Directionality::Bi)
+                | Opener::Superscript(Directionality::Bi)
+                | Opener::Subscript(Directionality::Bi)
+                | Opener::SingleQuoted
+                | Opener::DoubleQuoted
+        )
     }
 }
 
@@ -787,70 +1023,88 @@ enum DelimEventKind {
     Container(Container),
     Span(SpanType),
     Quote(QuoteType),
+    Link {
+        event_span: usize,
+        image: bool,
+        inline: bool,
+    },
 }
 
-impl From<Delim> for DelimEventKind {
-    fn from(d: Delim) -> Self {
+impl From<Opener> for DelimEventKind {
+    fn from(d: Opener) -> Self {
         match d {
-            Delim::Span(ty) => Self::Span(ty),
-            Delim::Strong(..) => Self::Container(Strong),
-            Delim::Emphasis(..) => Self::Container(Emphasis),
-            Delim::Superscript(..) => Self::Container(Superscript),
-            Delim::Subscript(..) => Self::Container(Subscript),
-            Delim::Mark => Self::Container(Mark),
-            Delim::Delete => Self::Container(Delete),
-            Delim::Insert => Self::Container(Insert),
-            Delim::SingleQuoted => Self::Quote(QuoteType::Single),
-            Delim::DoubleQuoted => Self::Quote(QuoteType::Double),
+            Opener::Span(ty) => Self::Span(ty),
+            Opener::Strong(..) => Self::Container(Strong),
+            Opener::Emphasis(..) => Self::Container(Emphasis),
+            Opener::Superscript(..) => Self::Container(Superscript),
+            Opener::Subscript(..) => Self::Container(Subscript),
+            Opener::Mark => Self::Container(Mark),
+            Opener::Delete => Self::Container(Delete),
+            Opener::Insert => Self::Container(Insert),
+            Opener::SingleQuoted => Self::Quote(QuoteType::Single),
+            Opener::DoubleQuoted => Self::Quote(QuoteType::Double),
+            Opener::Link {
+                event_span,
+                image,
+                inline,
+            } => Self::Link {
+                event_span,
+                image,
+                inline,
+            },
         }
     }
 }
 
-impl<I: Iterator<Item = char> + Clone> Iterator for Parser<I> {
+impl<'s> Iterator for Parser<'s> {
     type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        #[allow(clippy::blocks_in_if_conditions)]
         while self.events.is_empty()
             || !self.openers.is_empty()
+            || self.verbatim.is_some()
+            || self.attributes.is_some()
             || self // for merge or attributes
                 .events
                 .back()
-                .map_or(false, |ev| {
-                    matches!(ev.kind, EventKind::Str | EventKind::Whitespace)
-                })
+                .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
         {
-            if let Some(ev) = self.parse_event() {
-                self.events.push_back(ev);
-            } else {
-                break;
+            match self.parse_event() {
+                Continue => {}
+                Done => break,
+                Next => {
+                    if let Some(l) = self.input.ahead.pop_front() {
+                        self.input.set_current_line(l);
+                    } else {
+                        return None;
+                    }
+                }
+                More => return None,
             }
         }
 
-        self.events.pop_front().and_then(|e| {
-            match e.kind {
-                EventKind::Str if e.span.is_empty() => self.next(),
-                EventKind::Str | EventKind::Whitespace => {
-                    // merge str events
-                    let mut span = e.span;
-                    let should_merge = |e: &Event, span: Span| {
-                        matches!(
-                            e.kind,
-                            EventKind::Str | EventKind::Whitespace | EventKind::Placeholder
-                        ) && span.end() == e.span.start()
-                    };
-                    while self.events.front().map_or(false, |e| should_merge(e, span)) {
-                        let ev = self.events.pop_front().unwrap();
-                        span = span.union(ev.span);
-                    }
-                    Some(Event {
-                        kind: EventKind::Str,
-                        span,
-                    })
-                }
-                EventKind::Placeholder => self.next(),
-                _ => Some(e),
-            }
+        // automatically close unclosed verbatim
+        if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
+            let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
+                debug_assert!(matches!(
+                    ty,
+                    Verbatim | RawFormat | InlineMath | DisplayMath
+                ));
+                ty
+            } else {
+                panic!()
+            };
+            self.push(EventKind::Exit(ty_opener));
+        }
+
+        self.events.pop_front().and_then(|e| match e.kind {
+            EventKind::Str if e.span.is_empty() => self.next(),
+            EventKind::Str => Some(self.merge_str_events(e.span)),
+            EventKind::Placeholder
+            | EventKind::Attributes {
+                container: false, ..
+            } => self.next(),
+            _ => Some(e),
         })
     }
 }
@@ -860,12 +1114,14 @@ mod test {
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
+    use super::QuoteType;
     use super::Verbatim;
 
     macro_rules! test_parse {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut p = super::Parser::new($src.chars());
+            let mut p = super::Parser::new($src);
+            p.feed_line(super::Span::by_len(0, $src.len()), true);
             let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($token),*,)?];
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
@@ -931,7 +1187,13 @@ mod test {
         test_parse!(
             "pre `raw`{#id} post",
             (Str, "pre "),
-            (Attributes, "{#id}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{#id}"
+            ),
             (Enter(Verbatim), "`"),
             (Str, "raw"),
             (Exit(Verbatim), "`"),
@@ -1033,31 +1295,31 @@ mod test {
     fn span_tag() {
         test_parse!(
             "[text][tag]",
-            (Enter(ReferenceLink), "tag"),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink), "tag"),
+            (Exit(ReferenceLink(0)), "][tag]"),
         );
         test_parse!(
             "![text][tag]",
-            (Enter(ReferenceImage), "tag"),
+            (Enter(ReferenceImage(0)), "!["),
             (Str, "text"),
-            (Exit(ReferenceImage), "tag"),
+            (Exit(ReferenceImage(0)), "][tag]"),
         );
         test_parse!(
             "before [text][tag] after",
             (Str, "before "),
-            (Enter(ReferenceLink), "tag"),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink), "tag"),
+            (Exit(ReferenceLink(0)), "][tag]"),
             (Str, " after"),
         );
         test_parse!(
             "[[inner][i]][o]",
-            (Enter(ReferenceLink), "o"),
-            (Enter(ReferenceLink), "i"),
+            (Enter(ReferenceLink(1)), "["),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "inner"),
-            (Exit(ReferenceLink), "i"),
-            (Exit(ReferenceLink), "o"),
+            (Exit(ReferenceLink(0)), "][i]"),
+            (Exit(ReferenceLink(1)), "][o]"),
         );
     }
 
@@ -1065,15 +1327,15 @@ mod test {
     fn span_tag_empty() {
         test_parse!(
             "[text][]",
-            (Enter(ReferenceLink), "text"),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "text"),
-            (Exit(ReferenceLink), "text"),
+            (Exit(ReferenceLink(0)), "][]"),
         );
         test_parse!(
             "![text][]",
-            (Enter(ReferenceImage), "text"),
+            (Enter(ReferenceImage(0)), "!["),
             (Str, "text"),
-            (Exit(ReferenceImage), "text"),
+            (Exit(ReferenceImage(0)), "][]"),
         );
     }
 
@@ -1082,12 +1344,12 @@ mod test {
         // TODO strip non str from tag?
         test_parse!(
             "[some _text_][]",
-            (Enter(ReferenceLink), "some _text_"),
+            (Enter(ReferenceLink(0)), "["),
             (Str, "some "),
             (Enter(Emphasis), "_"),
             (Str, "text"),
             (Exit(Emphasis), "_"),
-            (Exit(ReferenceLink), "some _text_"),
+            (Exit(ReferenceLink(0)), "][]"),
         );
     }
 
@@ -1096,19 +1358,46 @@ mod test {
         test_parse!(
             "before [text](url) after",
             (Str, "before "),
-            (Enter(InlineLink), "url"),
+            (Enter(InlineLink(0)), "["),
             (Str, "text"),
-            (Exit(InlineLink), "url"),
+            (Exit(InlineLink(0)), "](url)"),
             (Str, " after"),
         );
         test_parse!(
             "[outer [inner](i)](o)",
-            (Enter(InlineLink), "o"),
+            (Enter(InlineLink(1)), "["),
             (Str, "outer "),
-            (Enter(InlineLink), "i"),
+            (Enter(InlineLink(0)), "["),
             (Str, "inner"),
-            (Exit(InlineLink), "i"),
-            (Exit(InlineLink), "o"),
+            (Exit(InlineLink(0)), "](i)"),
+            (Exit(InlineLink(1)), "](o)"),
+        );
+    }
+
+    #[test]
+    fn span_url_attr_unclosed() {
+        test_parse!(
+            "[text]({.cls}",
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{.cls}"
+            ),
+            (Enter(Span), ""),
+            (Str, "[text]("),
+            (Exit(Span), ""),
+        );
+    }
+
+    #[test]
+    fn span_url_attr_closed() {
+        test_parse!(
+            "[text]({.cls})",
+            (Enter(InlineLink(0)), "["),
+            (Str, "text"),
+            (Exit(InlineLink(0)), "]({.cls})"),
         );
     }
 
@@ -1117,11 +1406,16 @@ mod test {
         test_parse!(
             "before [text]() after",
             (Str, "before "),
-            (Enter(InlineLink), ""),
+            (Enter(InlineLink(0)), "["),
             (Str, "text"),
-            (Exit(InlineLink), ""),
+            (Exit(InlineLink(0)), "]()"),
             (Str, " after"),
         );
+    }
+
+    #[test]
+    fn span_url_unclosed() {
+        test_parse!("[text](url", (Str, "[text](url"));
     }
 
     #[test]
@@ -1133,12 +1427,35 @@ mod test {
     fn span_attr() {
         test_parse!(
             "[abc]{.def}",
-            (Attributes, "{.def}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{.def}"
+            ),
             (Enter(Span), "["),
             (Str, "abc"),
             (Exit(Span), "]"),
         );
         test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
+    }
+
+    #[test]
+    fn span_attr_cont() {
+        test_parse!(
+            "[x_y]{.bar_}",
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{.bar_}"
+            ),
+            (Enter(Span), "["),
+            (Str, "x_y"),
+            (Exit(Span), "]"),
+        );
     }
 
     #[test]
@@ -1238,7 +1555,13 @@ mod test {
     fn container_attr() {
         test_parse!(
             "_abc def_{.attr}",
-            (Attributes, "{.attr}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{.attr}"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1266,7 +1589,13 @@ mod test {
     fn container_attr_multiple() {
         test_parse!(
             "_abc def_{.a}{.b}{.c} {.d}",
-            (Attributes, "{.a}{.b}{.c}"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{.a}{.b}{.c}"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_"),
@@ -1278,7 +1607,13 @@ mod test {
     fn attr() {
         test_parse!(
             "word{a=b}",
-            (Attributes, "{a=b}"),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}"
+            ),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1286,7 +1621,13 @@ mod test {
         test_parse!(
             "some word{.a}{.b} with attrs",
             (Str, "some "),
-            (Attributes, "{.a}{.b}"),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{.a}{.b}"
+            ),
             (Enter(Span), ""),
             (Str, "word"),
             (Exit(Span), ""),
@@ -1299,11 +1640,54 @@ mod test {
         test_parse!("word {%comment%}", (Str, "word "));
         test_parse!("word {%comment%} word", (Str, "word "), (Str, " word"));
         test_parse!("word {a=b}", (Str, "word "));
+        test_parse!("word {.d}", (Str, "word "));
     }
 
     #[test]
     fn attr_empty() {
         test_parse!("word{}", (Str, "word"));
         test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
+    }
+
+    #[test]
+    fn quote() {
+        test_parse!(
+            "'a'",
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+        );
+        test_parse!(
+            " 'a' ",
+            (Str, " "),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+            (Str, " "),
+        );
     }
 }
