@@ -859,6 +859,7 @@ mod test {
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
+    use super::QuoteType;
     use super::Verbatim;
 
     macro_rules! test_parse {
@@ -1304,5 +1305,47 @@ mod test {
     fn attr_empty() {
         test_parse!("word{}", (Str, "word"));
         test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
+    }
+
+    #[test]
+    fn quote() {
+        test_parse!(
+            "'a'",
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+        );
+        test_parse!(
+            " 'a' ",
+            (Str, " "),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true,
+                }),
+                "'",
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false,
+                }),
+                "'",
+            ),
+            (Str, " "),
+        );
     }
 }
