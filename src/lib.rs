@@ -46,6 +46,8 @@
 //! # }
 //! ```
 
+#![allow(clippy::blocks_in_if_conditions)]
+
 use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::io;
@@ -60,7 +62,6 @@ mod lex;
 mod span;
 mod tree;
 
-use span::DiscontinuousString;
 use span::Span;
 
 pub use attr::{AttributeValue, AttributeValueParts, Attributes};
@@ -576,6 +577,9 @@ type Set<T> = std::collections::BTreeSet<T>;
 /// structure that will be kept for the duration of the parser's lifetime. Then, when the iterator
 /// is advanced, the parser will start from the beginning of the document and parse inline elements
 /// and emit [`Event`]s.
+///
+/// It is possible to clone the parser to e.g. avoid performing the block parsing multiple times.
+#[derive(Clone)]
 pub struct Parser<'s> {
     src: &'s str,
 
@@ -591,6 +595,9 @@ pub struct Parser<'s> {
     /// Current table row is a head row.
     table_head_row: bool,
 
+    /// Currently within a verbatim code block.
+    verbatim: bool,
+
     /// Footnote references in the order they were encountered, without duplicates.
     footnote_references: Vec<&'s str>,
     /// Cache of footnotes to emit at the end.
@@ -600,12 +607,11 @@ pub struct Parser<'s> {
     /// Currently within a footnote.
     footnote_active: bool,
 
-    /// Spans to the inlines in the leaf block currently being parsed.
-    inlines: span::InlineSpans<'s>,
-    /// Inline parser, recreated for each new inline.
-    inline_parser: Option<inline::Parser<span::InlineCharsIter<'s>>>,
+    /// Inline parser.
+    inline_parser: inline::Parser<'s>,
 }
 
+#[derive(Clone)]
 struct Heading {
     /// Location of heading in src.
     location: usize,
@@ -616,6 +622,7 @@ struct Heading {
 }
 
 /// Because of potential future references, an initial pass is required to obtain all definitions.
+#[derive(Clone)]
 struct PrePass<'s> {
     /// Link definitions and their attributes.
     link_definitions: Map<&'s str, (CowStr<'s>, attr::Attributes<'s>)>,
@@ -627,12 +634,10 @@ struct PrePass<'s> {
 
 impl<'s> PrePass<'s> {
     #[must_use]
-    fn new(src: &'s str, mut tree: block::Tree) -> Self {
+    fn new(src: &'s str, mut tree: block::Tree, inline_parser: &mut inline::Parser<'s>) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<&str> = Set::new();
-
-        let mut inlines = span::InlineSpans::new(src);
 
         let mut attr_prev: Option<Span> = None;
         while let Some(e) = tree.next() {
@@ -662,31 +667,35 @@ impl<'s> PrePass<'s> {
                         .and_then(|attrs| attrs.get("id"))
                         .map(ToString::to_string);
 
-                    inlines.set_spans(tree.take_inlines());
                     let mut id_auto = String::new();
                     let mut last_whitespace = true;
-                    inline::Parser::new(inlines.chars()).for_each(|ev| match ev.kind {
-                        inline::EventKind::Str => {
-                            let mut chars = inlines.slice(ev.span).chars().peekable();
-                            while let Some(c) = chars.next() {
-                                if c.is_whitespace() {
-                                    while chars.peek().map_or(false, |c| c.is_whitespace()) {
-                                        chars.next();
+                    let inlines = tree.take_inlines().collect::<Vec<_>>();
+                    inline_parser.reset();
+                    inlines.iter().enumerate().for_each(|(i, sp)| {
+                        inline_parser.feed_line(*sp, i == inlines.len() - 1);
+                        inline_parser.for_each(|ev| match ev.kind {
+                            inline::EventKind::Str => {
+                                let mut chars = ev.span.of(src).chars().peekable();
+                                while let Some(c) = chars.next() {
+                                    if c.is_whitespace() {
+                                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                                            chars.next();
+                                        }
+                                        if !last_whitespace {
+                                            last_whitespace = true;
+                                            id_auto.push('-');
+                                        }
+                                    } else if !c.is_ascii_punctuation() || matches!(c, '-' | '_') {
+                                        id_auto.push(c);
+                                        last_whitespace = false;
                                     }
-                                    if !last_whitespace {
-                                        last_whitespace = true;
-                                        id_auto.push('-');
-                                    }
-                                } else if !c.is_ascii_punctuation() || matches!(c, '-' | '_') {
-                                    id_auto.push(c);
-                                    last_whitespace = false;
                                 }
                             }
-                        }
-                        inline::EventKind::Atom(inline::Atom::Softbreak) => {
-                            id_auto.push('-');
-                        }
-                        _ => {}
+                            inline::EventKind::Atom(inline::Atom::Softbreak) => {
+                                id_auto.push('-');
+                            }
+                            _ => {}
+                        })
                     });
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
@@ -765,7 +774,8 @@ impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
         let tree = block::parse(src);
-        let pre_pass = PrePass::new(src, tree.clone());
+        let mut inline_parser = inline::Parser::new(src);
+        let pre_pass = PrePass::new(src, tree.clone(), &mut inline_parser);
 
         Self {
             src,
@@ -773,34 +783,32 @@ impl<'s> Parser<'s> {
             pre_pass,
             block_attributes: Attributes::new(),
             table_head_row: false,
+            verbatim: false,
             footnote_references: Vec::new(),
             footnotes: Map::new(),
             footnote_index: 0,
             footnote_active: false,
-            inlines: span::InlineSpans::new(src),
-            inline_parser: None,
+            inline_parser,
         }
     }
 
     fn inline(&mut self) -> Option<Event<'s>> {
-        self.inline_parser.as_mut().and_then(|parser| {
-            let mut inline = parser.next();
+        let next = self.inline_parser.next()?;
 
-            let mut first_is_attr = false;
-            let mut attributes = inline.as_ref().map_or_else(Attributes::new, |inl| {
-                if let inline::EventKind::Attributes = inl.kind {
-                    first_is_attr = true;
-                    attr::parse(self.inlines.slice(inl.span))
-                } else {
-                    Attributes::new()
-                }
-            });
+        let (inline, mut attributes) = match next {
+            inline::Event {
+                kind: inline::EventKind::Attributes { attrs, .. },
+                ..
+            } => (
+                self.inline_parser.next(),
+                self.inline_parser.store_attributes[attrs as usize].clone(),
+            ),
+            inline => (Some(inline), Attributes::new()),
+        };
 
-            if first_is_attr {
-                inline = parser.next();
-            }
-
-            inline.map(|inline| match inline.kind {
+        inline.map(|inline| {
+            let enter = matches!(inline.kind, inline::EventKind::Enter(_));
+            match inline.kind {
                 inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                     let t = match c {
                         inline::Container::Span => Container::Span,
@@ -808,10 +816,7 @@ impl<'s> Parser<'s> {
                         inline::Container::InlineMath => Container::Math { display: false },
                         inline::Container::DisplayMath => Container::Math { display: true },
                         inline::Container::RawFormat => Container::RawInline {
-                            format: match self.inlines.src(inline.span) {
-                                CowStr::Owned(_) => panic!(),
-                                CowStr::Borrowed(s) => s,
-                            },
+                            format: inline.span.of(self.src),
                         },
                         inline::Container::Subscript => Container::Subscript,
                         inline::Container::Superscript => Container::Superscript,
@@ -820,46 +825,41 @@ impl<'s> Parser<'s> {
                         inline::Container::Emphasis => Container::Emphasis,
                         inline::Container::Strong => Container::Strong,
                         inline::Container::Mark => Container::Mark,
-                        inline::Container::InlineLink => Container::Link(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', "").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            },
+                        inline::Container::InlineLink(url) => Container::Link(
+                            self.inline_parser.store_cowstrs[url as usize].clone(),
                             LinkType::Span(SpanLinkType::Inline),
                         ),
-                        inline::Container::InlineImage => Container::Image(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', "").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            },
+                        inline::Container::InlineImage(url) => Container::Image(
+                            self.inline_parser.store_cowstrs[url as usize].clone(),
                             SpanLinkType::Inline,
                         ),
-                        inline::Container::ReferenceLink | inline::Container::ReferenceImage => {
-                            let tag = match self.inlines.src(inline.span) {
-                                CowStr::Owned(s) => s.replace('\n', " ").into(),
-                                s @ CowStr::Borrowed(_) => s,
-                            };
-                            let link_def =
-                                self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
+                        inline::Container::ReferenceLink(tag)
+                        | inline::Container::ReferenceImage(tag) => {
+                            let tag = &self.inline_parser.store_cowstrs[tag as usize];
+                            let link_def = self
+                                .pre_pass
+                                .link_definitions
+                                .get::<str>(tag.as_ref())
+                                .cloned();
 
                             let (url_or_tag, ty) = if let Some((url, attrs_def)) = link_def {
                                 attributes.union(attrs_def);
                                 (url, SpanLinkType::Reference)
                             } else {
                                 self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
-                                    || (tag, SpanLinkType::Unresolved),
+                                    || (tag.clone(), SpanLinkType::Unresolved),
                                     |id| (format!("#{}", id).into(), SpanLinkType::Reference),
                                 )
                             };
 
-                            if matches!(c, inline::Container::ReferenceLink) {
+                            if matches!(c, inline::Container::ReferenceLink(..)) {
                                 Container::Link(url_or_tag, LinkType::Span(ty))
                             } else {
                                 Container::Image(url_or_tag, ty)
                             }
                         }
                         inline::Container::Autolink => {
-                            let url = self.inlines.src(inline.span);
+                            let url: CowStr = inline.span.of(self.src).into();
                             let ty = if url.contains('@') {
                                 LinkType::Email
                             } else {
@@ -868,7 +868,7 @@ impl<'s> Parser<'s> {
                             Container::Link(url, ty)
                         }
                     };
-                    if matches!(inline.kind, inline::EventKind::Enter(_)) {
+                    if enter {
                         Event::Start(t, attributes)
                     } else {
                         Event::End(t)
@@ -876,10 +876,7 @@ impl<'s> Parser<'s> {
                 }
                 inline::EventKind::Atom(a) => match a {
                     inline::Atom::FootnoteReference => {
-                        let tag = match self.inlines.src(inline.span) {
-                            CowStr::Borrowed(s) => s,
-                            CowStr::Owned(..) => panic!(),
-                        };
+                        let tag = inline.span.of(self.src);
                         let number = self
                             .footnote_references
                             .iter()
@@ -891,15 +888,9 @@ impl<'s> Parser<'s> {
                                 },
                                 |i| i + 1,
                             );
-                        Event::FootnoteReference(
-                            match self.inlines.src(inline.span) {
-                                CowStr::Borrowed(s) => s,
-                                CowStr::Owned(..) => panic!(),
-                            },
-                            number,
-                        )
+                        Event::FootnoteReference(inline.span.of(self.src), number)
                     }
-                    inline::Atom::Symbol => Event::Symbol(self.inlines.src(inline.span)),
+                    inline::Atom::Symbol => Event::Symbol(inline.span.of(self.src).into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
                         (inline::QuoteType::Single, false) => Event::RightSingleQuote,
@@ -914,13 +905,11 @@ impl<'s> Parser<'s> {
                     inline::Atom::Hardbreak => Event::Hardbreak,
                     inline::Atom::Escape => Event::Escape,
                 },
-                inline::EventKind::Str => Event::Str(self.inlines.src(inline.span)),
-                inline::EventKind::Whitespace
-                | inline::EventKind::Attributes
-                | inline::EventKind::Placeholder => {
+                inline::EventKind::Str => Event::Str(inline.span.of(self.src).into()),
+                inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
-            })
+            }
         })
     }
 
@@ -942,6 +931,7 @@ impl<'s> Parser<'s> {
                     let enter = matches!(ev.kind, tree::EventKind::Enter(..));
                     let cont = match c {
                         block::Node::Leaf(l) => {
+                            self.inline_parser.reset();
                             if matches!(l, block::Leaf::LinkDefinition) {
                                 // ignore link definitions
                                 if enter {
@@ -949,11 +939,6 @@ impl<'s> Parser<'s> {
                                 }
                                 self.block_attributes = Attributes::new();
                                 continue;
-                            }
-                            if enter && !matches!(l, block::Leaf::CodeBlock) {
-                                self.inlines.set_spans(self.tree.take_inlines());
-                                self.inline_parser =
-                                    Some(inline::Parser::new(self.inlines.chars()));
                             }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
@@ -969,6 +954,7 @@ impl<'s> Parser<'s> {
                                 },
                                 block::Leaf::DescriptionTerm => Container::DescriptionTerm,
                                 block::Leaf::CodeBlock => {
+                                    self.verbatim = enter;
                                     if let Some(format) = content.strip_prefix('=') {
                                         Container::RawBlock { format }
                                     } else {
@@ -991,7 +977,7 @@ impl<'s> Parser<'s> {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
                             block::Container::Footnote => {
-                                assert!(enter);
+                                debug_assert!(enter);
                                 self.footnotes.insert(content, self.tree.take_branch());
                                 self.block_attributes = Attributes::new();
                                 continue;
@@ -1048,7 +1034,15 @@ impl<'s> Parser<'s> {
                         Event::End(cont)
                     }
                 }
-                tree::EventKind::Inline => Event::Str(content.into()), // verbatim
+                tree::EventKind::Inline => {
+                    if self.verbatim {
+                        Event::Str(content.into())
+                    } else {
+                        self.inline_parser
+                            .feed_line(ev.span, self.tree.branch_is_empty());
+                        return self.next();
+                    }
+                }
             };
             return Some(event);
         }
@@ -1304,7 +1298,8 @@ mod test {
             Start(Blockquote, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Start(Verbatim, Attributes::new()),
-            Str("abc\ndef".into()),
+            Str("abc\n".into()),
+            Str("def".into()),
             End(Verbatim),
             End(Paragraph),
             End(Blockquote),
@@ -1358,6 +1353,10 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Inline))),
             End(Paragraph),
         );
+    }
+
+    #[test]
+    fn link_inline_multi_line() {
         test_parse!(
             concat!(
                 "> [text](url\n",
@@ -1371,6 +1370,23 @@ mod test {
             ),
             Str("text".into()),
             End(Link("urlurl".into(), LinkType::Span(SpanLinkType::Inline))),
+            End(Paragraph),
+            End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> [text](a\n", //
+                "> bc\n",       //
+                "> def)\n",     //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("abcdef".into(), LinkType::Span(SpanLinkType::Inline)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("abcdef".into(), LinkType::Span(SpanLinkType::Inline))),
             End(Paragraph),
             End(Blockquote),
         );
@@ -1440,6 +1456,29 @@ mod test {
 
     #[test]
     fn link_reference_multiline() {
+        test_parse!(
+            concat!(
+                "> [text][a\n", //
+                "> b]\n",       //
+                "\n",           //
+                "[a b]: url\n", //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            End(Blockquote),
+            Blankline,
+        );
+    }
+
+    #[test]
+    fn link_definition_multiline() {
         test_parse!(
             concat!(
                 "[text][tag]\n",
@@ -1658,6 +1697,165 @@ mod test {
             Start(Emphasis, [("class", "ghi")].into_iter().collect()),
             Str("def".into()),
             End(Emphasis),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn attr_inline_consecutive() {
+        test_parse!(
+            "_abc def_{.a}{.b #i}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            End(Paragraph),
+        );
+        test_parse!(
+            "_abc def_{.a}{%%}{.b #i}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn attr_inline_consecutive_invalid() {
+        test_parse!(
+            "_abc def_{.a}{.b #i}{.c invalid}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c invalid}".into()),
+            End(Paragraph),
+        );
+        test_parse!(
+            "_abc def_{.a}{.b #i}{%%}{.c invalid}",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c invalid}".into()),
+            End(Paragraph),
+        );
+        test_parse!(
+            concat!("_abc def_{.a}{.b #i}{%%}{.c\n", "invalid}\n"),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Emphasis,
+                [("class", "a b"), ("id", "i")].into_iter().collect(),
+            ),
+            Str("abc def".into()),
+            End(Emphasis),
+            Str("{.c".into()),
+            Softbreak,
+            Str("invalid}".into()),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn attr_inline_multiline() {
+        test_parse!(
+            concat!(
+                "> _abc_{a=b\n", //
+                "> c=d}\n",      //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Emphasis, [("a", "b"), ("c", "d")].into_iter().collect()),
+            Str("abc".into()),
+            End(Emphasis),
+            End(Paragraph),
+            End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> a{\n",   //
+                "> %%\n",   //
+                "> a=a}\n", //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Span, [("a", "a")].into_iter().collect()),
+            Str("a".into()),
+            End(Span),
+            End(Paragraph),
+            End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> a{a=\"a\n", //
+                "> b\n",       //
+                "> c\"}\n",    //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Span, [("a", "a b c")].into_iter().collect()),
+            Str("a".into()),
+            End(Span),
+            End(Paragraph),
+            End(Blockquote),
+        );
+        test_parse!(
+            concat!(
+                "> a{a=\"\n", //
+                "> b\"}\n",   //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(Span, [("a", "b")].into_iter().collect()),
+            Str("a".into()),
+            End(Span),
+            End(Paragraph),
+            End(Blockquote),
+        );
+    }
+
+    #[test]
+    fn attr_inline_multiline_unclosed() {
+        test_parse!(
+            concat!(
+                "a{\n", //
+                " b\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("a{".into()),
+            Softbreak,
+            Str("b".into()),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn attr_inline_multiline_invalid() {
+        test_parse!(
+            concat!(
+                "a{a=b\n", //
+                " b\n",    //
+                "}",       //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("a{a=b".into()),
+            Softbreak,
+            Str("b".into()),
+            Softbreak,
+            Str("}".into()),
             End(Paragraph),
         );
     }

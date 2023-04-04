@@ -1,29 +1,34 @@
 use crate::CowStr;
-use crate::DiscontinuousString;
-use crate::Span;
-use std::borrow::Cow;
 use std::fmt;
 
-use State::*;
-
-pub(crate) fn parse<'s, S: DiscontinuousString<'s>>(chars: S) -> Attributes<'s> {
+/// Parse attributes, assumed to be valid.
+pub(crate) fn parse(src: &str) -> Attributes {
     let mut a = Attributes::new();
-    a.parse(chars);
+    a.parse(src);
     a
 }
 
 pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
+    use State::*;
+
     let mut has_attr = false;
-    let mut p = Parser::new(chars);
-    for e in &mut p {
-        match e {
-            Element::Class(..) | Element::Identifier(..) | Element::Attribute(..) => {
-                has_attr = true;
-            }
-            Element::Invalid => return (0, false),
+    let mut n = 0;
+    let mut state = Start;
+    for c in chars {
+        n += 1;
+        state = state.step(c);
+        match state {
+            Class | Identifier | Value | ValueQuoted => has_attr = true,
+            Done | Invalid => break,
+            _ => {}
         }
     }
-    (p.pos, has_attr)
+
+    if matches!(state, Done) {
+        (n, has_attr)
+    } else {
+        (0, false)
+    }
 }
 
 /// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,
@@ -38,6 +43,23 @@ impl<'s> AttributeValue<'s> {
     /// that should be displayed.
     pub fn parts(&'s self) -> AttributeValueParts<'s> {
         AttributeValueParts { ahead: &self.raw }
+    }
+
+    // lifetime is 's to avoid allocation if empty value is concatenated with single value
+    fn extend(&mut self, s: &'s str) {
+        match &mut self.raw {
+            CowStr::Borrowed(prev) => {
+                if prev.is_empty() {
+                    *prev = s;
+                } else {
+                    self.raw = format!("{} {}", prev, s).into();
+                }
+            }
+            CowStr::Owned(ref mut prev) => {
+                prev.push(' ');
+                prev.push_str(s);
+            }
+        }
     }
 }
 
@@ -113,24 +135,11 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    pub(crate) fn parse<S: DiscontinuousString<'s>>(&mut self, input: S) -> bool {
-        #[inline]
-        fn borrow(cow: CowStr) -> &str {
-            match cow {
-                Cow::Owned(_) => panic!(),
-                Cow::Borrowed(s) => s,
-            }
-        }
-
-        for elem in Parser::new(input.chars()) {
-            match elem {
-                Element::Class(c) => self.insert("class", input.src(c).into()),
-                Element::Identifier(i) => self.insert("id", input.src(i).into()),
-                Element::Attribute(a, v) => self.insert(borrow(input.src(a)), input.src(v).into()),
-                Element::Invalid => return false,
-            }
-        }
-        true
+    /// Parse and append attributes, assumed to be valid.
+    pub(crate) fn parse(&mut self, input: &'s str) {
+        let mut parser = Parser::new(self.take());
+        parser.parse(input);
+        *self = parser.finish();
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
@@ -152,6 +161,11 @@ impl<'s> Attributes<'s> {
     /// overwritten, unless it is a "class" attribute. In that case the provided value will be
     /// appended to the existing value.
     pub fn insert(&mut self, key: &'s str, val: AttributeValue<'s>) {
+        self.insert_pos(key, val);
+    }
+
+    // duplicate of insert but returns position of inserted value
+    fn insert_pos(&mut self, key: &'s str, val: AttributeValue<'s>) -> usize {
         if self.0.is_none() {
             self.0 = Some(Vec::new().into());
         };
@@ -160,12 +174,20 @@ impl<'s> Attributes<'s> {
         if let Some(i) = attrs.iter().position(|(k, _)| *k == key) {
             let prev = &mut attrs[i].1;
             if key == "class" {
-                *prev = format!("{} {}", prev, val).into();
+                match val.raw {
+                    CowStr::Borrowed(s) => prev.extend(s),
+                    CowStr::Owned(s) => {
+                        *prev = format!("{} {}", prev, s).into();
+                    }
+                }
             } else {
                 *prev = val;
             }
+            i
         } else {
+            let i = attrs.len();
             attrs.push((key, val));
+            i
         }
     }
 
@@ -217,6 +239,106 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     }
 }
 
+#[derive(Clone)]
+pub struct Validator {
+    state: State,
+}
+
+impl Validator {
+    pub fn new() -> Self {
+        Self {
+            state: State::Start,
+        }
+    }
+
+    pub fn restart(&mut self) {
+        self.state = State::Start;
+    }
+
+    /// Returns number of valid bytes parsed (0 means invalid) if finished, otherwise more input is
+    /// needed.
+    pub fn parse(&mut self, input: &str) -> Option<usize> {
+        let mut chars = input.chars();
+        for c in &mut chars {
+            self.state = self.state.step(c);
+            match self.state {
+                State::Done => return Some(input.len() - chars.as_str().len()),
+                State::Invalid => return Some(0),
+                _ => {}
+            }
+        }
+        None
+    }
+}
+
+/// Attributes parser, take input of one or more consecutive attributes and create an `Attributes`
+/// object.
+///
+/// Input is assumed to contain a valid series of attribute sets, the attributes are added as they
+/// are encountered.
+pub struct Parser<'s> {
+    attrs: Attributes<'s>,
+    i_prev: usize,
+    state: State,
+}
+
+impl<'s> Parser<'s> {
+    pub fn new(attrs: Attributes<'s>) -> Self {
+        Self {
+            attrs,
+            i_prev: usize::MAX,
+            state: State::Start,
+        }
+    }
+
+    /// Return value indicates the number of bytes parsed if finished. If None, more input is
+    /// required to finish the attributes.
+    pub fn parse(&mut self, input: &'s str) {
+        use State::*;
+
+        let mut pos = 0;
+        let mut pos_prev = 0;
+
+        for c in input.chars() {
+            let state_next = self.state.step(c);
+            let st = std::mem::replace(&mut self.state, state_next);
+
+            if st != self.state && !matches!((st, self.state), (ValueEscape, _) | (_, ValueEscape))
+            {
+                let content = &input[pos_prev..pos];
+                pos_prev = pos;
+                match st {
+                    Class => self.attrs.insert("class", content.into()),
+                    Identifier => self.attrs.insert("id", content.into()),
+                    Key => self.i_prev = self.attrs.insert_pos(content, "".into()),
+                    Value | ValueQuoted | ValueContinued => {
+                        self.attrs.0.as_mut().unwrap()[self.i_prev]
+                            .1
+                            .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
+                    }
+                    _ => {}
+                }
+            };
+
+            pos += c.len_utf8();
+
+            debug_assert!(!matches!(self.state, Invalid));
+
+            if matches!(self.state, Done) {
+                if input[pos..].starts_with('{') {
+                    self.state = Start;
+                } else {
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn finish(self) -> Attributes<'s> {
+        self.attrs
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Start,
@@ -226,188 +348,61 @@ enum State {
     Class,
     IdentifierFirst,
     Identifier,
-    Attribute,
+    Key,
     ValueFirst,
     Value,
     ValueQuoted,
+    ValueEscape,
+    ValueNewline,
+    ValueContinued,
     Done,
     Invalid,
 }
 
-struct Parser<I> {
-    chars: I,
-    pos: usize,
-    pos_prev: usize,
-    state: State,
-}
+impl State {
+    fn step(self, c: char) -> State {
+        use State::*;
 
-impl<I: Iterator<Item = char>> Parser<I> {
-    fn new(chars: I) -> Self {
-        Parser {
-            chars,
-            pos: 0,
-            pos_prev: 0,
-            state: Start,
+        match self {
+            Start if c == '{' => Whitespace,
+            Start => Invalid,
+            Whitespace => match c {
+                '}' => Done,
+                '.' => ClassFirst,
+                '#' => IdentifierFirst,
+                '%' => Comment,
+                c if is_name(c) => Key,
+                c if c.is_whitespace() => Whitespace,
+                _ => Invalid,
+            },
+            Comment if c == '%' => Whitespace,
+            Comment => Comment,
+            ClassFirst if is_name(c) => Class,
+            ClassFirst => Invalid,
+            IdentifierFirst if is_name(c) => Identifier,
+            IdentifierFirst => Invalid,
+            s @ (Class | Identifier | Value) if is_name(c) => s,
+            Class | Identifier | Value if c.is_whitespace() => Whitespace,
+            Class | Identifier | Value if c == '}' => Done,
+            Class | Identifier | Value => Invalid,
+            Key if is_name(c) => Key,
+            Key if c == '=' => ValueFirst,
+            Key => Invalid,
+            ValueFirst if is_name(c) => Value,
+            ValueFirst if c == '"' => ValueQuoted,
+            ValueFirst => Invalid,
+            ValueQuoted | ValueNewline | ValueContinued if c == '"' => Whitespace,
+            ValueQuoted | ValueNewline | ValueContinued | ValueEscape if c == '\n' => ValueNewline,
+            ValueQuoted if c == '\\' => ValueEscape,
+            ValueQuoted | ValueEscape => ValueQuoted,
+            ValueNewline | ValueContinued => ValueContinued,
+            Invalid | Done => panic!("{:?}", self),
         }
-    }
-
-    fn step_char(&mut self) -> Option<State> {
-        self.chars.next().map(|c| {
-            self.pos_prev = self.pos;
-            self.pos += c.len_utf8();
-            match self.state {
-                Start => match c {
-                    '{' => Whitespace,
-                    _ => Invalid,
-                },
-                Whitespace => match c {
-                    '}' => Done,
-                    '.' => ClassFirst,
-                    '#' => IdentifierFirst,
-                    '%' => Comment,
-                    c if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '-') => Attribute,
-                    c if c.is_whitespace() => Whitespace,
-                    _ => Invalid,
-                },
-                Comment => {
-                    if c == '%' {
-                        Whitespace
-                    } else {
-                        Comment
-                    }
-                }
-                s @ (ClassFirst | IdentifierFirst) => {
-                    if is_name(c) {
-                        match s {
-                            ClassFirst => Class,
-                            IdentifierFirst => Identifier,
-                            _ => panic!(),
-                        }
-                    } else {
-                        Invalid
-                    }
-                }
-                s @ (Class | Identifier | Value) => {
-                    if is_name(c) {
-                        s
-                    } else if c.is_whitespace() {
-                        Whitespace
-                    } else if c == '}' {
-                        Done
-                    } else {
-                        Invalid
-                    }
-                }
-                Attribute => {
-                    if is_name(c) {
-                        Attribute
-                    } else if c == '=' {
-                        ValueFirst
-                    } else {
-                        Invalid
-                    }
-                }
-                ValueFirst => {
-                    if is_name(c) {
-                        Value
-                    } else if c == '"' {
-                        ValueQuoted
-                    } else {
-                        Invalid
-                    }
-                }
-                ValueQuoted => match c {
-                    '\\' => {
-                        if let Some(c) = self.chars.next() {
-                            self.pos_prev = self.pos;
-                            self.pos += c.len_utf8();
-                        }
-                        ValueQuoted
-                    }
-                    '"' => Whitespace,
-                    _ => ValueQuoted,
-                },
-                Invalid | Done => panic!("{:?}", self.state),
-            }
-        })
-    }
-
-    fn step(&mut self) -> (State, Span) {
-        let start = self.pos_prev;
-
-        if self.state == Done {
-            return (Done, Span::empty_at(start));
-        }
-
-        if self.state == Invalid {
-            return (Invalid, Span::empty_at(start));
-        }
-
-        while let Some(state_next) = self.step_char() {
-            if self.state != state_next {
-                return (
-                    std::mem::replace(&mut self.state, state_next),
-                    Span::new(start, self.pos_prev),
-                );
-            }
-        }
-
-        (
-            if self.state == Done { Done } else { Invalid },
-            Span::new(start, self.pos_prev),
-        )
     }
 }
 
 pub fn is_name(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-')
-}
-
-enum Element {
-    Class(Span),
-    Identifier(Span),
-    Attribute(Span, Span),
-    Invalid,
-}
-
-impl<I: Iterator<Item = char>> Iterator for Parser<I> {
-    type Item = Element;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let (st, span0) = self.step();
-            return match st {
-                ClassFirst | IdentifierFirst => {
-                    let (st, span1) = self.step();
-                    Some(match st {
-                        Class => Element::Class(span1),
-                        Identifier => Element::Identifier(span1),
-                        _ => return Some(Element::Invalid),
-                    })
-                }
-                Attribute => {
-                    let (st, _span1) = self.step();
-                    match st {
-                        ValueFirst => {
-                            let (st, span2) = self.step();
-                            match st {
-                                Value => Some(Element::Attribute(span0, span2)),
-                                ValueQuoted => Some(Element::Attribute(span0, span2.skip(1))),
-                                Invalid => Some(Element::Invalid),
-                                _ => panic!("{:?}", st),
-                            }
-                        }
-                        Invalid => Some(Element::Invalid),
-                        _ => panic!("{:?}", st),
-                    }
-                }
-                Comment | Start | Whitespace => continue,
-                Done => None,
-                Invalid => Some(Element::Invalid),
-                _ => panic!("{:?}", st),
-            };
-        }
-    }
 }
 
 #[cfg(test)]
@@ -469,6 +464,11 @@ mod test {
             ("class", "class"),
             ("style", "color:red")
         );
+    }
+
+    #[test]
+    fn value_newline() {
+        test_attr!("{attr0=\"abc\ndef\"}", ("attr0", "abc def"));
     }
 
     #[test]
