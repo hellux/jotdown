@@ -1,6 +1,6 @@
 WASM=pkg/jotdown_wasm_bg.wasm
 
-SRC=$(shell find src ../../src -name '*.rs')
+SRC=$(shell find . ../../src -name '*.rs')
 
 ${WASM}: ${SRC}
 	wasm-pack build --release --target web
