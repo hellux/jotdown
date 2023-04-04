@@ -1,11 +1,15 @@
 <div id="jotdown" style="flex-grow:1;display:flex;flex-direction:column">
   <script type="module">
     import init, {
+        jotdown_version,
         jotdown_render,
         jotdown_parse,
         jotdown_parse_indent,
     } from './pkg/jotdown_wasm.js';
     await init();
+
+    let version = document.getElementById("jotdown-version");
+    version.innerText = "jotdown-" + jotdown_version();
 
     let output = document.getElementById("jotdown-output");
     let input = document.getElementById("jotdown-input");
@@ -35,13 +39,20 @@
     // auto focus on input on load
     setTimeout(() => { input.focus(); }, 0);
   </script>
-  <div>
-    <select id="jotdown-fmt">
-      <option value="preview">preview</option>
-      <option value="html">html</option>
-      <option value="events">events</option>
-      <option value="events_indent">events (indented)</option>
-    </select>
+  <div style="display:flex;gap:1rem">
+    <div style="width:50%">
+      <span style="opacity:50%">
+        version: <span id="jotdown-version">(not loaded)</span>
+      </span>
+    </div>
+    <div style="width:50%">
+      <select id="jotdown-fmt">
+        <option value="preview">preview</option>
+        <option value="html">html</option>
+        <option value="events">events</option>
+        <option value="events_indent">events (indented)</option>
+      </select>
+    </div>
   </div>
   <div id="jotdown-panes" style="display:flex;height:100%;gap:1rem">
     <pre id="jotdown-input" contenteditable="true" placeholder="Input djot here" style="width:50%;height:100%;overflow:scroll;resize:none;box-sizing:border-box;margin:0">*Hello world!*</pre>

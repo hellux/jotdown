@@ -5,6 +5,12 @@ use std::fmt::Write;
 
 #[must_use]
 #[wasm_bindgen]
+pub fn jotdown_version() -> String {
+    include_str!(concat!(env!("OUT_DIR"), "/version")).to_string()
+}
+
+#[must_use]
+#[wasm_bindgen]
 pub fn jotdown_render(djot: &str) -> String {
     let events = jotdown::Parser::new(djot);
     let mut html = String::new();
