@@ -9,6 +9,32 @@ use crate::OrderedListNumbering::*;
 use crate::Render;
 use crate::SpanLinkType;
 
+#[derive(Default)]
+pub struct Renderer {}
+
+impl Render for Renderer {
+    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: std::fmt::Write,
+    {
+        let mut w = Writer::default();
+        events.try_for_each(|e| w.render_event(&e, &mut out))?;
+        w.render_epilogue(&mut out)
+    }
+
+    fn push_borrowed<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    where
+        E: AsRef<Event<'s>>,
+        I: Iterator<Item = E>,
+        W: std::fmt::Write,
+    {
+        let mut w = Writer::default();
+        events.try_for_each(|e| w.render_event(e.as_ref(), &mut out))?;
+        w.render_epilogue(&mut out)
+    }
+}
+
 enum Raw {
     None,
     Html,
@@ -22,7 +48,7 @@ impl Default for Raw {
 }
 
 #[derive(Default)]
-pub struct Renderer {
+struct Writer {
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
@@ -33,7 +59,7 @@ pub struct Renderer {
     ignore: bool,
 }
 
-impl Render for Renderer {
+impl Writer {
     fn render_event<'s, W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
     where
         W: std::fmt::Write,
