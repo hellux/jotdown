@@ -30,6 +30,7 @@ pub struct Renderer {
     footnote_number: Option<std::num::NonZeroUsize>,
     not_first_line: bool,
     close_para: bool,
+    ignore: bool,
 }
 
 impl Render for Renderer {
@@ -38,6 +39,20 @@ impl Render for Renderer {
         W: std::fmt::Write,
     {
         if matches!(&e, Event::Blankline | Event::Escape) {
+            return Ok(());
+        }
+
+        if matches!(&e, Event::Start(Container::LinkDefinition { .. }, ..)) {
+            self.ignore = true;
+            return Ok(());
+        }
+
+        if matches!(&e, Event::End(Container::LinkDefinition { .. })) {
+            self.ignore = false;
+            return Ok(());
+        }
+
+        if self.ignore {
             return Ok(());
         }
 
@@ -151,6 +166,7 @@ impl Render for Renderer {
                     Container::Strong => out.write_str("<strong")?,
                     Container::Emphasis => out.write_str("<em")?,
                     Container::Mark => out.write_str("<mark")?,
+                    Container::LinkDefinition { .. } => return Ok(()),
                 }
 
                 for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
@@ -343,6 +359,7 @@ impl Render for Renderer {
                     Container::Strong => out.write_str("</strong>")?,
                     Container::Emphasis => out.write_str("</em>")?,
                     Container::Mark => out.write_str("</mark>")?,
+                    Container::LinkDefinition { .. } => unreachable!(),
                 }
             }
             Event::Str(s) => match self.raw {
