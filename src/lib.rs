@@ -327,6 +327,8 @@ pub enum Container<'s> {
     Caption,
     /// A term within a description list.
     DescriptionTerm,
+    /// A link definition.
+    LinkDefinition { label: &'s str },
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
@@ -381,6 +383,7 @@ impl<'s> Container<'s> {
             | Self::TableCell { .. }
             | Self::Caption
             | Self::DescriptionTerm
+            | Self::LinkDefinition { .. }
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
             Self::Span
@@ -419,6 +422,7 @@ impl<'s> Container<'s> {
             | Self::TableCell { .. }
             | Self::Caption
             | Self::DescriptionTerm
+            | Self::LinkDefinition { .. }
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. }
             | Self::Span
@@ -941,14 +945,6 @@ impl<'s> Parser<'s> {
                     let cont = match c {
                         block::Node::Leaf(l) => {
                             self.inline_parser.reset();
-                            if matches!(l, block::Leaf::LinkDefinition) {
-                                // ignore link definitions
-                                if enter {
-                                    self.tree.take_inlines().last();
-                                }
-                                self.block_attributes = Attributes::new();
-                                continue;
-                            }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
                                 block::Leaf::Heading { has_section } => Container::Heading {
@@ -977,7 +973,9 @@ impl<'s> Parser<'s> {
                                     head: self.table_head_row,
                                 },
                                 block::Leaf::Caption => Container::Caption,
-                                block::Leaf::LinkDefinition => unreachable!(),
+                                block::Leaf::LinkDefinition => {
+                                    Container::LinkDefinition { label: content }
+                                }
                             }
                         }
                         block::Node::Container(c) => match c {
@@ -1418,6 +1416,9 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
         test_parse!(
             concat!(
@@ -1434,6 +1435,9 @@ mod test {
             End(Image("url".into(), SpanLinkType::Reference)),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
     }
 
@@ -1483,6 +1487,9 @@ mod test {
             End(Paragraph),
             End(Blockquote),
             Blankline,
+            Start(LinkDefinition { label: "a b" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "a b" }),
         );
     }
 
@@ -1504,6 +1511,11 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("u".into()),
+            Softbreak,
+            Str("rl".into()),
+            End(LinkDefinition { label: "tag" }),
         );
         test_parse!(
             concat!(
@@ -1521,6 +1533,9 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
     }
 
@@ -1543,6 +1558,12 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(
+                LinkDefinition { label: "tag" },
+                [("a", "b")].into_iter().collect()
+            ),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
             Start(Paragraph, Attributes::new()),
             Str("para".into()),
             End(Paragraph),
