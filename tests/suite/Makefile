@@ -20,7 +20,7 @@ mod.rs: ${TEST_RS}
 	done
 
 .test.rs:
-	awk -fgen.awk $< > $@
+	gawk -fgen.awk $< > $@
 
 clean:
 	rm -f *.rs
