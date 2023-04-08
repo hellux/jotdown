@@ -5,9 +5,9 @@
 TEST=$(shell find . -name '*.test' | sort)
 TEST_RS=${TEST:.test=.rs}
 
-BLACKLIST += filters # lua filters not implemented
-BLACKLIST += symb # uses ast
-BLACKLIST += sourcepos # not parsable
+BLACKLIST += djot_js_filters # lua filters not implemented
+BLACKLIST += djot_js_symb # uses ast
+BLACKLIST += djot_js_sourcepos # not parsable
 
 .PHONY: suite
 suite: mod.rs
