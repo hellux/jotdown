@@ -209,7 +209,7 @@ pub enum Event<'s> {
     /// A string object, text only.
     Str(CowStr<'s>),
     /// A footnote reference.
-    FootnoteReference(&'s str, usize),
+    FootnoteReference(&'s str),
     /// A symbol, by default rendered literally but may be treated specially.
     Symbol(CowStr<'s>),
     /// Left single quotation mark.
@@ -262,7 +262,7 @@ pub enum Container<'s> {
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
-    Footnote { tag: &'s str, number: usize },
+    Footnote { label: &'s str },
     /// A table element.
     Table,
     /// A row element of a table.
@@ -569,15 +569,6 @@ pub struct Parser<'s> {
     /// Currently within a verbatim code block.
     verbatim: bool,
 
-    /// Footnote references in the order they were encountered, without duplicates.
-    footnote_references: Vec<&'s str>,
-    /// Cache of footnotes to emit at the end.
-    footnotes: Map<&'s str, block::Tree>,
-    /// Next or current footnote being parsed and emitted.
-    footnote_index: usize,
-    /// Currently within a footnote.
-    footnote_active: bool,
-
     /// Inline parser.
     inline_parser: inline::Parser<'s>,
 }
@@ -755,10 +746,6 @@ impl<'s> Parser<'s> {
             block_attributes: Attributes::new(),
             table_head_row: false,
             verbatim: false,
-            footnote_references: Vec::new(),
-            footnotes: Map::new(),
-            footnote_index: 0,
-            footnote_active: false,
             inline_parser,
         }
     }
@@ -847,19 +834,7 @@ impl<'s> Parser<'s> {
                 }
                 inline::EventKind::Atom(a) => match a {
                     inline::Atom::FootnoteReference => {
-                        let tag = inline.span.of(self.src);
-                        let number = self
-                            .footnote_references
-                            .iter()
-                            .position(|t| *t == tag)
-                            .map_or_else(
-                                || {
-                                    self.footnote_references.push(tag);
-                                    self.footnote_references.len()
-                                },
-                                |i| i + 1,
-                            );
-                        Event::FootnoteReference(inline.span.of(self.src), number)
+                        Event::FootnoteReference(inline.span.of(self.src))
                     }
                     inline::Atom::Symbol => Event::Symbol(inline.span.of(self.src).into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
@@ -941,12 +916,7 @@ impl<'s> Parser<'s> {
                             block::Container::Div { .. } => Container::Div {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
-                            block::Container::Footnote => {
-                                debug_assert!(enter);
-                                self.footnotes.insert(content, self.tree.take_branch());
-                                self.block_attributes = Attributes::new();
-                                continue;
-                            }
+                            block::Container::Footnote => Container::Footnote { label: content },
                             block::Container::List(block::ListKind { ty, tight }) => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
@@ -1013,43 +983,13 @@ impl<'s> Parser<'s> {
         }
         None
     }
-
-    fn footnote(&mut self) -> Option<Event<'s>> {
-        if self.footnote_active {
-            let tag = self.footnote_references.get(self.footnote_index).unwrap();
-            self.footnote_index += 1;
-            self.footnote_active = false;
-            Some(Event::End(Container::Footnote {
-                tag,
-                number: self.footnote_index,
-            }))
-        } else if let Some(tag) = self.footnote_references.get(self.footnote_index) {
-            self.tree = self
-                .footnotes
-                .remove(tag)
-                .unwrap_or_else(block::Tree::empty);
-            self.footnote_active = true;
-
-            Some(Event::Start(
-                Container::Footnote {
-                    tag,
-                    number: self.footnote_index + 1,
-                },
-                Attributes::new(),
-            ))
-        } else {
-            None
-        }
-    }
 }
 
 impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inline()
-            .or_else(|| self.block())
-            .or_else(|| self.footnote())
+        self.inline().or_else(|| self.block())
     }
 }
 
@@ -1563,43 +1503,10 @@ mod test {
         test_parse!(
             "[^a][^b][^c]",
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
-            FootnoteReference("b", 2),
-            FootnoteReference("c", 3),
+            FootnoteReference("a"),
+            FootnoteReference("b"),
+            FootnoteReference("c"),
             End(Paragraph),
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
-            Start(
-                Footnote {
-                    tag: "b",
-                    number: 2
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "b",
-                number: 2
-            }),
-            Start(
-                Footnote {
-                    tag: "c",
-                    number: 3
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "c",
-                number: 3
-            }),
         );
     }
 
@@ -1608,23 +1515,14 @@ mod test {
         test_parse!(
             "[^a]\n\n[^a]: a\n",
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("a".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
         );
     }
 
@@ -1639,16 +1537,10 @@ mod test {
                 " def", //
             ),
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("abc".into()),
             End(Paragraph),
@@ -1656,10 +1548,7 @@ mod test {
             Start(Paragraph, Attributes::new()),
             Str("def".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
         );
     }
 
@@ -1673,26 +1562,17 @@ mod test {
                 "para\n", //
             ),
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(Paragraph, Attributes::new()),
-            Str("para".into()),
-            End(Paragraph),
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("note".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
         );
     }
 
