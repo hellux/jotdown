@@ -102,7 +102,7 @@ afl_tmin:
 clean:
 	cargo clean
 	git submodule deinit -f --all
-	rm -f tests/suite/*.test
+	find tests -type l -path 'tests/suite/*.test' -print0 | xargs -0 rm -f
 	(cd tests/suite && make clean)
 	rm -f tests/bench/*.dj
 	(cd tests/bench && make clean)
