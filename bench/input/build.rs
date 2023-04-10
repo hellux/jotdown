@@ -8,12 +8,11 @@ fn main() {
             if let Some(name) = entry.file_name().to_str() {
                 if let Some(name) = name.strip_suffix(".dj") {
                     if entry.file_type().map_or(false, |ty| !ty.is_dir()) {
-                        let name_snake = name.replace('-', "_");
                         let input = std::fs::read_to_string(
                             std::path::Path::new("..").join(entry.file_name()),
                         )
                         .ok()?;
-                        return Some((name_snake, input));
+                        return Some((name.to_string(), input));
                     }
                 }
             }

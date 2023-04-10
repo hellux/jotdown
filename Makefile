@@ -38,7 +38,8 @@ suite:
 suite_bench:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
-		ln -fs ../../modules/djot.js/bench/$$f tests/bench/$$f; \
+		dst=$$(echo $$f | sed 's/-/_/g'); \
+		ln -fs ../../modules/djot.js/bench/$$f tests/bench/$$dst; \
 	done
 	(cd tests/bench && make)
 	cargo test --features suite_bench bench::
@@ -47,7 +48,8 @@ suite_bench:
 bench:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
-		ln -fs ../modules/djot.js/bench/$$f bench/$$f; \
+		dst=$$(echo $$f | sed 's/-/_/g'); \
+		ln -fs ../modules/djot.js/bench/$$f bench/$$dst; \
 	done
 
 cov: suite suite_bench
