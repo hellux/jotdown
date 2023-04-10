@@ -11,6 +11,21 @@ pub fn parse(data: &[u8]) {
     }
 }
 
+/// Ensure containers are always balanced, i.e. opened and closed in correct order.
+pub fn parse_balance(data: &[u8]) {
+    if let Ok(s) = std::str::from_utf8(data) {
+        let mut open = Vec::new();
+        for event in jotdown::Parser::new(s) {
+            match event {
+                jotdown::Event::Start(c, ..) => open.push(c.clone()),
+                jotdown::Event::End(c) => assert_eq!(open.pop().unwrap(), c),
+                _ => {}
+            }
+        }
+        assert_eq!(open, &[]);
+    }
+}
+
 pub fn html(data: &[u8]) {
     if data.iter().any(|i| *i == 0) {
         return;
