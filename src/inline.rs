@@ -557,8 +557,9 @@ impl<'s> Parser<'s> {
                 self.input.span = self.input.span.after(len);
                 self.push(EventKind::Enter(Autolink));
                 self.push(EventKind::Str);
+                self.push(EventKind::Exit(Autolink));
                 self.input.span = self.input.span.after(1);
-                return self.push(EventKind::Exit(Autolink));
+                return Some(Continue);
             }
         }
         None
@@ -1507,22 +1508,22 @@ mod test {
             "<https://example.com>",
             (Enter(Autolink), "https://example.com"),
             (Str, "https://example.com"),
-            (Exit(Autolink), ">")
+            (Exit(Autolink), "https://example.com")
         );
         test_parse!(
             "<a@b.c>",
             (Enter(Autolink), "a@b.c"),
             (Str, "a@b.c"),
-            (Exit(Autolink), ">"),
+            (Exit(Autolink), "a@b.c"),
         );
         test_parse!(
             "<http://a.b><http://c.d>",
             (Enter(Autolink), "http://a.b"),
             (Str, "http://a.b"),
-            (Exit(Autolink), ">"),
+            (Exit(Autolink), "http://a.b"),
             (Enter(Autolink), "http://c.d"),
             (Str, "http://c.d"),
-            (Exit(Autolink), ">")
+            (Exit(Autolink), "http://c.d"),
         );
         test_parse!("<not-a-url>", (Str, "<not-a-url>"));
     }

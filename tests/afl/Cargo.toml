@@ -18,6 +18,10 @@ name = "parse"
 path = "src/parse.rs"
 
 [[bin]]
+name = "parse_balance"
+path = "src/parse_balance.rs"
+
+[[bin]]
 name = "html"
 path = "src/html.rs"
 
