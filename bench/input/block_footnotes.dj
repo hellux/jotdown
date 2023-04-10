@@ -1,0 +1,24 @@
+[^abc]: footnotes may appear before
+
+Some[^a] paragraph[^b] with[^c] a[^d] lot[^e] of[^f] footnotes[^g].
+
+[^a]: A typical footnote may have a single paragraph.
+[^b]: A typical footnote may have a single paragraph.
+[^c]: A typical footnote may have a single paragraph.
+[^d]: A typical footnote may have a single paragraph.
+[^e]: A typical footnote may have a single paragraph.
+[^f]: A typical footnote may have a single paragraph.
+[^g]: Footnotes may also be
+
+    - long and,
+    - contain multiple block elements.
+
+    such as
+
+    > blockquotes.
+
+Footnote [^labels may be long but not multi line]
+
+[^labels may be long but not multi line]: longer than the footnote..
+
+the reference[^abc] to it.
