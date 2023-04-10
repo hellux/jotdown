@@ -1541,6 +1541,36 @@ mod test {
     }
 
     #[test]
+    fn autolink() {
+        test_parse!(
+            "<proto:url>\n",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("proto:url".into(), LinkType::AutoLink),
+                Attributes::new()
+            ),
+            Str("proto:url".into()),
+            End(Link("proto:url".into(), LinkType::AutoLink)),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
+    fn email() {
+        test_parse!(
+            "<name@domain>\n",
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("name@domain".into(), LinkType::Email),
+                Attributes::new()
+            ),
+            Str("name@domain".into()),
+            End(Link("name@domain".into(), LinkType::Email)),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
     fn footnote_references() {
         test_parse!(
             "[^a][^b][^c]",
