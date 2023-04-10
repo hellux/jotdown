@@ -49,7 +49,7 @@ bench:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
 		dst=$$(echo $$f | sed 's/-/_/g'); \
-		ln -fs ../modules/djot.js/bench/$$f bench/$$dst; \
+		ln -fs ../../modules/djot.js/bench/$$f bench/input/$$dst; \
 	done
 
 cov: suite suite_bench

@@ -1,7 +1,7 @@
 use std::io::Write;
 
 fn main() {
-    let inputs = std::fs::read_dir("..")
+    let inputs = std::fs::read_dir(".")
         .unwrap()
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -9,7 +9,7 @@ fn main() {
                 if let Some(name) = name.strip_suffix(".dj") {
                     if entry.file_type().map_or(false, |ty| !ty.is_dir()) {
                         let input = std::fs::read_to_string(
-                            std::path::Path::new("..").join(entry.file_name()),
+                            std::path::Path::new(".").join(entry.file_name()),
                         )
                         .ok()?;
                         return Some((name.to_string(), input));
