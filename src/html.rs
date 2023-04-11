@@ -15,28 +15,21 @@ enum Raw {
     Other,
 }
 
+impl Default for Raw {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[derive(Default)]
 pub struct Renderer {
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
     encountered_footnote: bool,
     footnote_number: Option<std::num::NonZeroUsize>,
-    first_line: bool,
+    not_first_line: bool,
     close_para: bool,
-}
-
-impl Default for Renderer {
-    fn default() -> Self {
-        Self {
-            raw: Raw::None,
-            img_alt_text: 0,
-            list_tightness: Vec::new(),
-            encountered_footnote: false,
-            footnote_number: None,
-            first_line: true,
-            close_para: false,
-        }
-    }
 }
 
 impl Render for Renderer {
@@ -59,7 +52,7 @@ impl Render for Renderer {
 
         match e {
             Event::Start(c, attrs) => {
-                if c.is_block() && !self.first_line {
+                if c.is_block() && self.not_first_line {
                     out.write_char('\n')?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
@@ -389,7 +382,7 @@ impl Render for Renderer {
                 out.write_str(">")?;
             }
         }
-        self.first_line = false;
+        self.not_first_line = true;
 
         Ok(())
     }
