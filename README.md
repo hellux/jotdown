@@ -1,5 +1,12 @@
 # Jotdown
 
+[API documentation] | [Online demo] | [Crate] | [Repository]
+
+[API documentation]: https://docs.rs/jotdown
+[online demo]: https://hllmn.net/projects/jotdown/demo
+[crate]: https://crates.io/crates/jotdown
+[repository]: https://github.com/hellux/jotdown
+
 Jotdown is a pull parser Rust library for the [Djot][djot] markup language. It
 parses a Djot document into a sequence of events and may also render the events
 to HTML.
