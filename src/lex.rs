@@ -93,7 +93,7 @@ impl<'s> Lexer<'s> {
         }
     }
 
-    /// NOTE: Peeked [`Kind::Text`] tokens are only one char long, they may be longer when
+    /// NOTE: Peeked [`Kind::Text`] tokens are only one byte long, they may be longer when
     /// consumed.
     pub fn peek(&mut self) -> Option<&Token> {
         if self.next.is_none() {
@@ -150,112 +150,108 @@ impl<'s> Lexer<'s> {
     fn token(&mut self) -> Option<Token> {
         self.len = 0;
 
-        let first = self.eat_char()?;
-
-        let escape = self.escape;
-
-        let kind = match first {
-            _ if escape && first == '\n' => Hardbreak,
-            _ if escape
-                && matches!(first, '\t' | ' ')
-                && self.chars.clone().find(|c| !matches!(c, ' ' | '\t')) == Some('\n') =>
-            {
-                while self.eat_char() != Some('\n') {}
-                Hardbreak
-            }
-            _ if escape && first == ' ' => Nbsp,
-            _ if escape => Text,
-
-            '\n' => Newline,
-
-            '\\' => {
-                if self
-                    .peek_char()
-                    .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
-                {
-                    self.escape = true;
-                    Escape
-                } else {
-                    Text
-                }
-            }
-
-            '[' => Open(Bracket),
-            ']' => Close(Bracket),
-            '(' => Open(Paren),
-            ')' => Close(Paren),
-            '{' => {
-                let explicit = match self.peek_char() {
-                    Some('*') => Some(Open(BraceAsterisk)),
-                    Some('^') => Some(Open(BraceCaret)),
-                    Some('=') => Some(Open(BraceEqual)),
-                    Some('-') => Some(Open(BraceHyphen)),
-                    Some('+') => Some(Open(BracePlus)),
-                    Some('~') => Some(Open(BraceTilde)),
-                    Some('_') => Some(Open(BraceUnderscore)),
-                    Some('\'') => Some(Open(BraceQuote1)),
-                    Some('"') => Some(Open(BraceQuote2)),
-                    _ => None,
-                };
-                if let Some(exp) = explicit {
-                    self.eat_char();
-                    exp
-                } else {
-                    Open(Brace)
-                }
-            }
-            '}' => Close(Brace),
-            '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
-            '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
-            '=' => self.maybe_eat_close_brace(Text, BraceEqual),
-            '+' => self.maybe_eat_close_brace(Text, BracePlus),
-            '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
-            '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
-            '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
-            '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
-            '-' => {
-                if self.peek_char() == Some('}') {
-                    self.eat_char();
-                    Close(BraceHyphen)
-                } else {
-                    while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}') {
-                        self.eat_char();
-                    }
-                    Seq(Hyphen)
-                }
-            }
-
-            '!' if self.peek_char() == Some('[') => {
-                self.eat_char();
-                Sym(ExclaimBracket)
-            }
-            '<' => Sym(Lt),
-            '|' => Sym(Pipe),
-            ':' => Sym(Colon),
-
-            '`' => self.eat_seq(Backtick),
-            '.' => self.eat_seq(Period),
-            '$' => {
-                self.eat_while(|c| c == '$');
-                let mut n_ticks: u8 = 0;
-                self.eat_while(|c| {
-                    if c == '`' {
-                        if let Some(l) = n_ticks.checked_add(1) {
-                            n_ticks = l;
-                            return true;
-                        }
-                    }
-                    false
-                });
-                DollarBacktick(n_ticks)
-            }
-
-            _ => Text,
-        };
-
-        if escape {
+        let kind = if self.escape {
             self.escape = false;
-        }
+            match self.eat_char()? {
+                '\n' => Hardbreak,
+                '\t' | ' '
+                    if self.chars.clone().find(|c| !matches!(c, ' ' | '\t')) == Some('\n') =>
+                {
+                    while self.eat_char() != Some('\n') {}
+                    Hardbreak
+                }
+                ' ' => Nbsp,
+                _ => Text,
+            }
+        } else {
+            match self.eat_char()? {
+                '\n' => Newline,
+
+                '\\' => {
+                    if self
+                        .peek_char()
+                        .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
+                    {
+                        self.escape = true;
+                        Escape
+                    } else {
+                        Text
+                    }
+                }
+
+                '[' => Open(Bracket),
+                ']' => Close(Bracket),
+                '(' => Open(Paren),
+                ')' => Close(Paren),
+                '{' => {
+                    let explicit = match self.peek_char() {
+                        Some('*') => Some(Open(BraceAsterisk)),
+                        Some('^') => Some(Open(BraceCaret)),
+                        Some('=') => Some(Open(BraceEqual)),
+                        Some('-') => Some(Open(BraceHyphen)),
+                        Some('+') => Some(Open(BracePlus)),
+                        Some('~') => Some(Open(BraceTilde)),
+                        Some('_') => Some(Open(BraceUnderscore)),
+                        Some('\'') => Some(Open(BraceQuote1)),
+                        Some('"') => Some(Open(BraceQuote2)),
+                        _ => None,
+                    };
+                    if let Some(exp) = explicit {
+                        self.eat_char();
+                        exp
+                    } else {
+                        Open(Brace)
+                    }
+                }
+                '}' => Close(Brace),
+                '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
+                '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
+                '=' => self.maybe_eat_close_brace(Text, BraceEqual),
+                '+' => self.maybe_eat_close_brace(Text, BracePlus),
+                '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
+                '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
+                '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
+                '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
+                '-' => {
+                    if self.peek_char() == Some('}') {
+                        self.eat_char();
+                        Close(BraceHyphen)
+                    } else {
+                        while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}') {
+                            self.eat_char();
+                        }
+                        Seq(Hyphen)
+                    }
+                }
+
+                '!' if self.peek_char() == Some('[') => {
+                    self.eat_char();
+                    Sym(ExclaimBracket)
+                }
+                '<' => Sym(Lt),
+                '|' => Sym(Pipe),
+                ':' => Sym(Colon),
+
+                '`' => self.eat_seq(Backtick),
+                '.' => self.eat_seq(Period),
+                '$' => {
+                    self.eat_while(|c| c == '$');
+                    let mut n_ticks: u8 = 0;
+                    self.eat_while(|c| {
+                        if c == '`' {
+                            if let Some(l) = n_ticks.checked_add(1) {
+                                n_ticks = l;
+                                return true;
+                            }
+                        }
+                        false
+                    });
+                    DollarBacktick(n_ticks)
+                }
+
+                _ => Text,
+            }
+        };
 
         Some(Token {
             kind,
