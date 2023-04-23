@@ -12,6 +12,7 @@ pub(crate) struct Token {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Text,
+    #[cfg(feature = "softbreak")]
     Newline,
     Nbsp,
     Hardbreak,
@@ -172,6 +173,7 @@ impl<'s> Lexer<'s> {
                 Text
             } else {
                 match self.eat_byte()? {
+                    #[cfg(feature = "softbreak")]
                     b'\n' => Newline,
 
                     b'\\' => {
@@ -296,7 +298,8 @@ impl<'s> Iterator for Lexer<'s> {
 }
 
 fn is_special(c: u8) -> bool {
-    matches!(
+    #[allow(unused_mut)]
+    let mut special = matches!(
         c,
         b'\\'
             | b'['
@@ -321,8 +324,13 @@ fn is_special(c: u8) -> bool {
             | b'`'
             | b'.'
             | b'$'
-            | b'\n'
-    )
+    );
+    #[cfg(feature = "softbreak")]
+    {
+        // this has a significant impact on performance in paragraphs with linebreaks
+        special |= c == b'\n';
+    }
+    special
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ required-features = ["html"]
 doc = false
 
 [features]
-default = ["html"]
+default = ["html", "softbreak"]
 html = [] # html renderer and minimal cli binary
+softbreak = [] # emit softbreak events from parser
 deterministic = [] # for stable fuzzing

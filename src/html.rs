@@ -389,6 +389,7 @@ impl<'s> Writer<'s> {
             Event::EmDash => out.write_str("&mdash;")?,
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
             Event::Hardbreak => out.write_str("<br>\n")?,
+            #[cfg(feature = "softbreak")]
             Event::Softbreak => out.write_char('\n')?,
             Event::Escape | Event::Blankline => {}
             Event::ThematicBreak(attrs) => {

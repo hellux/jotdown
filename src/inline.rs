@@ -15,6 +15,7 @@ use ControlFlow::*;
 pub enum Atom {
     FootnoteReference,
     Symbol,
+    #[cfg(feature = "softbreak")]
     Softbreak,
     Hardbreak,
     Escape,
@@ -22,7 +23,10 @@ pub enum Atom {
     Ellipsis,
     EnDash,
     EmDash,
-    Quote { ty: QuoteType, left: bool },
+    Quote {
+        ty: QuoteType,
+        left: bool,
+    },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -846,6 +850,7 @@ impl<'s> Parser<'s> {
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         let atom = match first.kind {
+            #[cfg(feature = "softbreak")]
             lex::Kind::Newline => Softbreak,
             lex::Kind::Hardbreak => Hardbreak,
             lex::Kind::Escape => Escape,

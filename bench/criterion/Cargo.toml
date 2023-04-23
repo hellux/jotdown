@@ -6,9 +6,13 @@ edition = "2021"
 [dev-dependencies]
 criterion = { version = "0.4", default-features = false }
 bench-input = { path = "../input" }
-jotdown = { path = "../../" }
+jotdown = { path = "../../", default-features = false, features = ["html"] }
 
 [[bench]]
 name = "criterion"
 path = "main.rs"
 harness = false
+
+[features]
+default = []
+softbreak = ["jotdown/softbreak"]

@@ -8,6 +8,8 @@
 //! # Feature flags
 //!
 //! - `html` (default): build the html module and a binary that converts djot to HTML.
+//! - `softbreak` (default): Emit Softbreak events. Disabling this may improve performance when
+//! parsing long text only top level paragraphs that contain newlines.
 //!
 //! # Examples
 //!
@@ -228,6 +230,7 @@ pub enum Event<'s> {
     EmDash,
     /// A space that must not break a line.
     NonBreakingSpace,
+    #[cfg(feature = "softbreak")]
     /// A newline that may or may not break a line in the output.
     Softbreak,
     /// A newline that must break a line in the output.
@@ -635,6 +638,7 @@ impl<'s> PrePass<'s> {
                     inline_parser.reset();
                     inlines.iter().enumerate().for_each(|(i, sp)| {
                         inline_parser.feed_line(*sp, i == inlines.len() - 1);
+                        #[allow(clippy::single_match)]
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
                                 let mut chars = ev.span.of(src).chars().peekable();
@@ -653,6 +657,7 @@ impl<'s> PrePass<'s> {
                                     }
                                 }
                             }
+                            #[cfg(feature = "softbreak")]
                             inline::EventKind::Atom(inline::Atom::Softbreak) => {
                                 id_auto.push('-');
                             }
@@ -847,6 +852,7 @@ impl<'s> Parser<'s> {
                     inline::Atom::EnDash => Event::EnDash,
                     inline::Atom::EmDash => Event::EmDash,
                     inline::Atom::Nbsp => Event::NonBreakingSpace,
+                    #[cfg(feature = "softbreak")]
                     inline::Atom::Softbreak => Event::Softbreak,
                     inline::Atom::Hardbreak => Event::Hardbreak,
                     inline::Atom::Escape => Event::Escape,
@@ -1089,9 +1095,14 @@ mod test {
                 },
                 Attributes::new()
             ),
+            #[cfg(feature = "softbreak")]
             Str("abc".into()),
+            #[cfg(feature = "softbreak")]
             Softbreak,
+            #[cfg(feature = "softbreak")]
             Str("def".into()),
+            #[cfg(not(feature = "softbreak"))]
+            Str("abc\ndef".into()),
             End(Heading {
                 level: 1,
                 has_section: true,
@@ -1660,9 +1671,14 @@ mod test {
             ),
             Str("abc def".into()),
             End(Emphasis),
+            #[cfg(feature = "softbreak")]
             Str("{.c".into()),
+            #[cfg(feature = "softbreak")]
             Softbreak,
+            #[cfg(feature = "softbreak")]
             Str("invalid}".into()),
+            #[cfg(not(feature = "softbreak"))]
+            Str("{.c\ninvalid}".into()),
             End(Paragraph),
         );
     }
@@ -1733,8 +1749,15 @@ mod test {
                 " b\n", //
             ),
             Start(Paragraph, Attributes::new()),
+            #[cfg(feature = "softbreak")]
             Str("a{".into()),
+            #[cfg(feature = "softbreak")]
             Softbreak,
+            #[cfg(feature = "softbreak")]
+            Str("b".into()),
+            #[cfg(not(feature = "softbreak"))]
+            Str("a{\n".into()),
+            #[cfg(not(feature = "softbreak"))]
             Str("b".into()),
             End(Paragraph),
         );
@@ -1749,11 +1772,20 @@ mod test {
                 "}",       //
             ),
             Start(Paragraph, Attributes::new()),
+            #[cfg(feature = "softbreak")]
             Str("a{a=b".into()),
+            #[cfg(feature = "softbreak")]
             Softbreak,
+            #[cfg(feature = "softbreak")]
             Str("b".into()),
+            #[cfg(feature = "softbreak")]
             Softbreak,
+            #[cfg(feature = "softbreak")]
             Str("}".into()),
+            #[cfg(not(feature = "softbreak"))]
+            Str("a{a=b\n".into()),
+            #[cfg(not(feature = "softbreak"))]
+            Str("b\n}".into()),
             End(Paragraph),
         );
     }
