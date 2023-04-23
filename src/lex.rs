@@ -164,92 +164,98 @@ impl<'s> Lexer<'s> {
                 _ => Text,
             }
         } else {
-            match self.eat_char()? {
-                '\n' => Newline,
+            self.eat_while(|c| !is_special(c));
+            if self.len > 0 {
+                Text
+            } else {
+                match self.eat_char()? {
+                    '\n' => Newline,
 
-                '\\' => {
-                    if self
-                        .peek_char()
-                        .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
-                    {
-                        self.escape = true;
-                        Escape
-                    } else {
-                        Text
+                    '\\' => {
+                        if self
+                            .peek_char()
+                            .map_or(false, |c| c.is_whitespace() || c.is_ascii_punctuation())
+                        {
+                            self.escape = true;
+                            Escape
+                        } else {
+                            Text
+                        }
                     }
-                }
 
-                '[' => Open(Bracket),
-                ']' => Close(Bracket),
-                '(' => Open(Paren),
-                ')' => Close(Paren),
-                '{' => {
-                    let explicit = match self.peek_char() {
-                        Some('*') => Some(Open(BraceAsterisk)),
-                        Some('^') => Some(Open(BraceCaret)),
-                        Some('=') => Some(Open(BraceEqual)),
-                        Some('-') => Some(Open(BraceHyphen)),
-                        Some('+') => Some(Open(BracePlus)),
-                        Some('~') => Some(Open(BraceTilde)),
-                        Some('_') => Some(Open(BraceUnderscore)),
-                        Some('\'') => Some(Open(BraceQuote1)),
-                        Some('"') => Some(Open(BraceQuote2)),
-                        _ => None,
-                    };
-                    if let Some(exp) = explicit {
-                        self.eat_char();
-                        exp
-                    } else {
-                        Open(Brace)
-                    }
-                }
-                '}' => Close(Brace),
-                '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
-                '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
-                '=' => self.maybe_eat_close_brace(Text, BraceEqual),
-                '+' => self.maybe_eat_close_brace(Text, BracePlus),
-                '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
-                '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
-                '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
-                '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
-                '-' => {
-                    if self.peek_char() == Some('}') {
-                        self.eat_char();
-                        Close(BraceHyphen)
-                    } else {
-                        while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}') {
+                    '[' => Open(Bracket),
+                    ']' => Close(Bracket),
+                    '(' => Open(Paren),
+                    ')' => Close(Paren),
+                    '{' => {
+                        let explicit = match self.peek_char() {
+                            Some('*') => Some(Open(BraceAsterisk)),
+                            Some('^') => Some(Open(BraceCaret)),
+                            Some('=') => Some(Open(BraceEqual)),
+                            Some('-') => Some(Open(BraceHyphen)),
+                            Some('+') => Some(Open(BracePlus)),
+                            Some('~') => Some(Open(BraceTilde)),
+                            Some('_') => Some(Open(BraceUnderscore)),
+                            Some('\'') => Some(Open(BraceQuote1)),
+                            Some('"') => Some(Open(BraceQuote2)),
+                            _ => None,
+                        };
+                        if let Some(exp) = explicit {
                             self.eat_char();
+                            exp
+                        } else {
+                            Open(Brace)
                         }
-                        Seq(Hyphen)
                     }
-                }
-
-                '!' if self.peek_char() == Some('[') => {
-                    self.eat_char();
-                    Sym(ExclaimBracket)
-                }
-                '<' => Sym(Lt),
-                '|' => Sym(Pipe),
-                ':' => Sym(Colon),
-
-                '`' => self.eat_seq(Backtick),
-                '.' => self.eat_seq(Period),
-                '$' => {
-                    self.eat_while(|c| c == '$');
-                    let mut n_ticks: u8 = 0;
-                    self.eat_while(|c| {
-                        if c == '`' {
-                            if let Some(l) = n_ticks.checked_add(1) {
-                                n_ticks = l;
-                                return true;
+                    '}' => Close(Brace),
+                    '*' => self.maybe_eat_close_brace(Sym(Asterisk), BraceAsterisk),
+                    '^' => self.maybe_eat_close_brace(Sym(Caret), BraceCaret),
+                    '=' => self.maybe_eat_close_brace(Text, BraceEqual),
+                    '+' => self.maybe_eat_close_brace(Text, BracePlus),
+                    '~' => self.maybe_eat_close_brace(Sym(Tilde), BraceTilde),
+                    '_' => self.maybe_eat_close_brace(Sym(Underscore), BraceUnderscore),
+                    '\'' => self.maybe_eat_close_brace(Sym(Quote1), BraceQuote1),
+                    '"' => self.maybe_eat_close_brace(Sym(Quote2), BraceQuote2),
+                    '-' => {
+                        if self.peek_char() == Some('}') {
+                            self.eat_char();
+                            Close(BraceHyphen)
+                        } else {
+                            while self.peek_char() == Some('-') && self.peek_char_n(1) != Some('}')
+                            {
+                                self.eat_char();
                             }
+                            Seq(Hyphen)
                         }
-                        false
-                    });
-                    DollarBacktick(n_ticks)
-                }
+                    }
 
-                _ => Text,
+                    '!' if self.peek_char() == Some('[') => {
+                        self.eat_char();
+                        Sym(ExclaimBracket)
+                    }
+                    '<' => Sym(Lt),
+                    '|' => Sym(Pipe),
+                    ':' => Sym(Colon),
+
+                    '`' => self.eat_seq(Backtick),
+                    '.' => self.eat_seq(Period),
+                    '$' => {
+                        self.eat_while(|c| c == '$');
+                        let mut n_ticks: u8 = 0;
+                        self.eat_while(|c| {
+                            if c == '`' {
+                                if let Some(l) = n_ticks.checked_add(1) {
+                                    n_ticks = l;
+                                    return true;
+                                }
+                            }
+                            false
+                        });
+                        DollarBacktick(n_ticks)
+                    }
+
+                    _ => Text,
+                }
             }
         };
 
@@ -280,6 +286,35 @@ impl<'s> Iterator for Lexer<'s> {
     fn next(&mut self) -> Option<Self::Item> {
         self.next.take().or_else(|| self.next_token())
     }
+}
+
+fn is_special(c: char) -> bool {
+    matches!(
+        c,
+        '\\' | '['
+            | ']'
+            | '('
+            | ')'
+            | '{'
+            | '}'
+            | '*'
+            | '^'
+            | '='
+            | '+'
+            | '~'
+            | '_'
+            | '\''
+            | '"'
+            | '-'
+            | '!'
+            | '<'
+            | '|'
+            | ':'
+            | '`'
+            | '.'
+            | '$'
+            | '\n'
+    )
 }
 
 #[cfg(test)]
