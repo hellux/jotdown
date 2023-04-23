@@ -85,21 +85,27 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// Push to a [`String`] (implements [`std::fmt::Write`]):
 ///
 /// ```
+/// # #[cfg(feature = "html")]
+/// # {
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut output = String::new();
 /// let mut renderer = jotdown::html::Renderer::default();
 /// renderer.push(events, &mut output);
+/// # }
 /// ```
 ///
 /// Write to standard output with buffering ([`std::io::Stdout`] implements [`std::io::Write`]):
 ///
 /// ```
+/// # #[cfg(feature = "html")]
+/// # {
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut out = std::io::BufWriter::new(std::io::stdout());
 /// let mut renderer = jotdown::html::Renderer::default();
 /// renderer.write(events, &mut out).unwrap();
+/// # }
 /// ```
 pub trait Render {
     /// Render a single event.
@@ -166,11 +172,14 @@ pub trait Render {
     ///
     /// Render a borrowed slice of [`Event`]s.
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::Render;
     /// # let events: &[jotdown::Event] = &[];
     /// let mut output = String::new();
     /// let mut renderer = jotdown::html::Renderer::default();
     /// renderer.push_borrowed(events.iter(), &mut output);
+    /// # }
     /// ```
     fn push_borrowed<'s, E, I, W>(&mut self, mut events: I, mut out: W) -> fmt::Result
     where
