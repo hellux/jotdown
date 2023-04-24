@@ -36,17 +36,14 @@ pub enum Container<'s> {
     Strong,
     Mark,
     Verbatim,
-    RawFormat {
-        format: &'s str,
-    },
+    RawFormat { format: &'s str },
     InlineMath,
     DisplayMath,
     ReferenceLink(CowStrIndex),
     ReferenceImage(CowStrIndex),
     InlineLink(CowStrIndex),
     InlineImage(CowStrIndex),
-    /// Open delimiter span is URL, closing is '>'.
-    Autolink,
+    Autolink(&'s str),
 }
 
 type CowStrIndex = u32;
@@ -577,12 +574,13 @@ impl<'s> Parser<'s> {
                 .sum();
             if end && is_url {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Enter(Autolink));
+                let span_url = self.input.span.after(len);
+                let url = span_url.of(self.input.src);
+                self.push(EventKind::Enter(Autolink(url)));
+                self.input.span = span_url;
                 self.push(EventKind::Str);
-                self.push(EventKind::Exit(Autolink));
                 self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                return self.push(EventKind::Exit(Autolink(url)));
             }
         }
         None
@@ -1563,24 +1561,24 @@ mod test {
     fn autolink() {
         test_parse!(
             "<https://example.com>",
-            (Enter(Autolink), "https://example.com"),
+            (Enter(Autolink("https://example.com",)), "<"),
             (Str, "https://example.com"),
-            (Exit(Autolink), "https://example.com")
+            (Exit(Autolink("https://example.com",)), ">")
         );
         test_parse!(
             "<a@b.c>",
-            (Enter(Autolink), "a@b.c"),
+            (Enter(Autolink("a@b.c")), "<"),
             (Str, "a@b.c"),
-            (Exit(Autolink), "a@b.c"),
+            (Exit(Autolink("a@b.c")), ">"),
         );
         test_parse!(
             "<http://a.b><http://c.d>",
-            (Enter(Autolink), "http://a.b"),
+            (Enter(Autolink("http://a.b")), "<"),
             (Str, "http://a.b"),
-            (Exit(Autolink), "http://a.b"),
-            (Enter(Autolink), "http://c.d"),
+            (Exit(Autolink("http://a.b")), ">"),
+            (Enter(Autolink("http://c.d")), "<"),
             (Str, "http://c.d"),
-            (Exit(Autolink), "http://c.d"),
+            (Exit(Autolink("http://c.d")), ">"),
         );
         test_parse!("<not-a-url>", (Str, "<not-a-url>"));
     }

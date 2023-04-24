@@ -820,14 +820,13 @@ impl<'s> Parser<'s> {
                                 Container::Image(url_or_tag, ty)
                             }
                         }
-                        inline::Container::Autolink => {
-                            let url: CowStr = inline.span.of(self.src).into();
+                        inline::Container::Autolink(url) => {
                             let ty = if url.contains('@') {
                                 LinkType::Email
                             } else {
                                 LinkType::AutoLink
                             };
-                            Container::Link(url, ty)
+                            Container::Link(url.into(), ty)
                         }
                     };
                     if enter {
