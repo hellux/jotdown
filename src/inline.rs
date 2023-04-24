@@ -26,7 +26,7 @@ pub enum Atom {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Container {
+pub enum Container<'s> {
     Span,
     Subscript,
     Superscript,
@@ -36,8 +36,9 @@ pub enum Container {
     Strong,
     Mark,
     Verbatim,
-    /// Span is the format.
-    RawFormat,
+    RawFormat {
+        format: &'s str,
+    },
     InlineMath,
     DisplayMath,
     ReferenceLink(CowStrIndex),
@@ -57,9 +58,9 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind {
-    Enter(Container),
-    Exit(Container),
+pub enum EventKind<'s> {
+    Enter(Container<'s>),
+    Exit(Container<'s>),
     Atom(Atom),
     Str,
     Attributes {
@@ -72,8 +73,8 @@ pub enum EventKind {
 type AttributesIndex = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event {
-    pub kind: EventKind,
+pub struct Event<'s> {
+    pub kind: EventKind<'s>,
     pub span: Span,
 }
 
@@ -218,7 +219,7 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event>,
+    events: std::collections::VecDeque<Event<'s>>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
@@ -268,12 +269,12 @@ impl<'s> Parser<'s> {
         self.store_attributes.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
+    fn push_sp(&mut self, kind: EventKind<'s>, span: Span) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
         Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
+    fn push(&mut self, kind: EventKind<'s>) -> Option<ControlFlow> {
         self.push_sp(kind, self.input.span)
     }
 
@@ -310,17 +311,16 @@ impl<'s> Parser<'s> {
                 && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
             {
                 let raw_format = self.input.ahead_raw_format();
-                let mut span_closer = self.input.span;
                 if let Some(span_format) = raw_format {
-                    self.events[event_opener].kind = EventKind::Enter(RawFormat);
-                    self.events[event_opener].span = span_format;
-                    self.input.span = span_format.translate(1);
-                    span_closer = span_format;
+                    self.events[event_opener].kind = EventKind::Enter(RawFormat {
+                        format: span_format.of(self.input.src),
+                    });
+                    self.input.span = Span::new(self.input.span.start(), span_format.end() + 1);
                 };
                 let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                     debug_assert!(matches!(
                         ty,
-                        Verbatim | RawFormat | InlineMath | DisplayMath
+                        Verbatim | RawFormat { .. } | InlineMath | DisplayMath
                     ));
                     ty
                 } else {
@@ -330,7 +330,7 @@ impl<'s> Parser<'s> {
                 {
                     self.events.drain(*event_skip..);
                 }
-                self.push_sp(EventKind::Exit(ty_opener), span_closer);
+                self.push(EventKind::Exit(ty_opener));
                 self.verbatim = None;
                 if raw_format.is_none()
                     && self.input.peek().map_or(false, |t| {
@@ -925,7 +925,7 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Span) -> Event {
+    fn merge_str_events(&mut self, span_str: Span) -> Event<'s> {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder)
@@ -952,7 +952,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event<'s> {
         if let Some(i) = span_str
             .of(self.input.src)
             .bytes()
@@ -1089,8 +1089,8 @@ impl Opener {
     }
 }
 
-enum DelimEventKind {
-    Container(Container),
+enum DelimEventKind<'s> {
+    Container(Container<'s>),
     Span(SpanType),
     Quote(QuoteType),
     Link {
@@ -1100,7 +1100,7 @@ enum DelimEventKind {
     },
 }
 
-impl From<Opener> for DelimEventKind {
+impl<'s> From<Opener> for DelimEventKind<'s> {
     fn from(d: Opener) -> Self {
         match d {
             Opener::Span(ty) => Self::Span(ty),
@@ -1127,7 +1127,7 @@ impl From<Opener> for DelimEventKind {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event;
+    type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
@@ -1158,7 +1158,7 @@ impl<'s> Iterator for Parser<'s> {
             let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                 debug_assert!(matches!(
                     ty,
-                    Verbatim | RawFormat | InlineMath | DisplayMath
+                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
                 ));
                 ty
             } else {
@@ -1336,16 +1336,16 @@ mod test {
     fn raw_format() {
         test_parse!(
             "`raw`{=format}",
-            (Enter(RawFormat), "format"),
+            (Enter(RawFormat { format: "format" }), "`"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(RawFormat { format: "format" }), "`{=format}"),
         );
         test_parse!(
             "before `raw`{=format} after",
             (Str, "before "),
-            (Enter(RawFormat), "format"),
+            (Enter(RawFormat { format: "format" }), "`"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(RawFormat { format: "format" }), "`{=format}"),
             (Str, " after"),
         );
     }
