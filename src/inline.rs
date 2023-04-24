@@ -12,8 +12,8 @@ use Container::*;
 use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Atom {
-    FootnoteReference,
+pub enum Atom<'s> {
+    FootnoteReference { label: &'s str },
     Symbol,
     Softbreak,
     Hardbreak,
@@ -58,7 +58,7 @@ pub enum QuoteType {
 pub enum EventKind<'s> {
     Enter(Container<'s>),
     Exit(Container<'s>),
-    Atom(Atom),
+    Atom(Atom<'s>),
     Str,
     Attributes {
         container: bool,
@@ -647,10 +647,10 @@ impl<'s> Parser<'s> {
                 .sum();
             if end {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Atom(FootnoteReference));
-                self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                let span_label = self.input.span.after(len);
+                let label = span_label.of(self.input.src);
+                self.input.span = Span::new(self.input.span.start(), span_label.end() + 1);
+                return self.push(EventKind::Atom(FootnoteReference { label }));
             }
         }
         None
@@ -1588,7 +1588,7 @@ mod test {
         test_parse!(
             "text[^footnote]. more text",
             (Str, "text"),
-            (Atom(FootnoteReference), "footnote"),
+            (Atom(FootnoteReference { label: "footnote" }), "[^footnote]"),
             (Str, ". more text"),
         );
     }
