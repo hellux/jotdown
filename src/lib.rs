@@ -836,9 +836,7 @@ impl<'s> Parser<'s> {
                     }
                 }
                 inline::EventKind::Atom(a) => match a {
-                    inline::Atom::FootnoteReference => {
-                        Event::FootnoteReference(inline.span.of(self.src))
-                    }
+                    inline::Atom::FootnoteReference { label } => Event::FootnoteReference(label),
                     inline::Atom::Symbol => Event::Symbol(inline.span.of(self.src).into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
