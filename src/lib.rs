@@ -779,9 +779,7 @@ impl<'s> Parser<'s> {
                         inline::Container::Verbatim => Container::Verbatim,
                         inline::Container::InlineMath => Container::Math { display: false },
                         inline::Container::DisplayMath => Container::Math { display: true },
-                        inline::Container::RawFormat => Container::RawInline {
-                            format: inline.span.of(self.src),
-                        },
+                        inline::Container::RawFormat { format } => Container::RawInline { format },
                         inline::Container::Subscript => Container::Subscript,
                         inline::Container::Superscript => Container::Superscript,
                         inline::Container::Insert => Container::Insert,
