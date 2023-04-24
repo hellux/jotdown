@@ -14,7 +14,7 @@ use ControlFlow::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom<'s> {
     FootnoteReference { label: &'s str },
-    Symbol,
+    Symbol(&'s str),
     Softbreak,
     Hardbreak,
     Escape,
@@ -604,10 +604,11 @@ impl<'s> Parser<'s> {
                 .sum();
             if end && valid {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Atom(Symbol));
-                self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                let span_symbol = self.input.span.after(len);
+                self.input.span = Span::new(self.input.span.start(), span_symbol.end() + 1);
+                return self.push(EventKind::Atom(Atom::Symbol(
+                    span_symbol.of(self.input.src),
+                )));
             }
         }
         None
