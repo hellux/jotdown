@@ -36,14 +36,6 @@ pub struct Tree<C: 'static, A: 'static> {
 }
 
 impl<C: Clone, A: Clone> Tree<C, A> {
-    pub fn empty() -> Self {
-        Self {
-            nodes: vec![].into_boxed_slice().into(),
-            branch: Vec::new(),
-            head: None,
-        }
-    }
-
     /// Count number of direct children nodes.
     pub fn count_children(&self) -> usize {
         let mut head = self.head;
@@ -54,22 +46,6 @@ impl<C: Clone, A: Clone> Tree<C, A> {
             count += 1;
         }
         count
-    }
-
-    /// Split off the remaining part of the current branch. The returned [`Tree`] will continue on
-    /// the branch, this [`Tree`] will skip over the current branch.
-    pub fn take_branch(&mut self) -> Self {
-        let head = self.head.take();
-        self.head = self.branch.pop();
-        if let Some(h) = self.head {
-            let n = &self.nodes[h.index()];
-            self.head = n.next;
-        }
-        Self {
-            nodes: self.nodes.clone(),
-            branch: Vec::new(),
-            head,
-        }
     }
 
     /// Retrieve all inlines until the end of the current container. Panics if any upcoming node is
@@ -410,9 +386,6 @@ impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for
 mod test {
     use crate::Span;
 
-    use super::Event;
-    use super::EventKind;
-
     #[test]
     fn fmt() {
         let mut tree = super::Builder::new();
@@ -449,83 +422,6 @@ mod test {
                 "3 (5:6)\n",
                 "  31 (5:6)\n",
             )
-        );
-    }
-
-    #[test]
-    fn branch_take_branch() {
-        let mut b = super::Builder::new();
-        let sp = Span::new(0, 0);
-        b.enter(1, sp);
-        b.atom(11, sp);
-        b.exit();
-        b.enter(2, sp);
-        b.enter(21, sp);
-        b.atom(211, sp);
-        b.exit();
-        b.exit();
-        b.enter(3, sp);
-        b.atom(31, sp);
-        b.exit();
-        let mut tree = b.finish();
-
-        assert_eq!(
-            (&mut tree).take(3).collect::<Vec<_>>(),
-            &[
-                Event {
-                    kind: EventKind::Enter(1),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Atom(11),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Exit(1),
-                    span: sp
-                },
-            ]
-        );
-        assert_eq!(
-            tree.next(),
-            Some(Event {
-                kind: EventKind::Enter(2),
-                span: sp
-            })
-        );
-        assert_eq!(
-            tree.take_branch().collect::<Vec<_>>(),
-            &[
-                Event {
-                    kind: EventKind::Enter(21),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Atom(211),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Exit(21),
-                    span: sp
-                },
-            ]
-        );
-        assert_eq!(
-            tree.collect::<Vec<_>>(),
-            &[
-                Event {
-                    kind: EventKind::Enter(3),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Atom(31),
-                    span: sp
-                },
-                Event {
-                    kind: EventKind::Exit(3),
-                    span: sp
-                },
-            ]
         );
     }
 }

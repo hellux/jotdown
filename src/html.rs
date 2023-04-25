@@ -5,9 +5,36 @@ use crate::Container;
 use crate::Event;
 use crate::LinkType;
 use crate::ListKind;
+use crate::Map;
 use crate::OrderedListNumbering::*;
 use crate::Render;
 use crate::SpanLinkType;
+
+#[derive(Default)]
+pub struct Renderer {}
+
+impl Render for Renderer {
+    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: std::fmt::Write,
+    {
+        let mut w = Writer::default();
+        events.try_for_each(|e| w.render_event(&e, &mut out))?;
+        w.render_epilogue(&mut out)
+    }
+
+    fn push_borrowed<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    where
+        E: AsRef<Event<'s>>,
+        I: Iterator<Item = E>,
+        W: std::fmt::Write,
+    {
+        let mut w = Writer::default();
+        events.try_for_each(|e| w.render_event(e.as_ref(), &mut out))?;
+        w.render_epilogue(&mut out)
+    }
+}
 
 enum Raw {
     None,
@@ -15,51 +42,56 @@ enum Raw {
     Other,
 }
 
-pub struct Renderer {
-    raw: Raw,
-    img_alt_text: usize,
-    list_tightness: Vec<bool>,
-    encountered_footnote: bool,
-    footnote_number: Option<std::num::NonZeroUsize>,
-    first_line: bool,
-    close_para: bool,
-}
-
-impl Default for Renderer {
+impl Default for Raw {
     fn default() -> Self {
-        Self {
-            raw: Raw::None,
-            img_alt_text: 0,
-            list_tightness: Vec::new(),
-            encountered_footnote: false,
-            footnote_number: None,
-            first_line: true,
-            close_para: false,
-        }
+        Self::None
     }
 }
 
-impl Render for Renderer {
-    fn render_event<'s, W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
+#[derive(Default)]
+struct Writer<'s> {
+    raw: Raw,
+    img_alt_text: usize,
+    list_tightness: Vec<bool>,
+    not_first_line: bool,
+    ignore: bool,
+    footnotes: Footnotes<'s>,
+}
+
+impl<'s> Writer<'s> {
+    fn render_event<W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
-        if matches!(&e, Event::Blankline | Event::Escape) {
+        if let Event::Start(Container::Footnote { label }, ..) = e {
+            self.footnotes.start(label, Vec::new());
+            return Ok(());
+        } else if let Some(events) = self.footnotes.current() {
+            if matches!(e, Event::End(Container::Footnote { .. })) {
+                self.footnotes.end();
+            } else {
+                events.push(e.clone());
+            }
             return Ok(());
         }
 
-        let close_para = self.close_para;
-        if close_para {
-            self.close_para = false;
-            if !matches!(&e, Event::End(Container::Footnote { .. })) {
-                // no need to add href before para close
-                out.write_str("</p>")?;
-            }
+        if matches!(&e, Event::Start(Container::LinkDefinition { .. }, ..)) {
+            self.ignore = true;
+            return Ok(());
+        }
+
+        if matches!(&e, Event::End(Container::LinkDefinition { .. })) {
+            self.ignore = false;
+            return Ok(());
+        }
+
+        if self.ignore {
+            return Ok(());
         }
 
         match e {
             Event::Start(c, attrs) => {
-                if c.is_block() && !self.first_line {
+                if c.is_block() && self.not_first_line {
                     out.write_char('\n')?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
@@ -95,16 +127,7 @@ impl Render for Renderer {
                     }
                     Container::DescriptionList => out.write_str("<dl")?,
                     Container::DescriptionDetails => out.write_str("<dd")?,
-                    Container::Footnote { number, .. } => {
-                        debug_assert!(self.footnote_number.is_none());
-                        self.footnote_number = Some((*number).try_into().unwrap());
-                        if !self.encountered_footnote {
-                            self.encountered_footnote = true;
-                            out.write_str("<section role=\"doc-endnotes\">\n<hr>\n<ol>\n")?;
-                        }
-                        write!(out, "<li id=\"fn{}\">", number)?;
-                        return Ok(());
-                    }
+                    Container::Footnote { .. } => unreachable!(),
                     Container::Table => out.write_str("<table")?,
                     Container::TableRow { .. } => out.write_str("<tr")?,
                     Container::Section { .. } => out.write_str("<section")?,
@@ -158,6 +181,7 @@ impl Render for Renderer {
                     Container::Strong => out.write_str("<strong")?,
                     Container::Emphasis => out.write_str("<em")?,
                     Container::Mark => out.write_str("<mark")?,
+                    Container::LinkDefinition { .. } => return Ok(()),
                 }
 
                 for (a, v) in attrs.iter().filter(|(a, _)| *a != "class") {
@@ -263,7 +287,7 @@ impl Render for Renderer {
                 }
             }
             Event::End(c) => {
-                if c.is_block_container() && !matches!(c, Container::Footnote { .. }) {
+                if c.is_block_container() {
                     out.write_char('\n')?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
@@ -287,19 +311,7 @@ impl Render for Renderer {
                     }
                     Container::DescriptionList => out.write_str("</dl>")?,
                     Container::DescriptionDetails => out.write_str("</dd>")?,
-                    Container::Footnote { number, .. } => {
-                        if !close_para {
-                            // create a new paragraph
-                            out.write_str("\n<p>")?;
-                        }
-                        write!(
-                            out,
-                            r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a></p>"##,
-                            number,
-                        )?;
-                        out.write_str("\n</li>")?;
-                        self.footnote_number = None;
-                    }
+                    Container::Footnote { .. } => unreachable!(),
                     Container::Table => out.write_str("</table>")?,
                     Container::TableRow { .. } => out.write_str("</tr>")?,
                     Container::Section { .. } => out.write_str("</section>")?,
@@ -308,10 +320,8 @@ impl Render for Renderer {
                         if matches!(self.list_tightness.last(), Some(true)) {
                             return Ok(());
                         }
-                        if self.footnote_number.is_none() {
+                        if !self.footnotes.in_epilogue() {
                             out.write_str("</p>")?;
-                        } else {
-                            self.close_para = true;
                         }
                     }
                     Container::Heading { level, .. } => write!(out, "</h{}>", level)?,
@@ -350,6 +360,7 @@ impl Render for Renderer {
                     Container::Strong => out.write_str("</strong>")?,
                     Container::Emphasis => out.write_str("</em>")?,
                     Container::Mark => out.write_str("</mark>")?,
+                    Container::LinkDefinition { .. } => unreachable!(),
                 }
             }
             Event::Str(s) => match self.raw {
@@ -358,7 +369,8 @@ impl Render for Renderer {
                 Raw::Html => out.write_str(s)?,
                 Raw::Other => {}
             },
-            Event::FootnoteReference(_tag, number) => {
+            Event::FootnoteReference(label) => {
+                let number = self.footnotes.reference(label);
                 if self.img_alt_text == 0 {
                     write!(
                         out,
@@ -378,7 +390,7 @@ impl Render for Renderer {
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
             Event::Hardbreak => out.write_str("<br>\n")?,
             Event::Softbreak => out.write_char('\n')?,
-            Event::Escape | Event::Blankline => unreachable!("filtered out"),
+            Event::Escape | Event::Blankline => {}
             Event::ThematicBreak(attrs) => {
                 out.write_str("\n<hr")?;
                 for (a, v) in attrs.iter() {
@@ -389,7 +401,7 @@ impl Render for Renderer {
                 out.write_str(">")?;
             }
         }
-        self.first_line = false;
+        self.not_first_line = true;
 
         Ok(())
     }
@@ -398,9 +410,41 @@ impl Render for Renderer {
     where
         W: std::fmt::Write,
     {
-        if self.encountered_footnote {
+        if self.footnotes.reference_encountered() {
+            out.write_str("\n<section role=\"doc-endnotes\">\n<hr>\n<ol>")?;
+
+            while let Some((number, events)) = self.footnotes.next() {
+                write!(out, "\n<li id=\"fn{}\">", number)?;
+
+                let mut unclosed_para = false;
+                for e in events.iter().flatten() {
+                    if matches!(&e, Event::Blankline | Event::Escape) {
+                        continue;
+                    }
+                    if unclosed_para {
+                        // not a footnote, so no need to add href before para close
+                        out.write_str("</p>")?;
+                    }
+                    self.render_event(e, &mut out)?;
+                    unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
+                        && !matches!(self.list_tightness.last(), Some(true));
+                }
+                if !unclosed_para {
+                    // create a new paragraph
+                    out.write_str("\n<p>")?;
+                }
+                write!(
+                    out,
+                    r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a></p>"##,
+                    number,
+                )?;
+
+                out.write_str("\n</li>")?;
+            }
+
             out.write_str("\n</ol>\n</section>")?;
         }
+
         out.write_char('\n')?;
 
         Ok(())
@@ -444,4 +488,74 @@ where
         s = &s[i + 1..];
     }
     out.write_str(s)
+}
+
+/// Helper to aggregate footnotes for rendering at the end of the document. It will cache footnote
+/// events until they should be emitted at the end.
+///
+/// When footnotes should be rendered, they can be pulled with the [`Footnotes::next`] function in
+/// the order they were first referenced.
+#[derive(Default)]
+struct Footnotes<'s> {
+    /// Stack of current open footnotes, with label and staging buffer.
+    open: Vec<(&'s str, Vec<Event<'s>>)>,
+    /// Footnote references in the order they were first encountered.
+    references: Vec<&'s str>,
+    /// Events for each footnote.
+    events: Map<&'s str, Vec<Event<'s>>>,
+    /// Number of last footnote that was emitted.
+    number: usize,
+}
+
+impl<'s> Footnotes<'s> {
+    /// Returns `true` if any reference has been encountered.
+    fn reference_encountered(&self) -> bool {
+        !self.references.is_empty()
+    }
+
+    /// Returns `true` if within the epilogue, i.e. if any footnotes have been pulled.
+    fn in_epilogue(&self) -> bool {
+        self.number > 0
+    }
+
+    /// Add a footnote reference.
+    fn reference(&mut self, label: &'s str) -> usize {
+        self.references
+            .iter()
+            .position(|t| *t == label)
+            .map_or_else(
+                || {
+                    self.references.push(label);
+                    self.references.len()
+                },
+                |i| i + 1,
+            )
+    }
+
+    /// Start aggregating a footnote.
+    fn start(&mut self, label: &'s str, events: Vec<Event<'s>>) {
+        self.open.push((label, events));
+    }
+
+    /// Obtain the current (most recently started) footnote.
+    fn current(&mut self) -> Option<&mut Vec<Event<'s>>> {
+        self.open.last_mut().map(|(_, e)| e)
+    }
+
+    /// End the current (most recently started) footnote.
+    fn end(&mut self) {
+        let (label, stage) = self.open.pop().unwrap();
+        self.events.insert(label, stage);
+    }
+}
+
+impl<'s> Iterator for Footnotes<'s> {
+    type Item = (usize, Option<Vec<Event<'s>>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.references.get(self.number).map(|label| {
+            self.number += 1;
+            (self.number, self.events.remove(label))
+        })
+    }
 }

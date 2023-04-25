@@ -75,11 +75,6 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// If ownership of the [`Event`]s cannot be given to the renderer, use [`Render::push_borrowed`]
 /// or [`Render::write_borrowed`].
 ///
-/// An implementor needs to at least implement the [`Render::render_event`] function that renders a
-/// single event to the output. If anything needs to be rendered at the beginning or end of the
-/// output, the [`Render::render_prologue`] and [`Render::render_epilogue`] can be implemented as
-/// well.
-///
 /// # Examples
 ///
 /// Push to a [`String`] (implements [`std::fmt::Write`]):
@@ -90,7 +85,7 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut output = String::new();
-/// let mut renderer = jotdown::html::Renderer::default();
+/// let renderer = jotdown::html::Renderer::default();
 /// renderer.push(events, &mut output);
 /// # }
 /// ```
@@ -103,54 +98,22 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut out = std::io::BufWriter::new(std::io::stdout());
-/// let mut renderer = jotdown::html::Renderer::default();
+/// let renderer = jotdown::html::Renderer::default();
 /// renderer.write(events, &mut out).unwrap();
 /// # }
 /// ```
 pub trait Render {
-    /// Render a single event.
-    fn render_event<'s, W>(&mut self, e: &Event<'s>, out: W) -> std::fmt::Result
-    where
-        W: std::fmt::Write;
-
-    /// Render something before any events have been provided.
-    ///
-    /// This does nothing by default, but an implementation may choose to prepend data at the
-    /// beginning of the output if needed.
-    fn render_prologue<W>(&mut self, _out: W) -> std::fmt::Result
-    where
-        W: std::fmt::Write,
-    {
-        Ok(())
-    }
-
-    /// Render something after all events have been provided.
-    ///
-    /// This does nothing by default, but an implementation may choose to append extra data at the
-    /// end of the output if needed.
-    fn render_epilogue<W>(&mut self, _out: W) -> std::fmt::Result
-    where
-        W: std::fmt::Write,
-    {
-        Ok(())
-    }
-
     /// Push owned [`Event`]s to a unicode-accepting buffer or stream.
-    fn push<'s, I, W>(&mut self, mut events: I, mut out: W) -> fmt::Result
+    fn push<'s, I, W>(&self, events: I, out: W) -> fmt::Result
     where
         I: Iterator<Item = Event<'s>>,
-        W: fmt::Write,
-    {
-        self.render_prologue(&mut out)?;
-        events.try_for_each(|e| self.render_event(&e, &mut out))?;
-        self.render_epilogue(&mut out)
-    }
+        W: fmt::Write;
 
     /// Write owned [`Event`]s to a byte sink, encoded as UTF-8.
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write<'s, I, W>(&mut self, events: I, out: W) -> io::Result<()>
+    fn write<'s, I, W>(&self, events: I, out: W) -> io::Result<()>
     where
         I: Iterator<Item = Event<'s>>,
         W: io::Write,
@@ -177,26 +140,21 @@ pub trait Render {
     /// # use jotdown::Render;
     /// # let events: &[jotdown::Event] = &[];
     /// let mut output = String::new();
-    /// let mut renderer = jotdown::html::Renderer::default();
+    /// let renderer = jotdown::html::Renderer::default();
     /// renderer.push_borrowed(events.iter(), &mut output);
     /// # }
     /// ```
-    fn push_borrowed<'s, E, I, W>(&mut self, mut events: I, mut out: W) -> fmt::Result
+    fn push_borrowed<'s, E, I, W>(&self, events: I, out: W) -> fmt::Result
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
-        W: fmt::Write,
-    {
-        self.render_prologue(&mut out)?;
-        events.try_for_each(|e| self.render_event(e.as_ref(), &mut out))?;
-        self.render_epilogue(&mut out)
-    }
+        W: fmt::Write;
 
     /// Write borrowed [`Event`]s to a byte sink, encoded as UTF-8.
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write_borrowed<'s, E, I, W>(&mut self, events: I, out: W) -> io::Result<()>
+    fn write_borrowed<'s, E, I, W>(&self, events: I, out: W) -> io::Result<()>
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
@@ -251,7 +209,7 @@ pub enum Event<'s> {
     /// A string object, text only.
     Str(CowStr<'s>),
     /// A footnote reference.
-    FootnoteReference(&'s str, usize),
+    FootnoteReference(&'s str),
     /// A symbol, by default rendered literally but may be treated specially.
     Symbol(CowStr<'s>),
     /// Left single quotation mark.
@@ -304,7 +262,7 @@ pub enum Container<'s> {
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
-    Footnote { tag: &'s str, number: usize },
+    Footnote { label: &'s str },
     /// A table element.
     Table,
     /// A row element of a table.
@@ -327,6 +285,8 @@ pub enum Container<'s> {
     Caption,
     /// A term within a description list.
     DescriptionTerm,
+    /// A link definition.
+    LinkDefinition { label: &'s str },
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
@@ -381,6 +341,7 @@ impl<'s> Container<'s> {
             | Self::TableCell { .. }
             | Self::Caption
             | Self::DescriptionTerm
+            | Self::LinkDefinition { .. }
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
             Self::Span
@@ -419,6 +380,7 @@ impl<'s> Container<'s> {
             | Self::TableCell { .. }
             | Self::Caption
             | Self::DescriptionTerm
+            | Self::LinkDefinition { .. }
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. }
             | Self::Span
@@ -607,15 +569,6 @@ pub struct Parser<'s> {
     /// Currently within a verbatim code block.
     verbatim: bool,
 
-    /// Footnote references in the order they were encountered, without duplicates.
-    footnote_references: Vec<&'s str>,
-    /// Cache of footnotes to emit at the end.
-    footnotes: Map<&'s str, block::Tree>,
-    /// Next or current footnote being parsed and emitted.
-    footnote_index: usize,
-    /// Currently within a footnote.
-    footnote_active: bool,
-
     /// Inline parser.
     inline_parser: inline::Parser<'s>,
 }
@@ -793,10 +746,6 @@ impl<'s> Parser<'s> {
             block_attributes: Attributes::new(),
             table_head_row: false,
             verbatim: false,
-            footnote_references: Vec::new(),
-            footnotes: Map::new(),
-            footnote_index: 0,
-            footnote_active: false,
             inline_parser,
         }
     }
@@ -885,19 +834,7 @@ impl<'s> Parser<'s> {
                 }
                 inline::EventKind::Atom(a) => match a {
                     inline::Atom::FootnoteReference => {
-                        let tag = inline.span.of(self.src);
-                        let number = self
-                            .footnote_references
-                            .iter()
-                            .position(|t| *t == tag)
-                            .map_or_else(
-                                || {
-                                    self.footnote_references.push(tag);
-                                    self.footnote_references.len()
-                                },
-                                |i| i + 1,
-                            );
-                        Event::FootnoteReference(inline.span.of(self.src), number)
+                        Event::FootnoteReference(inline.span.of(self.src))
                     }
                     inline::Atom::Symbol => Event::Symbol(inline.span.of(self.src).into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
@@ -941,14 +878,6 @@ impl<'s> Parser<'s> {
                     let cont = match c {
                         block::Node::Leaf(l) => {
                             self.inline_parser.reset();
-                            if matches!(l, block::Leaf::LinkDefinition) {
-                                // ignore link definitions
-                                if enter {
-                                    self.tree.take_inlines().last();
-                                }
-                                self.block_attributes = Attributes::new();
-                                continue;
-                            }
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
                                 block::Leaf::Heading { has_section } => Container::Heading {
@@ -977,7 +906,9 @@ impl<'s> Parser<'s> {
                                     head: self.table_head_row,
                                 },
                                 block::Leaf::Caption => Container::Caption,
-                                block::Leaf::LinkDefinition => unreachable!(),
+                                block::Leaf::LinkDefinition => {
+                                    Container::LinkDefinition { label: content }
+                                }
                             }
                         }
                         block::Node::Container(c) => match c {
@@ -985,12 +916,7 @@ impl<'s> Parser<'s> {
                             block::Container::Div { .. } => Container::Div {
                                 class: (!ev.span.is_empty()).then(|| content),
                             },
-                            block::Container::Footnote => {
-                                debug_assert!(enter);
-                                self.footnotes.insert(content, self.tree.take_branch());
-                                self.block_attributes = Attributes::new();
-                                continue;
-                            }
+                            block::Container::Footnote => Container::Footnote { label: content },
                             block::Container::List(block::ListKind { ty, tight }) => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
@@ -1057,43 +983,13 @@ impl<'s> Parser<'s> {
         }
         None
     }
-
-    fn footnote(&mut self) -> Option<Event<'s>> {
-        if self.footnote_active {
-            let tag = self.footnote_references.get(self.footnote_index).unwrap();
-            self.footnote_index += 1;
-            self.footnote_active = false;
-            Some(Event::End(Container::Footnote {
-                tag,
-                number: self.footnote_index,
-            }))
-        } else if let Some(tag) = self.footnote_references.get(self.footnote_index) {
-            self.tree = self
-                .footnotes
-                .remove(tag)
-                .unwrap_or_else(block::Tree::empty);
-            self.footnote_active = true;
-
-            Some(Event::Start(
-                Container::Footnote {
-                    tag,
-                    number: self.footnote_index + 1,
-                },
-                Attributes::new(),
-            ))
-        } else {
-            None
-        }
-    }
 }
 
 impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inline()
-            .or_else(|| self.block())
-            .or_else(|| self.footnote())
+        self.inline().or_else(|| self.block())
     }
 }
 
@@ -1418,6 +1314,9 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
         test_parse!(
             concat!(
@@ -1434,6 +1333,9 @@ mod test {
             End(Image("url".into(), SpanLinkType::Reference)),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
     }
 
@@ -1483,6 +1385,9 @@ mod test {
             End(Paragraph),
             End(Blockquote),
             Blankline,
+            Start(LinkDefinition { label: "a b" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "a b" }),
         );
     }
 
@@ -1504,6 +1409,11 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("u".into()),
+            Softbreak,
+            Str("rl".into()),
+            End(LinkDefinition { label: "tag" }),
         );
         test_parse!(
             concat!(
@@ -1521,6 +1431,9 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(LinkDefinition { label: "tag" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
         );
     }
 
@@ -1543,6 +1456,12 @@ mod test {
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
             End(Paragraph),
             Blankline,
+            Start(
+                LinkDefinition { label: "tag" },
+                [("a", "b")].into_iter().collect()
+            ),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
             Start(Paragraph, Attributes::new()),
             Str("para".into()),
             End(Paragraph),
@@ -1584,43 +1503,10 @@ mod test {
         test_parse!(
             "[^a][^b][^c]",
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
-            FootnoteReference("b", 2),
-            FootnoteReference("c", 3),
+            FootnoteReference("a"),
+            FootnoteReference("b"),
+            FootnoteReference("c"),
             End(Paragraph),
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
-            Start(
-                Footnote {
-                    tag: "b",
-                    number: 2
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "b",
-                number: 2
-            }),
-            Start(
-                Footnote {
-                    tag: "c",
-                    number: 3
-                },
-                Attributes::new()
-            ),
-            End(Footnote {
-                tag: "c",
-                number: 3
-            }),
         );
     }
 
@@ -1629,23 +1515,14 @@ mod test {
         test_parse!(
             "[^a]\n\n[^a]: a\n",
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("a".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
         );
     }
 
@@ -1660,16 +1537,10 @@ mod test {
                 " def", //
             ),
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("abc".into()),
             End(Paragraph),
@@ -1677,10 +1548,7 @@ mod test {
             Start(Paragraph, Attributes::new()),
             Str("def".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
         );
     }
 
@@ -1694,26 +1562,17 @@ mod test {
                 "para\n", //
             ),
             Start(Paragraph, Attributes::new()),
-            FootnoteReference("a", 1),
+            FootnoteReference("a"),
             End(Paragraph),
             Blankline,
-            Start(Paragraph, Attributes::new()),
-            Str("para".into()),
-            End(Paragraph),
-            Start(
-                Footnote {
-                    tag: "a",
-                    number: 1
-                },
-                Attributes::new()
-            ),
+            Start(Footnote { label: "a" }, Attributes::new()),
             Start(Paragraph, Attributes::new()),
             Str("note".into()),
             End(Paragraph),
-            End(Footnote {
-                tag: "a",
-                number: 1
-            }),
+            End(Footnote { label: "a" }),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
         );
     }
 
