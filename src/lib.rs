@@ -60,7 +60,6 @@ mod block;
 mod inline;
 mod lex;
 mod span;
-mod tree;
 
 use span::Span;
 
@@ -555,7 +554,7 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Block tree parsed at first.
-    tree: block::Tree<'s>,
+    blocks: std::iter::Peekable<std::vec::IntoIter<block::Event<'s>>>,
 
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
@@ -600,31 +599,48 @@ impl<'s> PrePass<'s> {
     #[must_use]
     fn new(
         src: &'s str,
-        mut tree: block::Tree<'s>,
+        blocks: std::slice::Iter<block::Event<'s>>,
         inline_parser: &mut inline::Parser<'s>,
     ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<&str> = Set::new();
 
+        let mut blocks = blocks.peekable();
+
         let mut attr_prev: Option<Span> = None;
-        while let Some(e) = tree.next() {
+        while let Some(e) = blocks.next() {
             match e.kind {
-                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
+                block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
                     label,
                 })) => {
+                    fn next_is_inline(
+                        bs: &mut std::iter::Peekable<std::slice::Iter<block::Event>>,
+                    ) -> bool {
+                        matches!(bs.peek().map(|e| &e.kind), Some(block::EventKind::Inline))
+                    }
+
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
                     let attrs =
                         attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
-                    let url = match tree.count_children() {
-                        0 => "".into(),
-                        1 => tree.take_inlines().next().unwrap().of(src).trim().into(),
-                        _ => tree.take_inlines().map(|sp| sp.of(src).trim()).collect(),
+                    let url = if !next_is_inline(&mut blocks) {
+                        "".into()
+                    } else {
+                        let start = blocks.next().unwrap().span.of(src).trim();
+                        if !next_is_inline(&mut blocks) {
+                            start.into()
+                        } else {
+                            let mut url = start.to_string();
+                            while next_is_inline(&mut blocks) {
+                                url.push_str(blocks.next().unwrap().span.of(src).trim());
+                            }
+                            url.into()
+                        }
                     };
                     link_definitions.insert(label, (url, attrs));
                 }
-                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
+                block::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
                     // All headings ids have to be obtained initially, as references can appear
                     // before the heading. Additionally, determining the id requires inline parsing
                     // as formatting must be removed.
@@ -639,10 +655,21 @@ impl<'s> PrePass<'s> {
                     let mut id_auto = String::new();
                     let mut text = String::new();
                     let mut last_whitespace = true;
-                    let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inline_parser.reset();
-                    inlines.iter().enumerate().for_each(|(i, sp)| {
-                        inline_parser.feed_line(*sp, i == inlines.len() - 1);
+                    let mut last_end = 0;
+                    loop {
+                        let span_inline = blocks.next().and_then(|e| {
+                            if matches!(e.kind, block::EventKind::Inline) {
+                                last_end = e.span.end();
+                                Some(e.span)
+                            } else {
+                                None
+                            }
+                        });
+                        inline_parser.feed_line(
+                            span_inline.unwrap_or_else(|| Span::empty_at(last_end)),
+                            span_inline.is_none(),
+                        );
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
                                 text.push_str(ev.span.of(src));
@@ -667,8 +694,11 @@ impl<'s> PrePass<'s> {
                                 id_auto.push('-');
                             }
                             _ => {}
-                        })
-                    });
+                        });
+                        if span_inline.is_none() {
+                            break;
+                        }
+                    }
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
                     // ensure id unique
@@ -700,11 +730,11 @@ impl<'s> PrePass<'s> {
                         id_override,
                     });
                 }
-                tree::EventKind::Atom(block::Atom::Attributes) => {
+                block::EventKind::Atom(block::Atom::Attributes) => {
                     attr_prev = Some(e.span);
                 }
-                tree::EventKind::Enter(..)
-                | tree::EventKind::Exit(block::Node::Container(block::Container::Section {
+                block::EventKind::Enter(..)
+                | block::EventKind::Exit(block::Node::Container(block::Container::Section {
                     ..
                 })) => {}
                 _ => {
@@ -746,13 +776,13 @@ impl<'s> PrePass<'s> {
 impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
-        let tree = block::parse(src);
+        let blocks = block::parse(src);
         let mut inline_parser = inline::Parser::new(src);
-        let pre_pass = PrePass::new(src, tree.clone(), &mut inline_parser);
+        let pre_pass = PrePass::new(src, blocks.iter(), &mut inline_parser);
 
         Self {
             src,
-            tree,
+            blocks: blocks.into_iter().peekable(),
             pre_pass,
             block_attributes: Attributes::new(),
             table_head_row: false,
@@ -866,10 +896,10 @@ impl<'s> Parser<'s> {
     }
 
     fn block(&mut self) -> Option<Event<'s>> {
-        while let Some(ev) = &mut self.tree.next() {
+        while let Some(ev) = &mut self.blocks.next() {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
-                tree::EventKind::Atom(a) => match a {
+                block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => Event::Blankline,
                     block::Atom::ThematicBreak => {
                         Event::ThematicBreak(self.block_attributes.take())
@@ -879,8 +909,8 @@ impl<'s> Parser<'s> {
                         continue;
                     }
                 },
-                tree::EventKind::Enter(c) | tree::EventKind::Exit(c) => {
-                    let enter = matches!(ev.kind, tree::EventKind::Enter(..));
+                block::EventKind::Enter(c) | block::EventKind::Exit(c) => {
+                    let enter = matches!(ev.kind, block::EventKind::Enter(..));
                     let cont = match c {
                         block::Node::Leaf(l) => {
                             self.inline_parser.reset();
@@ -977,15 +1007,21 @@ impl<'s> Parser<'s> {
                         Event::End(cont)
                     }
                 }
-                tree::EventKind::Inline => {
+                block::EventKind::Inline => {
                     if self.verbatim {
                         Event::Str(content.into())
                     } else {
-                        self.inline_parser
-                            .feed_line(ev.span, self.tree.branch_is_empty());
+                        self.inline_parser.feed_line(
+                            ev.span,
+                            !matches!(
+                                self.blocks.peek().map(|e| &e.kind),
+                                Some(block::EventKind::Inline),
+                            ),
+                        );
                         return self.next();
                     }
                 }
+                block::EventKind::Stale => continue,
             };
             return Some(event);
         }
