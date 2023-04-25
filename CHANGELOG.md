@@ -1,3 +1,13 @@
+## [0.2.1](https://github.com/hellux/jotdown/releases/tag/0.2.1) - 2023-04-25
+
+### Changed
+
+- Performance improved for inline parsing, up to 80% faster (#37).
+
+### Fixed
+
+- URL of autolink exit event (#35).
+
 ## [0.2.0](https://github.com/hellux/jotdown/releases/tag/0.2.0) - 2023-04-04
 
 ### Added
