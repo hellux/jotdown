@@ -5,15 +5,26 @@ use crate::Span;
 
 use crate::attr;
 use crate::lex;
-use crate::tree;
 
 use Atom::*;
 use Container::*;
 use Leaf::*;
 use ListType::*;
 
-pub type Tree<'s> = tree::Tree<Node<'s>, Atom>;
-pub type TreeBuilder<'s> = tree::Builder<Node<'s>, Atom>;
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Event<'s> {
+    pub kind: EventKind<'s>,
+    pub span: Span,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum EventKind<'s> {
+    Enter(Node<'s>),
+    Inline,
+    Exit(Node<'s>),
+    Atom(Atom),
+    Stale,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Node<'s> {
@@ -22,7 +33,7 @@ pub enum Node<'s> {
 }
 
 #[must_use]
-pub fn parse(src: &str) -> Tree {
+pub fn parse(src: &str) -> Vec<Event> {
     TreeParser::new(src).parse()
 }
 
@@ -106,15 +117,13 @@ struct OpenList {
     /// Depth in the tree where the direct list items of the list are. Needed to determine when to
     /// close the list.
     depth: u16,
-    /// Index to node in tree, required to update tightness.
-    node: tree::NodeIndex,
+    /// Index to event in tree, required to update tightness.
+    event: usize,
 }
 
 /// Parser for block-level tree structure of entire document.
 struct TreeParser<'s> {
     src: &'s str,
-    tree: TreeBuilder<'s>,
-
     /// The previous block element was a blank line.
     prev_blankline: bool,
     prev_loose: bool,
@@ -124,24 +133,30 @@ struct TreeParser<'s> {
     open_sections: Vec<usize>,
     /// Alignments for each column in for the current table.
     alignments: Vec<Alignment>,
+    /// Current container depth.
+    open: Vec<usize>,
+    /// Buffer queue for next events. Events are buffered until no modifications due to future
+    /// characters are needed.
+    events: Vec<Event<'s>>,
 }
 
 impl<'s> TreeParser<'s> {
     #[must_use]
-    pub fn new(src: &'s str) -> Self {
+    fn new(src: &'s str) -> Self {
         Self {
             src,
-            tree: TreeBuilder::new(),
             prev_blankline: false,
             prev_loose: false,
             open_lists: Vec::new(),
             alignments: Vec::new(),
             open_sections: Vec::new(),
+            open: Vec::new(),
+            events: Vec::new(),
         }
     }
 
     #[must_use]
-    pub fn parse(mut self) -> Tree<'s> {
+    fn parse(mut self) -> Vec<Event<'s>> {
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
         while line_pos < lines.len() {
@@ -154,10 +169,43 @@ impl<'s> TreeParser<'s> {
         while let Some(l) = self.open_lists.pop() {
             self.close_list(l, self.src.len());
         }
-        for _ in self.open_sections.drain(..) {
-            self.tree.exit(Span::empty_at(self.src.len())); // section
+
+        for _ in std::mem::take(&mut self.open_sections).drain(..) {
+            self.exit(Span::empty_at(self.src.len()));
         }
-        self.tree.finish()
+        debug_assert_eq!(self.open, &[]);
+        self.events
+    }
+
+    fn inline(&mut self, span: Span) {
+        self.events.push(Event {
+            kind: EventKind::Inline,
+            span,
+        });
+    }
+
+    fn enter(&mut self, node: Node<'s>, span: Span) -> usize {
+        let i = self.events.len();
+        self.open.push(i);
+        self.events.push(Event {
+            kind: EventKind::Enter(node),
+            span,
+        });
+        i
+    }
+
+    fn exit(&mut self, span: Span) -> usize {
+        let i = self.events.len();
+        let node = if let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind {
+            node
+        } else {
+            panic!();
+        };
+        self.events.push(Event {
+            kind: EventKind::Exit(node),
+            span,
+        });
+        i
     }
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
@@ -198,8 +246,8 @@ impl<'s> TreeParser<'s> {
 
             // close list if a non list item or a list item of new type appeared
             if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
-                debug_assert!(usize::from(*depth) <= self.tree.depth());
-                if self.tree.depth() == (*depth).into()
+                debug_assert!(usize::from(*depth) <= self.open.len());
+                if self.open.len() == (*depth).into()
                     && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
                 {
                     let l = self.open_lists.pop().unwrap();
@@ -213,15 +261,17 @@ impl<'s> TreeParser<'s> {
             } else {
                 self.prev_loose = false;
                 if self.prev_blankline {
-                    if let Some(OpenList { node, depth, .. }) = self.open_lists.last() {
-                        if usize::from(*depth) >= self.tree.depth()
+                    if let Some(OpenList { event, depth, .. }) = self.open_lists.last() {
+                        if usize::from(*depth) >= self.open.len()
                             || !matches!(kind, Kind::ListItem { .. })
                         {
-                            let mut elem = self.tree.elem(*node);
-                            let ListKind { tight, .. } = elem.list_mut().unwrap();
-                            if *tight {
-                                self.prev_loose = true;
-                                *tight = false;
+                            if let EventKind::Enter(Node::Container(List { kind, .. })) =
+                                &mut self.events[*event].kind
+                            {
+                                if kind.tight {
+                                    self.prev_loose = true;
+                                    kind.tight = false;
+                                }
                             }
                         }
                     }
@@ -269,7 +319,10 @@ impl<'s> TreeParser<'s> {
             };
 
             match block {
-                Block::Atom(a) => self.tree.atom(a, span_start),
+                Block::Atom(a) => self.events.push(Event {
+                    kind: EventKind::Atom(a),
+                    span: span_start,
+                }),
                 Block::Leaf(l) => self.parse_leaf(l, &kind, span_start, span_end, lines),
                 Block::Container(Table) => self.parse_table(lines, span_start, span_end),
                 Block::Container(c) => {
@@ -325,16 +378,13 @@ impl<'s> TreeParser<'s> {
                     .iter()
                     .rposition(|l| l < level)
                     .map_or(0, |i| i + 1);
-                self.open_sections.drain(first_close..).for_each(|_| {
-                    self.tree.exit(Span::empty_at(span_start.start())); // section
-                });
+                let pos = span_start.start() as u32;
+                for _ in 0..(self.open_sections.len() - first_close) {
+                    self.exit(Span::empty_at(span_start.start())); // section
+                }
+                self.open_sections.drain(first_close..);
                 self.open_sections.push(*level);
-                self.tree.enter(
-                    Node::Container(Section {
-                        pos: span_start.start() as u32,
-                    }),
-                    span_start.empty_before(),
-                );
+                self.enter(Node::Container(Section { pos }), span_start.empty_before());
             }
 
             // trim '#' characters
@@ -343,12 +393,12 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        self.tree.enter(Node::Leaf(leaf), span_start);
+        self.enter(Node::Leaf(leaf), span_start);
         lines
             .iter()
             .filter(|l| !matches!(k, Kind::Heading { .. }) || !l.is_empty())
-            .for_each(|line| self.tree.inline(*line));
-        self.tree.exit(span_end);
+            .for_each(|line| self.inline(*line));
+        self.exit(span_end);
     }
 
     fn parse_container(
@@ -392,11 +442,11 @@ impl<'s> TreeParser<'s> {
                 .open_lists
                 .last()
                 .map_or(true, |OpenList { depth, .. }| {
-                    usize::from(*depth) < self.tree.depth()
+                    usize::from(*depth) < self.open.len()
                 });
             if same_depth {
                 let tight = true;
-                let node = self.tree.enter(
+                let event = self.enter(
                     Node::Container(Container::List {
                         kind: ListKind { ty: *ty, tight },
                         marker: span_start.of(self.src),
@@ -405,48 +455,77 @@ impl<'s> TreeParser<'s> {
                 );
                 self.open_lists.push(OpenList {
                     ty: *ty,
-                    depth: self.tree.depth().try_into().unwrap(),
-                    node,
+                    depth: self.open.len().try_into().unwrap(),
+                    event,
                 });
             }
         }
 
         let dt = if let ListItem(ListItemKind::Description) = c {
-            let dt = self.tree.enter(Node::Leaf(DescriptionTerm), span_start);
-            self.tree.exit(span_start.trim_end(self.src).empty_after());
-            let span_open = span_start;
+            let dt = self.enter(Node::Leaf(DescriptionTerm), span_start);
+            self.exit(span_start.trim_end(self.src).empty_after());
             span_start = lines[0].empty_before();
-            Some((dt, span_open))
+            Some((dt, self.events.len(), self.open.len()))
         } else {
             None
         };
 
-        let node = self.tree.enter(Node::Container(c), span_start);
+        self.enter(Node::Container(c), span_start);
         let mut l = 0;
         while l < lines.len() {
             l += self.parse_block(&mut lines[l..], false);
         }
 
-        if let Some((node_dt, span_open)) = dt {
-            let node_child = if let Some(node_child) = self.tree.children(node).next() {
-                if let tree::Element::Container(Node::Leaf(l @ Paragraph)) = node_child.elem {
+        if let Some((empty_term, enter_detail, open_detail)) = dt {
+            let enter_term = enter_detail + 1;
+            if let Some(first_child) = self.events.get_mut(enter_term) {
+                if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
+                    // convert paragraph into description term
                     *l = DescriptionTerm;
-                    Some(node_child.index)
-                } else {
-                    None
+                    let exit_term = if let Some(i) = self.events[enter_term + 1..]
+                        .iter_mut()
+                        .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
+                    {
+                        enter_term + 1 + i
+                    } else {
+                        panic!()
+                    };
+                    if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
+                        *l = DescriptionTerm;
+                    } else {
+                        panic!()
+                    }
+
+                    // remove empty description term
+                    self.events[empty_term].kind = EventKind::Stale;
+                    self.events[empty_term + 1].kind = EventKind::Stale;
+
+                    // move out term before detail
+                    self.events[enter_term].span = self.events[empty_term].span;
+                    let first_detail = self.events[exit_term + 1..]
+                        .iter()
+                        .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
+                        .map(|i| exit_term + 1 + i)
+                        .unwrap_or(self.events.len());
+                    let detail_pos = self
+                        .events
+                        .get(first_detail)
+                        .map(|e| e.span.start())
+                        .unwrap_or_else(|| self.events.last().unwrap().span.end());
+                    self.events
+                        .copy_within(enter_term..first_detail, enter_detail);
+                    self.events[first_detail - 1] = Event {
+                        kind: EventKind::Enter(Node::Container(c)),
+                        span: Span::empty_at(detail_pos),
+                    };
+                    self.open[open_detail] = first_detail - 1;
                 }
-            } else {
-                None
-            };
-            if let Some(node_child) = node_child {
-                self.tree.swap_prev(node_child, span_open);
-                self.tree.remove(node_dt);
             }
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
-            debug_assert!(usize::from(*depth) <= self.tree.depth());
-            if self.tree.depth() == (*depth).into() {
+            debug_assert!(usize::from(*depth) <= self.open.len());
+            if self.open.len() == (*depth).into() {
                 self.prev_blankline = false;
                 self.prev_loose = false;
                 let l = self.open_lists.pop().unwrap();
@@ -454,38 +533,37 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        self.tree.exit(span_end);
+        self.exit(span_end);
     }
 
     fn parse_table(&mut self, lines: &mut [Span], span_start: Span, span_end: Span) {
         self.alignments.clear();
-        self.tree.enter(Node::Container(Table), span_start);
+        self.enter(Node::Container(Table), span_start);
 
         let caption_line = lines
             .iter()
             .position(|sp| sp.of(self.src).trim_start().starts_with('^'))
             .map_or(lines.len(), |caption_line| {
-                self.tree.enter(Node::Leaf(Caption), span_start);
+                self.enter(Node::Leaf(Caption), span_start);
                 lines[caption_line] = lines[caption_line]
                     .trim_start(self.src)
                     .skip_chars(2, self.src);
                 lines[lines.len() - 1] = lines[lines.len() - 1].trim_end(self.src);
                 for line in &lines[caption_line..] {
-                    self.tree.inline(*line);
+                    self.inline(*line);
                 }
-                self.tree.exit(span_end);
+                self.exit(span_end);
                 caption_line
             });
 
-        let mut last_row_node = None;
+        let mut last_row_event = None;
         for row in &lines[..caption_line] {
             let row = row.trim(self.src);
             if row.is_empty() {
                 break;
             }
-            let row_node = self
-                .tree
-                .enter(Node::Container(TableRow { head: false }), row.with_len(1));
+            let row_event_enter =
+                self.enter(Node::Container(TableRow { head: false }), row.with_len(1));
             let rem = row.skip(1); // |
             let lex = lex::Lexer::new(rem.of(self.src));
             let mut pos = rem.start();
@@ -514,7 +592,7 @@ impl<'s> TreeParser<'s> {
                                 }
                             };
                             separator_row &= separator_cell;
-                            self.tree.enter(
+                            self.enter(
                                 Node::Leaf(TableCell(
                                     self.alignments
                                         .get(column_index)
@@ -523,8 +601,8 @@ impl<'s> TreeParser<'s> {
                                 )),
                                 Span::empty_at(cell_start),
                             );
-                            self.tree.inline(span);
-                            self.tree.exit(Span::new(pos, pos + 1)); // cell
+                            self.inline(span);
+                            self.exit(Span::new(pos, pos + 1));
                             cell_start = pos + len;
                             column_index += 1;
                         }
@@ -540,11 +618,11 @@ impl<'s> TreeParser<'s> {
             if separator_row && verbatim.is_none() {
                 self.alignments.clear();
                 self.alignments.extend(
-                    self.tree
-                        .children(row_node)
-                        .filter(|n| matches!(n.elem, tree::Element::Inline))
-                        .map(|n| {
-                            let cell = n.span.of(self.src);
+                    self.events[row_event_enter + 1..]
+                        .iter()
+                        .filter(|e| matches!(e.kind, EventKind::Inline))
+                        .map(|e| {
+                            let cell = e.span.of(self.src);
                             let l = cell.as_bytes()[0] == b':';
                             let r = cell.as_bytes()[cell.len() - 1] == b':';
                             match (l, r) {
@@ -555,62 +633,67 @@ impl<'s> TreeParser<'s> {
                             }
                         }),
                 );
-                self.tree.exit_discard(); // table row
-                if let Some(head_row) = last_row_node {
-                    self.tree
-                        .children(head_row)
-                        .filter(|n| {
-                            matches!(n.elem, tree::Element::Container(Node::Leaf(TableCell(..))))
+                self.open.pop();
+                self.events.drain(row_event_enter..); // remove table row
+                if let Some((head_row_enter, head_row_exit)) = last_row_event {
+                    self.events[head_row_enter + 1..]
+                        .iter_mut()
+                        .filter(|e| {
+                            matches!(
+                                e.kind,
+                                EventKind::Enter(Node::Leaf(TableCell(..)))
+                                    | EventKind::Exit(Node::Leaf(TableCell(..)))
+                            )
                         })
                         .zip(
                             self.alignments
                                 .iter()
                                 .copied()
-                                .chain(std::iter::repeat(Alignment::Unspecified)),
+                                .chain(std::iter::repeat(Alignment::Unspecified))
+                                .flat_map(|a| [a, a].into_iter()),
                         )
-                        .for_each(|(n, new_align)| {
-                            if let tree::Element::Container(Node::Leaf(TableCell(alignment))) =
-                                n.elem
-                            {
+                        .for_each(|(e, new_align)| match &mut e.kind {
+                            EventKind::Enter(Node::Leaf(TableCell(alignment)))
+                            | EventKind::Exit(Node::Leaf(TableCell(alignment))) => {
                                 *alignment = new_align;
                             }
+                            _ => panic!(),
                         });
-                    if let tree::Element::Container(Node::Container(TableRow { head })) =
-                        self.tree.elem(head_row)
-                    {
+                    let event: &mut Event = &mut self.events[head_row_enter];
+                    if let EventKind::Enter(Node::Container(TableRow { head })) = &mut event.kind {
+                        *head = true;
+                    } else {
+                        panic!()
+                    }
+                    let event: &mut Event = &mut self.events[head_row_exit];
+                    if let EventKind::Exit(Node::Container(TableRow { head })) = &mut event.kind {
                         *head = true;
                     } else {
                         panic!()
                     }
                 }
             } else {
-                self.tree.exit(Span::empty_at(pos)); // table row
-                last_row_node = Some(row_node);
+                let row_event_exit = self.exit(Span::empty_at(pos)); // table row
+                last_row_event = Some((row_event_enter, row_event_exit));
             }
         }
 
-        self.tree.exit(span_end); // table
+        self.exit(span_end);
     }
 
     fn close_list(&mut self, list: OpenList, pos: usize) {
         if self.prev_loose {
-            let mut elem = self.tree.elem(list.node);
-            let ListKind { tight, .. } = elem.list_mut().unwrap();
-            // ignore blankline at end
-            *tight = true;
+            if let EventKind::Enter(Node::Container(List { kind, .. })) =
+                &mut self.events[list.event].kind
+            {
+                // ignore blankline at end
+                kind.tight = true;
+            } else {
+                panic!()
+            }
         }
 
-        self.tree.exit(Span::empty_at(pos)); // list
-    }
-}
-
-impl<'t, 's> tree::Element<'t, Node<'s>, Atom> {
-    fn list_mut(&mut self) -> Option<&mut ListKind> {
-        if let tree::Element::Container(Node::Container(Container::List { kind, .. })) = self {
-            Some(kind)
-        } else {
-            None
-        }
+        self.exit(Span::empty_at(pos)); // list
     }
 }
 
@@ -1023,13 +1106,13 @@ fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
 
 #[cfg(test)]
 mod test {
-    use crate::tree::EventKind::*;
     use crate::Alignment;
     use crate::OrderedListNumbering::*;
     use crate::OrderedListStyle::*;
 
     use super::Atom::*;
     use super::Container::*;
+    use super::EventKind::*;
     use super::FenceKind;
     use super::Kind;
     use super::Leaf::*;
@@ -1041,7 +1124,7 @@ mod test {
     macro_rules! test_parse {
         ($src:expr $(,$($event:expr),* $(,)?)?) => {
             let t = super::TreeParser::new($src).parse();
-            let actual = t.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
+            let actual = t.into_iter().map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
             let expected = &[$($($event),*,)?];
             assert_eq!(
                 actual,
@@ -2189,11 +2272,13 @@ mod test {
                 })),
                 ""
             ),
+            (Stale, ":"),
+            (Stale, ""),
             (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "term"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Atom(Blankline), "\n"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
@@ -2233,12 +2318,14 @@ mod test {
                 })),
                 "",
             ),
+            (Stale, ":"),
+            (Stale, ""),
             (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "apple\n"),
             (Inline, "fruit"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Atom(Blankline), "\n"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "Paragraph one"),
             (Exit(Leaf(Paragraph)), ""),
@@ -2279,6 +2366,8 @@ mod test {
                 "",
             ),
             (Exit(Container(ListItem(ListItemKind::Description))), ""),
+            (Stale, ":"),
+            (Stale, ""),
             (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "orange"),
             (Exit(Leaf(DescriptionTerm)), ""),
