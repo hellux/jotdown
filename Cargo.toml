@@ -11,6 +11,7 @@ homepage = "https://hllmn.net/projects/jotdown"
 repository = "https://github.com/hellux/jotdown"
 documentation = "https://docs.rs/jotdown"
 exclude = [
+    "contrib",
     ".github",
     ".gitmodules",
     "Makefile",
