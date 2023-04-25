@@ -1385,7 +1385,6 @@ mod test {
 
     #[test]
     fn span_tag_empty_nested() {
-        // TODO strip non str from tag?
         test_parse!(
             "[some _text_][]",
             (Enter(ReferenceLink(0)), "["),
