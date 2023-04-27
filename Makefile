@@ -101,6 +101,7 @@ afl_tmin:
 
 clean:
 	cargo clean
+	rm -rf bench/iai/target
 	git submodule deinit -f --all
 	find tests -type l -path 'tests/suite/*.test' -print0 | xargs -0 rm -f
 	(cd tests/suite && make clean)
