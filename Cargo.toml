@@ -26,6 +26,8 @@ members = [
     "bench/iai",
     "bench/input",
     "examples/jotdown_wasm",
+    "tests/html-ref",
+    "tests/html-ut",
 ]
 exclude = [
     "tests/afl",
@@ -39,6 +41,4 @@ doc = false
 [features]
 default = ["html"]
 html = [] # html renderer and minimal cli binary
-suite = [] # test suite
-suite_bench = [] # bench test suite
 deterministic = [] # for stable fuzzing
