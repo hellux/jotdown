@@ -919,7 +919,10 @@ impl<'s> Parser<'s> {
                             block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div => Container::Div { class: content },
                             block::Container::Footnote => Container::Footnote { label: content },
-                            block::Container::List(block::ListKind { ty, tight }) => {
+                            block::Container::List {
+                                kind: block::ListKind { ty, tight },
+                                marker,
+                            } => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
                                 } else {
@@ -927,9 +930,8 @@ impl<'s> Parser<'s> {
                                         block::ListType::Unordered(..) => ListKind::Unordered,
                                         block::ListType::Task => ListKind::Task,
                                         block::ListType::Ordered(numbering, style) => {
-                                            let start = numbering
-                                                .parse_number(style.number(content))
-                                                .max(1);
+                                            let start =
+                                                numbering.parse_number(style.number(marker)).max(1);
                                             ListKind::Ordered {
                                                 numbering,
                                                 style,

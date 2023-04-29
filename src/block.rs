@@ -17,7 +17,7 @@ pub type TreeBuilder<'s> = tree::Builder<Node<'s>, Atom>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Node<'s> {
-    Container(Container),
+    Container(Container<'s>),
     Leaf(Leaf<'s>),
 }
 
@@ -35,7 +35,7 @@ enum Block<'s> {
     Leaf(Leaf<'s>),
 
     /// A container block, containing children blocks.
-    Container(Container),
+    Container(Container<'s>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +80,7 @@ pub enum Leaf<'s> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Container {
+pub enum Container<'s> {
     /// Span is `>`.
     Blockquote,
 
@@ -88,7 +88,7 @@ pub enum Container {
     Div,
 
     /// Span is the list marker of the first list item in the list.
-    List(ListKind),
+    List { kind: ListKind, marker: &'s str },
 
     /// Span is the list marker.
     ListItem(ListType),
@@ -345,7 +345,7 @@ impl<'s> TreeParser<'s> {
 
     fn parse_container(
         &mut self,
-        c: Container,
+        c: Container<'s>,
         k: &Kind,
         span: Span,
         outer: Span,
@@ -388,7 +388,10 @@ impl<'s> TreeParser<'s> {
             if same_depth {
                 let tight = true;
                 let node = self.tree.enter(
-                    Node::Container(Container::List(ListKind { ty, tight })),
+                    Node::Container(Container::List {
+                        kind: ListKind { ty, tight },
+                        marker: span.of(self.src),
+                    }),
                     span,
                 );
                 self.open_lists.push(OpenList {
@@ -594,8 +597,8 @@ impl<'s> TreeParser<'s> {
 
 impl<'t, 's> tree::Element<'t, Node<'s>, Atom> {
     fn list_mut(&mut self) -> Option<&mut ListKind> {
-        if let tree::Element::Container(Node::Container(Container::List(l))) = self {
-            Some(l)
+        if let tree::Element::Container(Node::Container(Container::List { kind, .. })) = self {
+            Some(kind)
         } else {
             None
         }
@@ -1563,10 +1566,13 @@ mod test {
         test_parse!(
             "- abc",
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1575,10 +1581,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1592,10 +1601,13 @@ mod test {
                 "- b\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1609,10 +1621,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1628,10 +1643,13 @@ mod test {
                 "- c\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: false,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: false,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1651,10 +1669,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: false,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: false,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1672,10 +1693,13 @@ mod test {
                 "     d\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1689,10 +1713,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: false,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: false,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1705,18 +1732,24 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: false,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: false,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1734,10 +1767,13 @@ mod test {
                 "- b\n",    //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1746,10 +1782,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true,
+                    },
+                    marker: "+",
+                })),
                 "+",
             ),
             (Enter(Container(ListItem(Unordered(b'+')))), "+"),
@@ -1764,10 +1803,13 @@ mod test {
             (Atom(Blankline), "\n"),
             (Exit(Container(ListItem(Unordered(b'+')))), "+"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true,
+                    },
+                    marker: "+",
+                })),
                 "+",
             ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1777,10 +1819,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1793,10 +1838,13 @@ mod test {
                 " c\n",    //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Ordered(Decimal, Period),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Ordered(Decimal, Period),
+                        tight: true,
+                    },
+                    marker: "1.",
+                })),
                 "1.",
             ),
             (Enter(Container(ListItem(Ordered(Decimal, Period)))), "1."),
@@ -1805,10 +1853,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-",
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1818,10 +1869,13 @@ mod test {
             (Atom(Blankline), "\n"),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-",
             ),
             (Enter(Leaf(Paragraph)), ""),
@@ -1829,10 +1883,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Ordered(Decimal, Period)))), "1."),
             (
-                Exit(Container(List(ListKind {
-                    ty: Ordered(Decimal, Period),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Ordered(Decimal, Period),
+                        tight: true,
+                    },
+                    marker: "1.",
+                })),
                 "1.",
             ),
         );
@@ -1849,10 +1906,13 @@ mod test {
                 "    * c\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1861,10 +1921,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true,
+                    },
+                    marker: "+",
+                })),
                 "+",
             ),
             (Enter(Container(ListItem(Unordered(b'+')))), "+"),
@@ -1873,10 +1936,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'*'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'*'),
+                        tight: true,
+                    },
+                    marker: "*",
+                })),
                 "*",
             ),
             (Enter(Container(ListItem(Unordered(b'*')))), "*"),
@@ -1885,26 +1951,35 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'*')))), "*"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'*'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'*'),
+                        tight: true,
+                    },
+                    marker: "*",
+                })),
                 "*",
             ),
             (Exit(Container(ListItem(Unordered(b'+')))), "+"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true,
+                    },
+                    marker: "+",
+                })),
                 "+",
             ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
@@ -1921,10 +1996,13 @@ mod test {
                 "cd\n",    //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1933,10 +2011,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'*'),
-                    tight: true
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'*'),
+                        tight: true
+                    },
+                    marker: "*",
+                })),
                 "*"
             ),
             (Enter(Container(ListItem(Unordered(b'*')))), "*"),
@@ -1946,18 +2027,24 @@ mod test {
             (Atom(Blankline), "\n"),
             (Exit(Container(ListItem(Unordered(b'*')))), "*"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'*'),
-                    tight: true
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'*'),
+                        tight: true
+                    },
+                    marker: "*",
+                })),
                 "*"
             ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Leaf(Paragraph)), ""),
@@ -1975,10 +2062,13 @@ mod test {
                 "+ c\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -1987,17 +2077,23 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true
+                    },
+                    marker: "+",
+                })),
                 "+"
             ),
             (Enter(Container(ListItem(Unordered(b'+')))), "+"),
@@ -2011,10 +2107,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'+')))), "+"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'+'),
-                    tight: true
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'+'),
+                        tight: true
+                    },
+                    marker: "+",
+                })),
                 "+"
             ),
         );
@@ -2029,10 +2128,13 @@ mod test {
                 "   description\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Description,
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: true,
+                    },
+                    marker: ":",
+                })),
                 ":"
             ),
             (Enter(Leaf(DescriptionTerm)), ""),
@@ -2045,10 +2147,13 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Description))), ":"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Description,
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: true,
+                    },
+                    marker: ":",
+                })),
                 ":"
             ),
         );
@@ -2243,18 +2348,24 @@ mod test {
                 "  - b\n", //
             ),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Enter(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Enter(Container(ListItem(Unordered(b'-')))), "-"),
@@ -2268,18 +2379,24 @@ mod test {
             (Exit(Leaf(Paragraph)), ""),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
             (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
-                Exit(Container(List(ListKind {
-                    ty: Unordered(b'-'),
-                    tight: true,
-                }))),
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true,
+                    },
+                    marker: "-",
+                })),
                 "-"
             ),
         );
