@@ -32,6 +32,7 @@ test_html_ut:
 		ln -fs ../../../modules/djot.js/test/$$f tests/html-ut/ut/djot_js_$$f; \
 	done
 	cargo test -p test-html-ut
+	cargo test -p test-html-ut -- --ignored 2>/dev/null | grep -q 'test result: FAILED. 0 passed'
 
 .PHONY: test_html_ref
 test_html_ref:
@@ -41,6 +42,7 @@ test_html_ref:
 		ln -fs ../../modules/djot.js/bench/$$f tests/html-ref/$$dst; \
 	done
 	cargo test -p test-html-ref
+	cargo test -p test-html-ref -- --ignored 2>/dev/null | grep -q 'test result: FAILED. 0 passed'
 
 .PHONY: bench
 bench:
