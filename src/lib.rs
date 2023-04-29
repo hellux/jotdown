@@ -897,12 +897,12 @@ impl<'s> Parser<'s> {
                                         .into(),
                                 },
                                 block::Leaf::DescriptionTerm => Container::DescriptionTerm,
-                                block::Leaf::CodeBlock => {
+                                block::Leaf::CodeBlock { language } => {
                                     self.verbatim = enter;
-                                    if let Some(format) = content.strip_prefix('=') {
+                                    if let Some(format) = language.strip_prefix('=') {
                                         Container::RawBlock { format }
                                     } else {
-                                        Container::CodeBlock { language: content }
+                                        Container::CodeBlock { language }
                                     }
                                 }
                                 block::Leaf::TableCell(alignment) => Container::TableCell {

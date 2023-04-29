@@ -76,7 +76,7 @@ pub enum Leaf<'s> {
 
     /// Span is language specifier.
     /// Each inline is a line.
-    CodeBlock,
+    CodeBlock { language: &'s str },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,7 +256,9 @@ impl<'s> TreeParser<'s> {
                 Kind::Fenced {
                     kind: FenceKind::CodeBlock(..),
                     ..
-                } => Block::Leaf(CodeBlock),
+                } => Block::Leaf(CodeBlock {
+                    language: span.of(self.src),
+                }),
                 Kind::Fenced {
                     kind: FenceKind::Div,
                     ..
@@ -1433,9 +1435,9 @@ mod test {
     fn parse_code_block() {
         test_parse!(
             concat!("```\n", "l0\n"),
-            (Enter(Leaf(CodeBlock)), "",),
+            (Enter(Leaf(CodeBlock { language: "" })), "",),
             (Inline, "l0\n"),
-            (Exit(Leaf(CodeBlock)), "",),
+            (Exit(Leaf(CodeBlock { language: "" })), "",),
         );
         test_parse!(
             concat!(
@@ -1445,9 +1447,9 @@ mod test {
                 "\n",
                 "para\n", //
             ),
-            (Enter(Leaf(CodeBlock)), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), ""),
             (Inline, "l0\n"),
-            (Exit(Leaf(CodeBlock)), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), ""),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
@@ -1461,11 +1463,11 @@ mod test {
                 " l1\n",
                 "````", //
             ),
-            (Enter(Leaf(CodeBlock)), "lang"),
+            (Enter(Leaf(CodeBlock { language: "lang" })), "lang"),
             (Inline, "l0\n"),
             (Inline, "```\n"),
             (Inline, " l1\n"),
-            (Exit(Leaf(CodeBlock)), "lang"),
+            (Exit(Leaf(CodeBlock { language: "lang" })), "lang"),
         );
         test_parse!(
             concat!(
@@ -1476,12 +1478,12 @@ mod test {
                 "bbb\n", //
                 "```\n", //
             ),
-            (Enter(Leaf(CodeBlock)), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), ""),
             (Inline, "a\n"),
-            (Exit(Leaf(CodeBlock)), ""),
-            (Enter(Leaf(CodeBlock)), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), ""),
             (Inline, "bbb\n"),
-            (Exit(Leaf(CodeBlock)), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), ""),
         );
         test_parse!(
             concat!(
@@ -1490,10 +1492,10 @@ mod test {
                 "  block\n",
                 "~~~\n", //
             ),
-            (Enter(Leaf(CodeBlock)), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), ""),
             (Inline, "code\n"),
             (Inline, "  block\n"),
-            (Exit(Leaf(CodeBlock)), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), ""),
         );
     }
 
