@@ -85,7 +85,7 @@ pub enum Container<'s> {
     Blockquote,
 
     /// Span is class specifier, possibly empty.
-    Div,
+    Div { class: &'s str },
 
     /// Span is the list marker of the first list item in the list.
     List { kind: ListKind, marker: &'s str },
@@ -269,7 +269,9 @@ impl<'s> TreeParser<'s> {
                 Kind::Fenced {
                     kind: FenceKind::Div,
                     ..
-                } => Block::Container(Div),
+                } => Block::Container(Div {
+                    class: span.of(self.src),
+                }),
                 Kind::Definition {
                     footnote: false, ..
                 } => Block::Leaf(LinkDefinition {
@@ -2336,11 +2338,11 @@ mod test {
     fn parse_div() {
         test_parse!(
             concat!("::: cls\n", "abc\n", ":::\n",),
-            (Enter(Container(Div)), "cls"),
+            (Enter(Container(Div { class: "cls" })), "cls"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Div)), "cls"),
+            (Exit(Container(Div { class: "cls" })), "cls"),
         );
     }
 
@@ -2348,11 +2350,11 @@ mod test {
     fn parse_div_no_class() {
         test_parse!(
             concat!(":::\n", "abc\n", ":::\n",),
-            (Enter(Container(Div)), ""),
+            (Enter(Container(Div { class: "" })), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Div)), ""),
+            (Exit(Container(Div { class: "" })), ""),
         );
     }
 
