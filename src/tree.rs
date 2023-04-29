@@ -75,7 +75,7 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
             let n = &self.nodes[head.index()];
             let kind = match &n.kind {
                 NodeKind::Root => unreachable!(),
-                NodeKind::Container(c, child) => {
+                NodeKind::Container(c, child, ..) => {
                     self.branch.push(head);
                     self.head = *child;
                     EventKind::Enter(c.clone())
@@ -91,10 +91,16 @@ impl<C: Clone, A: Clone> Iterator for Tree<C, A> {
             };
             Some(Event { kind, span: n.span })
         } else if let Some(block_ni) = self.branch.pop() {
-            let InternalNode { next, kind, span } = &self.nodes[block_ni.index()];
-            let kind = EventKind::Exit(kind.container().unwrap().clone());
-            self.head = *next;
-            Some(Event { kind, span: *span })
+            let InternalNode { next, kind, .. } = &self.nodes[block_ni.index()];
+            if let NodeKind::Container(c, _, span) = kind {
+                self.head = *next;
+                Some(Event {
+                    kind: EventKind::Exit(c.clone()),
+                    span: *span,
+                })
+            } else {
+                panic!()
+            }
         } else {
             None
         }
@@ -122,7 +128,7 @@ impl NodeIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum NodeKind<C, A> {
     Root,
-    Container(C, Option<NodeIndex>),
+    Container(C, Option<NodeIndex>, Span),
     Atom(A),
     Inline,
 }
@@ -144,7 +150,7 @@ pub struct Builder<C, A> {
 
 impl<C, A> NodeKind<C, A> {
     fn child(&self) -> Option<NodeIndex> {
-        if let NodeKind::Container(_, child) = self {
+        if let NodeKind::Container(_, child, _) = self {
             *child
         } else {
             None
@@ -152,18 +158,10 @@ impl<C, A> NodeKind<C, A> {
     }
 
     fn child_mut(&mut self) -> &mut Option<NodeIndex> {
-        if let NodeKind::Container(_, child) = self {
+        if let NodeKind::Container(_, child, _) = self {
             child
         } else {
             panic!()
-        }
-    }
-
-    fn container(&self) -> Option<&C> {
-        if let NodeKind::Container(c, _) = self {
-            Some(c)
-        } else {
-            None
         }
     }
 }
@@ -213,26 +211,36 @@ impl<C, A> Builder<C, A> {
         self.depth += 1;
         self.add_node(InternalNode {
             span,
-            kind: NodeKind::Container(c, None),
+            kind: NodeKind::Container(c, None, Span::new(0, 0)),
             next: None,
         })
     }
 
-    pub(super) fn exit(&mut self) {
+    pub(super) fn exit(&mut self, span: Span) {
         self.depth -= 1;
         if let Some(head) = self.head.take() {
-            if matches!(self.nodes[head.index()].kind, NodeKind::Container(..)) {
+            if let NodeKind::Container(_, _, sp) = &mut self.nodes[head.index()].kind {
+                *sp = span;
                 self.branch.push(head);
+                return;
             }
         } else {
             let last = self.branch.pop();
             debug_assert_ne!(last, None);
         }
+
+        if let NodeKind::Container(_, _, sp) =
+            &mut self.nodes[self.branch.last().unwrap().index()].kind
+        {
+            *sp = span;
+        } else {
+            panic!();
+        }
     }
 
     /// Exit and discard all the contents of the current container.
     pub(super) fn exit_discard(&mut self) {
-        self.exit();
+        self.exit(Span::new(0, (1 << 31) - 1));
         let exited = self.branch.pop().unwrap();
         self.nodes.drain(exited.index()..);
         let (prev, has_parent) = self.replace(exited, None);
@@ -244,14 +252,25 @@ impl<C, A> Builder<C, A> {
     }
 
     /// Swap the node and its children with either its parent or the node before.
-    pub fn swap_prev(&mut self, node: NodeIndex) {
+    pub fn swap_prev(&mut self, node: NodeIndex, span: Span) {
         let next = self.nodes[node.index()].next;
-        if let Some(n) = next {
-            self.replace(n, None);
-        }
         let (prev, _) = self.replace(node, next);
+        if let Some(n) = next {
+            self.nodes[prev.index()].span = self.nodes[n.index()].span.empty_before();
+            self.replace(n, None);
+        } else {
+            self.nodes[prev.index()].span = self.nodes[self.nodes.len() - 1].span.empty_after();
+        }
         self.replace(prev, Some(node));
         self.nodes[node.index()].next = Some(prev);
+        self.nodes[node.index()].span = span;
+
+        let span = self.nodes[prev.index()].span;
+        if let NodeKind::Container(_, _, sp) = &mut self.nodes[node.index()].kind {
+            *sp = span;
+        } else {
+            panic!()
+        }
     }
 
     /// Remove the specified node and its children.
@@ -314,7 +333,7 @@ impl<C, A> Builder<C, A> {
                     debug_assert_eq!(head.next, None);
                     head.next = Some(ni);
                 }
-                NodeKind::Container(_, child) => {
+                NodeKind::Container(_, child, _) => {
                     self.branch.push(*head_ni);
                     // set child pointer of current container
                     debug_assert_eq!(*child, None);
@@ -390,20 +409,20 @@ mod test {
         tree.enter(1, Span::new(0, 1));
         tree.atom(11, Span::new(0, 1));
         tree.atom(12, Span::new(0, 1));
-        tree.exit();
+        tree.exit(Span::new(0, 0));
         tree.enter(2, Span::new(1, 5));
         tree.enter(21, Span::new(2, 5));
         tree.enter(211, Span::new(3, 4));
         tree.atom(2111, Span::new(3, 4));
-        tree.exit();
-        tree.exit();
+        tree.exit(Span::new(0, 0));
+        tree.exit(Span::new(0, 0));
         tree.enter(22, Span::new(4, 5));
         tree.atom(221, Span::new(4, 5));
-        tree.exit();
-        tree.exit();
+        tree.exit(Span::new(0, 0));
+        tree.exit(Span::new(0, 0));
         tree.enter(3, Span::new(5, 6));
         tree.atom(31, Span::new(5, 6));
-        tree.exit();
+        tree.exit(Span::new(0, 0));
         assert_eq!(
             format!("{:?}", tree.finish()),
             concat!(

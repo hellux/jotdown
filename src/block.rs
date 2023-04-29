@@ -30,10 +30,8 @@ pub fn parse(src: &str) -> Tree {
 enum Block<'s> {
     /// An atomic block, containing no children elements.
     Atom(Atom),
-
     /// A leaf block, containing only inline elements.
     Leaf(Leaf<'s>),
-
     /// A container block, containing children blocks.
     Container(Container<'s>),
 }
@@ -42,71 +40,40 @@ enum Block<'s> {
 pub enum Atom {
     /// A line with no non-whitespace characters.
     Blankline,
-
     /// A list of attributes.
     Attributes,
-
     /// A thematic break.
     ThematicBreak,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Leaf<'s> {
-    /// Span is empty, before first character of paragraph.
-    /// Each inline is a line.
     Paragraph,
-
-    /// Span is `#` characters.
-    /// Each inline is a line.
     Heading {
         level: u16,
         has_section: bool,
         pos: u32,
     },
-
-    /// Span is empty.
     DescriptionTerm,
-
-    /// Span is '|'.
-    /// Has zero or one inline for the cell contents.
     TableCell(Alignment),
-
-    /// Span is '^' character.
     Caption,
-
-    /// Span is the link tag.
-    /// Inlines are lines of the URL.
-    LinkDefinition { label: &'s str },
-
-    /// Span is language specifier.
-    /// Each inline is a line.
-    CodeBlock { language: &'s str },
+    LinkDefinition {
+        label: &'s str,
+    },
+    CodeBlock {
+        language: &'s str,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Container<'s> {
-    /// Span is `>`.
     Blockquote,
-
-    /// Span is class specifier, possibly empty.
     Div { class: &'s str },
-
-    /// Span is the list marker of the first list item in the list.
     List { kind: ListKind, marker: &'s str },
-
-    /// Span is the list marker.
     ListItem(ListItemKind),
-
-    /// Span is footnote tag.
     Footnote { label: &'s str },
-
-    /// Span is empty, before first '|' character.
     Table,
-
-    /// Span is first '|' character.
     TableRow { head: bool },
-
-    /// Span is '#' characters of heading.
     Section { pos: u32 },
 }
 
@@ -185,10 +152,10 @@ impl<'s> TreeParser<'s> {
             line_pos += line_count;
         }
         while let Some(l) = self.open_lists.pop() {
-            self.close_list(l);
+            self.close_list(l, self.src.len());
         }
         for _ in self.open_sections.drain(..) {
-            self.tree.exit(); // section
+            self.tree.exit(Span::empty_at(self.src.len())); // section
         }
         self.tree.finish()
     }
@@ -197,18 +164,23 @@ impl<'s> TreeParser<'s> {
     fn parse_block(&mut self, lines: &mut [Span], top_level: bool) -> usize {
         if let Some(MeteredBlock {
             kind,
-            span,
+            span: span_start,
             line_count,
         }) = MeteredBlock::new(lines.iter().map(|sp| sp.of(self.src)))
         {
             let lines = &mut lines[..line_count];
-            let span = span.translate(lines[0].start());
+            let span_start = span_start.translate(lines[0].start());
+            let end_line = lines[lines.len() - 1];
+            let span_end = match kind {
+                Kind::Fenced {
+                    has_closing_fence: true,
+                    ..
+                } => end_line,
+                _ => end_line.empty_after(),
+            };
 
             // part of first inline that is from the outer block
-            let outer = Span::new(
-                lines[0].start(),
-                span.end() + "]:".len() * usize::from(matches!(kind, Kind::Definition { .. })),
-            );
+            let outer = Span::new(lines[0].start(), span_start.end());
 
             // skip outer block part for inner content
             lines[0] = lines[0].skip(outer.len());
@@ -231,7 +203,7 @@ impl<'s> TreeParser<'s> {
                     && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
                 {
                     let l = self.open_lists.pop().unwrap();
-                    self.close_list(l);
+                    self.close_list(l, span_start.start());
                 }
             }
 
@@ -263,32 +235,32 @@ impl<'s> TreeParser<'s> {
                 Kind::Heading { level } => Block::Leaf(Heading {
                     level: level.try_into().unwrap(),
                     has_section: top_level,
-                    pos: span.start() as u32,
+                    pos: span_start.start() as u32,
                 }),
                 Kind::Fenced {
                     kind: FenceKind::CodeBlock(..),
+                    spec,
                     ..
-                } => Block::Leaf(CodeBlock {
-                    language: span.of(self.src),
-                }),
+                } => Block::Leaf(CodeBlock { language: spec }),
                 Kind::Fenced {
                     kind: FenceKind::Div,
+                    spec,
                     ..
-                } => Block::Container(Div {
-                    class: span.of(self.src),
-                }),
+                } => Block::Container(Div { class: spec }),
                 Kind::Definition {
-                    footnote: false, ..
-                } => Block::Leaf(LinkDefinition {
-                    label: span.of(self.src),
-                }),
-                Kind::Definition { footnote: true, .. } => Block::Container(Footnote {
-                    label: span.of(self.src),
-                }),
+                    footnote: false,
+                    label,
+                    ..
+                } => Block::Leaf(LinkDefinition { label }),
+                Kind::Definition {
+                    footnote: true,
+                    label,
+                    ..
+                } => Block::Container(Footnote { label }),
                 Kind::Blockquote => Block::Container(Blockquote),
                 Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
                     ListType::Task => ListItemKind::Task {
-                        checked: span.of(self.src).as_bytes()[3] != b' ',
+                        checked: span_start.of(self.src).as_bytes()[3] != b' ',
                     },
                     ListType::Description => ListItemKind::Description,
                     _ => ListItemKind::List,
@@ -297,10 +269,12 @@ impl<'s> TreeParser<'s> {
             };
 
             match block {
-                Block::Atom(a) => self.tree.atom(a, span),
-                Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines),
-                Block::Container(Table) => self.parse_table(lines, span),
-                Block::Container(c) => self.parse_container(c, &kind, span, outer, lines),
+                Block::Atom(a) => self.tree.atom(a, span_start),
+                Block::Leaf(l) => self.parse_leaf(l, &kind, span_start, span_end, lines),
+                Block::Container(Table) => self.parse_table(lines, span_start, span_end),
+                Block::Container(c) => {
+                    self.parse_container(c, &kind, span_start, span_end, outer, lines);
+                }
             }
 
             line_count
@@ -309,7 +283,14 @@ impl<'s> TreeParser<'s> {
         }
     }
 
-    fn parse_leaf(&mut self, leaf: Leaf<'s>, k: &Kind, span: Span, lines: &mut [Span]) {
+    fn parse_leaf(
+        &mut self,
+        leaf: Leaf<'s>,
+        k: &Kind,
+        span_start: Span,
+        span_end: Span,
+        lines: &mut [Span],
+    ) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = line
@@ -345,14 +326,14 @@ impl<'s> TreeParser<'s> {
                     .rposition(|l| l < level)
                     .map_or(0, |i| i + 1);
                 self.open_sections.drain(first_close..).for_each(|_| {
-                    self.tree.exit(); // section
+                    self.tree.exit(Span::empty_at(span_start.start())); // section
                 });
                 self.open_sections.push(*level);
                 self.tree.enter(
                     Node::Container(Section {
-                        pos: span.start() as u32,
+                        pos: span_start.start() as u32,
                     }),
-                    span,
+                    span_start.empty_before(),
                 );
             }
 
@@ -362,19 +343,20 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        self.tree.enter(Node::Leaf(leaf), span);
+        self.tree.enter(Node::Leaf(leaf), span_start);
         lines
             .iter()
             .filter(|l| !matches!(k, Kind::Heading { .. }) || !l.is_empty())
             .for_each(|line| self.tree.inline(*line));
-        self.tree.exit();
+        self.tree.exit(span_end);
     }
 
     fn parse_container(
         &mut self,
         c: Container<'s>,
         k: &Kind,
-        span: Span,
+        mut span_start: Span,
+        span_end: Span,
         outer: Span,
         lines: &mut [Span],
     ) {
@@ -417,9 +399,9 @@ impl<'s> TreeParser<'s> {
                 let node = self.tree.enter(
                     Node::Container(Container::List {
                         kind: ListKind { ty: *ty, tight },
-                        marker: span.of(self.src),
+                        marker: span_start.of(self.src),
                     }),
-                    span,
+                    span_start.empty_before(),
                 );
                 self.open_lists.push(OpenList {
                     ty: *ty,
@@ -430,22 +412,22 @@ impl<'s> TreeParser<'s> {
         }
 
         let dt = if let ListItem(ListItemKind::Description) = c {
-            let dt = self
-                .tree
-                .enter(Node::Leaf(DescriptionTerm), span.empty_after());
-            self.tree.exit();
-            Some(dt)
+            let dt = self.tree.enter(Node::Leaf(DescriptionTerm), span_start);
+            self.tree.exit(span_start.trim_end(self.src).empty_after());
+            let span_open = span_start;
+            span_start = lines[0].empty_before();
+            Some((dt, span_open))
         } else {
             None
         };
 
-        let node = self.tree.enter(Node::Container(c), span);
+        let node = self.tree.enter(Node::Container(c), span_start);
         let mut l = 0;
         while l < lines.len() {
             l += self.parse_block(&mut lines[l..], false);
         }
 
-        if let Some(node_dt) = dt {
+        if let Some((node_dt, span_open)) = dt {
             let node_child = if let Some(node_child) = self.tree.children(node).next() {
                 if let tree::Element::Container(Node::Leaf(l @ Paragraph)) = node_child.elem {
                     *l = DescriptionTerm;
@@ -457,7 +439,7 @@ impl<'s> TreeParser<'s> {
                 None
             };
             if let Some(node_child) = node_child {
-                self.tree.swap_prev(node_child);
+                self.tree.swap_prev(node_child, span_open);
                 self.tree.remove(node_dt);
             }
         }
@@ -468,22 +450,22 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = false;
                 self.prev_loose = false;
                 let l = self.open_lists.pop().unwrap();
-                self.close_list(l);
+                self.close_list(l, span_end.start());
             }
         }
 
-        self.tree.exit();
+        self.tree.exit(span_end);
     }
 
-    fn parse_table(&mut self, lines: &mut [Span], span: Span) {
+    fn parse_table(&mut self, lines: &mut [Span], span_start: Span, span_end: Span) {
         self.alignments.clear();
-        self.tree.enter(Node::Container(Table), span);
+        self.tree.enter(Node::Container(Table), span_start);
 
         let caption_line = lines
             .iter()
             .position(|sp| sp.of(self.src).trim_start().starts_with('^'))
             .map_or(lines.len(), |caption_line| {
-                self.tree.enter(Node::Leaf(Caption), span);
+                self.tree.enter(Node::Leaf(Caption), span_start);
                 lines[caption_line] = lines[caption_line]
                     .trim_start(self.src)
                     .skip_chars(2, self.src);
@@ -491,7 +473,7 @@ impl<'s> TreeParser<'s> {
                 for line in &lines[caption_line..] {
                     self.tree.inline(*line);
                 }
-                self.tree.exit();
+                self.tree.exit(span_end);
                 caption_line
             });
 
@@ -539,10 +521,10 @@ impl<'s> TreeParser<'s> {
                                         .copied()
                                         .unwrap_or(Alignment::Unspecified),
                                 )),
-                                Span::by_len(cell_start - 1, 1),
+                                Span::empty_at(cell_start),
                             );
                             self.tree.inline(span);
-                            self.tree.exit(); // cell
+                            self.tree.exit(Span::new(pos, pos + 1)); // cell
                             cell_start = pos + len;
                             column_index += 1;
                         }
@@ -602,15 +584,15 @@ impl<'s> TreeParser<'s> {
                     }
                 }
             } else {
-                self.tree.exit(); // table row
+                self.tree.exit(Span::empty_at(pos)); // table row
                 last_row_node = Some(row_node);
             }
         }
 
-        self.tree.exit(); // table
+        self.tree.exit(span_end); // table
     }
 
-    fn close_list(&mut self, list: OpenList) {
+    fn close_list(&mut self, list: OpenList, pos: usize) {
         if self.prev_loose {
             let mut elem = self.tree.elem(list.node);
             let ListKind { tight, .. } = elem.list_mut().unwrap();
@@ -618,7 +600,7 @@ impl<'s> TreeParser<'s> {
             *tight = true;
         }
 
-        self.tree.exit(); // list
+        self.tree.exit(Span::empty_at(pos)); // list
     }
 }
 
@@ -633,15 +615,15 @@ impl<'t, 's> tree::Element<'t, Node<'s>, Atom> {
 }
 
 /// Parser for a single block.
-struct MeteredBlock {
-    kind: Kind,
+struct MeteredBlock<'s> {
+    kind: Kind<'s>,
     span: Span,
     line_count: usize,
 }
 
-impl MeteredBlock {
+impl<'s> MeteredBlock<'s> {
     /// Identify and measure the line length of a single block.
-    fn new<'s, I: Iterator<Item = &'s str>>(mut lines: I) -> Option<Self> {
+    fn new<I: Iterator<Item = &'s str>>(mut lines: I) -> Option<Self> {
         lines.next().map(|l| {
             let IdentifiedBlock { mut kind, span } = IdentifiedBlock::new(l);
             let line_count = 1 + lines.take_while(|l| kind.continues(l)).count();
@@ -662,7 +644,7 @@ enum FenceKind {
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug)]
-enum Kind {
+enum Kind<'s> {
     Atom(Atom),
     Paragraph,
     Heading {
@@ -672,12 +654,13 @@ enum Kind {
         indent: usize,
         fence_length: usize,
         kind: FenceKind,
-        has_spec: bool,
+        spec: &'s str,
         has_closing_fence: bool,
     },
     Definition {
         indent: usize,
         footnote: bool,
+        label: &'s str,
     },
     Blockquote,
     ListItem {
@@ -690,13 +673,13 @@ enum Kind {
     },
 }
 
-struct IdentifiedBlock {
-    kind: Kind,
+struct IdentifiedBlock<'s> {
+    kind: Kind<'s>,
     span: Span,
 }
 
-impl IdentifiedBlock {
-    fn new(line: &str) -> Self {
+impl<'s> IdentifiedBlock<'s> {
+    fn new(line: &'s str) -> Self {
         let mut chars = line.chars();
         let indent = chars
             .clone()
@@ -744,11 +727,15 @@ impl IdentifiedBlock {
                 }
             }
             '[' => chars.as_str().find("]:").map(|l| {
-                let tag = &chars.as_str()[0..l];
-                let footnote = tag.starts_with('^');
+                let label = &chars.as_str()[0..l];
+                let footnote = label.starts_with('^');
                 (
-                    Kind::Definition { indent, footnote },
-                    Span::by_len(indent_bytes + 1, l).skip(usize::from(footnote)),
+                    Kind::Definition {
+                        indent,
+                        footnote,
+                        label: &label[usize::from(footnote)..],
+                    },
+                    Span::by_len(0, indent_bytes + 3 + l),
                 )
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
@@ -795,7 +782,6 @@ impl IdentifiedBlock {
                 } else {
                     !spec.chars().any(char::is_whitespace) && !spec.chars().any(|c| c == '`')
                 };
-                let skip = line_t.len() - spec.len();
                 (valid_spec && fence_length >= 3).then(|| {
                     (
                         Kind::Fenced {
@@ -805,10 +791,10 @@ impl IdentifiedBlock {
                                 ':' => FenceKind::Div,
                                 _ => FenceKind::CodeBlock(f as u8),
                             },
-                            has_spec: !spec.is_empty(),
+                            spec,
                             has_closing_fence: false,
                         },
-                        Span::by_len(indent_bytes + skip, spec.len()),
+                        Span::by_len(indent_bytes, line.len()),
                     )
                 })
             }
@@ -926,9 +912,9 @@ impl IdentifiedBlock {
     }
 }
 
-impl Kind {
+impl<'s> Kind<'s> {
     /// Determine if a line continues the block.
-    fn continues(&mut self, line: &str) -> bool {
+    fn continues(&mut self, line: &'s str) -> bool {
         let IdentifiedBlock { kind: next, .. } = IdentifiedBlock::new(line);
         match self {
             Self::Atom(..)
@@ -955,7 +941,9 @@ impl Kind {
                 *last_blankline = blankline;
                 blankline || spaces > *indent || para
             }
-            Self::Definition { indent, footnote } => {
+            Self::Definition {
+                indent, footnote, ..
+            } => {
                 if *footnote {
                     let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
                     matches!(next, Self::Atom(Blankline)) || spaces > *indent
@@ -972,13 +960,15 @@ impl Kind {
                 if let Kind::Fenced {
                     kind: k,
                     fence_length: l,
-                    has_spec: false,
+                    spec,
                     ..
                 } = next
                 {
-                    *has_closing_fence = k == *kind
-                        && (l == *fence_length
-                            || (matches!(k, FenceKind::Div) && l > *fence_length));
+                    if spec.is_empty() {
+                        *has_closing_fence = k == *kind
+                            && (l == *fence_length
+                                || (matches!(k, FenceKind::Div) && l > *fence_length));
+                    }
                 }
                 true
             }
@@ -1120,7 +1110,7 @@ mod test {
                 "# a\n",
                 "## b\n", //
             ),
-            (Enter(Container(Section { pos: 0 })), "#"),
+            (Enter(Container(Section { pos: 0 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1136,9 +1126,9 @@ mod test {
                     has_section: true,
                     pos: 0
                 })),
-                "#"
+                ""
             ),
-            (Enter(Container(Section { pos: 4 })), "##"),
+            (Enter(Container(Section { pos: 4 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 2,
@@ -1154,10 +1144,10 @@ mod test {
                     has_section: true,
                     pos: 4
                 })),
-                "##"
+                ""
             ),
-            (Exit(Container(Section { pos: 4 })), "##"),
-            (Exit(Container(Section { pos: 0 })), "#"),
+            (Exit(Container(Section { pos: 4 })), ""),
+            (Exit(Container(Section { pos: 0 })), ""),
         );
     }
 
@@ -1168,7 +1158,7 @@ mod test {
                 "#\n",
                 "heading\n", //
             ),
-            (Enter(Container(Section { pos: 0 })), "#"),
+            (Enter(Container(Section { pos: 0 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1184,9 +1174,9 @@ mod test {
                     has_section: true,
                     pos: 0
                 })),
-                "#"
+                ""
             ),
-            (Exit(Container(Section { pos: 0 })), "#"),
+            (Exit(Container(Section { pos: 0 })), ""),
         );
     }
 
@@ -1200,7 +1190,7 @@ mod test {
                 "  12\n",
                 "15\n", //
             ),
-            (Enter(Container(Section { pos: 0 })), "#"),
+            (Enter(Container(Section { pos: 0 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1216,11 +1206,11 @@ mod test {
                     has_section: true,
                     pos: 0,
                 })),
-                "#"
+                ""
             ),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Section { pos: 0 })), "#"),
-            (Enter(Container(Section { pos: 6 })), "#"),
+            (Exit(Container(Section { pos: 0 })), ""),
+            (Enter(Container(Section { pos: 6 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1238,9 +1228,9 @@ mod test {
                     has_section: true,
                     pos: 6,
                 })),
-                "#"
+                ""
             ),
-            (Exit(Container(Section { pos: 6 })), "#"),
+            (Exit(Container(Section { pos: 6 })), ""),
         );
     }
 
@@ -1252,7 +1242,7 @@ mod test {
                 "# b\n",
                 "c\n", //
             ),
-            (Enter(Container(Section { pos: 0 })), "#"),
+            (Enter(Container(Section { pos: 0 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1270,9 +1260,9 @@ mod test {
                     has_section: true,
                     pos: 0
                 })),
-                "#"
+                "",
             ),
-            (Exit(Container(Section { pos: 0 })), "#"),
+            (Exit(Container(Section { pos: 0 })), ""),
         );
     }
 
@@ -1292,7 +1282,7 @@ mod test {
                 "\n",
                 "# b\n",
             ),
-            (Enter(Container(Section { pos: 0 })), "#"),
+            (Enter(Container(Section { pos: 0 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1308,10 +1298,10 @@ mod test {
                     has_section: true,
                     pos: 0,
                 })),
-                "#"
+                "",
             ),
             (Atom(Blankline), "\n"),
-            (Enter(Container(Section { pos: 5 })), "##"),
+            (Enter(Container(Section { pos: 5 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 2,
@@ -1327,10 +1317,10 @@ mod test {
                     has_section: true,
                     pos: 5,
                 })),
-                "##"
+                "",
             ),
             (Atom(Blankline), "\n"),
-            (Enter(Container(Section { pos: 12 })), "####"),
+            (Enter(Container(Section { pos: 12 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 4,
@@ -1346,12 +1336,12 @@ mod test {
                     has_section: true,
                     pos: 12,
                 })),
-                "####"
+                "",
             ),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Section { pos: 12 })), "####"),
-            (Exit(Container(Section { pos: 5 })), "##"),
-            (Enter(Container(Section { pos: 23 })), "##"),
+            (Exit(Container(Section { pos: 12 })), ""),
+            (Exit(Container(Section { pos: 5 })), ""),
+            (Enter(Container(Section { pos: 23 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 2,
@@ -1367,10 +1357,10 @@ mod test {
                     has_section: true,
                     pos: 23,
                 })),
-                "##"
+                "",
             ),
             (Atom(Blankline), "\n"),
-            (Enter(Container(Section { pos: 30 })), "###"),
+            (Enter(Container(Section { pos: 30 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 3,
@@ -1386,13 +1376,13 @@ mod test {
                     has_section: true,
                     pos: 30,
                 })),
-                "###"
+                "",
             ),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Section { pos: 30 })), "###"),
-            (Exit(Container(Section { pos: 23 })), "##"),
-            (Exit(Container(Section { pos: 0 })), "#"),
-            (Enter(Container(Section { pos: 39 })), "#"),
+            (Exit(Container(Section { pos: 30 })), ""),
+            (Exit(Container(Section { pos: 23 })), ""),
+            (Exit(Container(Section { pos: 0 })), ""),
+            (Enter(Container(Section { pos: 39 })), ""),
             (
                 Enter(Leaf(Heading {
                     level: 1,
@@ -1408,9 +1398,9 @@ mod test {
                     has_section: true,
                     pos: 39,
                 })),
-                "#"
+                "",
             ),
-            (Exit(Container(Section { pos: 39 })), "#"),
+            (Exit(Container(Section { pos: 39 })), ""),
         );
     }
 
@@ -1422,7 +1412,7 @@ mod test {
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Exit(Container(Blockquote)), ""),
         );
         test_parse!(
             "> a\nb\nc\n",
@@ -1432,7 +1422,7 @@ mod test {
             (Inline, "b\n"),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Exit(Container(Blockquote)), ""),
         );
         test_parse!(
             concat!(
@@ -1462,13 +1452,13 @@ mod test {
                     has_section: false,
                     pos: 8,
                 })),
-                "##"
+                ""
             ),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Exit(Container(Blockquote)), ""),
         );
     }
 
@@ -1478,21 +1468,24 @@ mod test {
             "> \n",
             (Enter(Container(Blockquote)), ">"),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Blockquote)), ">"),
+            (Exit(Container(Blockquote)), ""),
         );
         test_parse!(
             ">",
             (Enter(Container(Blockquote)), ">"),
             (Atom(Blankline), ""),
-            (Exit(Container(Blockquote)), ">"),
+            (Exit(Container(Blockquote)), ""),
         );
     }
 
     #[test]
     fn parse_code_block() {
         test_parse!(
-            concat!("```\n", "l0\n"),
-            (Enter(Leaf(CodeBlock { language: "" })), "",),
+            concat!(
+                "```\n", //
+                "l0\n"   //
+            ),
+            (Enter(Leaf(CodeBlock { language: "" })), "```\n",),
             (Inline, "l0\n"),
             (Exit(Leaf(CodeBlock { language: "" })), "",),
         );
@@ -1504,9 +1497,9 @@ mod test {
                 "\n",
                 "para\n", //
             ),
-            (Enter(Leaf(CodeBlock { language: "" })), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), "```\n"),
             (Inline, "l0\n"),
-            (Exit(Leaf(CodeBlock { language: "" })), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), "```\n"),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
@@ -1520,11 +1513,11 @@ mod test {
                 " l1\n",
                 "````", //
             ),
-            (Enter(Leaf(CodeBlock { language: "lang" })), "lang"),
+            (Enter(Leaf(CodeBlock { language: "lang" })), "````  lang\n",),
             (Inline, "l0\n"),
             (Inline, "```\n"),
             (Inline, " l1\n"),
-            (Exit(Leaf(CodeBlock { language: "lang" })), "lang"),
+            (Exit(Leaf(CodeBlock { language: "lang" })), "````"),
         );
         test_parse!(
             concat!(
@@ -1535,12 +1528,12 @@ mod test {
                 "bbb\n", //
                 "```\n", //
             ),
-            (Enter(Leaf(CodeBlock { language: "" })), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), "```\n"),
             (Inline, "a\n"),
-            (Exit(Leaf(CodeBlock { language: "" })), ""),
-            (Enter(Leaf(CodeBlock { language: "" })), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), "```\n"),
+            (Enter(Leaf(CodeBlock { language: "" })), "```\n"),
             (Inline, "bbb\n"),
-            (Exit(Leaf(CodeBlock { language: "" })), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), "```\n"),
         );
         test_parse!(
             concat!(
@@ -1549,15 +1542,15 @@ mod test {
                 "  block\n",
                 "~~~\n", //
             ),
-            (Enter(Leaf(CodeBlock { language: "" })), ""),
+            (Enter(Leaf(CodeBlock { language: "" })), "~~~\n"),
             (Inline, "code\n"),
             (Inline, "  block\n"),
-            (Exit(Leaf(CodeBlock { language: "" })), ""),
+            (Exit(Leaf(CodeBlock { language: "" })), "~~~\n"),
         );
         test_parse!(
             "    ```abc\n",
-            (Enter(Leaf(CodeBlock { language: "abc" })), "abc"),
-            (Exit(Leaf(CodeBlock { language: "abc" })), "abc"),
+            (Enter(Leaf(CodeBlock { language: "abc" })), "```abc\n"),
+            (Exit(Leaf(CodeBlock { language: "abc" })), ""),
         );
     }
 
@@ -1565,9 +1558,9 @@ mod test {
     fn parse_link_definition() {
         test_parse!(
             "[tag]: url\n",
-            (Enter(Leaf(LinkDefinition { label: "tag" })), "tag"),
+            (Enter(Leaf(LinkDefinition { label: "tag" })), "[tag]:"),
             (Inline, "url"),
-            (Exit(Leaf(LinkDefinition { label: "tag" })), "tag"),
+            (Exit(Leaf(LinkDefinition { label: "tag" })), ""),
         );
     }
 
@@ -1575,11 +1568,11 @@ mod test {
     fn parse_footnote() {
         test_parse!(
             "[^tag]: description\n",
-            (Enter(Container(Footnote { label: "tag" })), "tag"),
+            (Enter(Container(Footnote { label: "tag" })), "[^tag]:"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Footnote { label: "tag" })), "tag"),
+            (Exit(Container(Footnote { label: "tag" })), ""),
         );
     }
 
@@ -1597,12 +1590,12 @@ mod test {
             (Inline, "[^a]"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Enter(Container(Footnote { label: "a" })), "a"),
+            (Enter(Container(Footnote { label: "a" })), "[^a]:"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "note"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Footnote { label: "a" })), "a"),
+            (Exit(Container(Footnote { label: "a" })), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1632,13 +1625,13 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1647,7 +1640,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -1667,18 +1660,18 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1687,7 +1680,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -1709,24 +1702,24 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1735,7 +1728,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -1759,13 +1752,13 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
@@ -1779,7 +1772,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
@@ -1789,7 +1782,7 @@ mod test {
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "d"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1798,9 +1791,9 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1809,7 +1802,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -1833,7 +1826,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
@@ -1848,19 +1841,19 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "aa"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "ab"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1869,14 +1862,14 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+",
+                "",
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1885,7 +1878,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
         test_parse!(
@@ -1904,7 +1897,7 @@ mod test {
                     },
                     marker: "1.",
                 })),
-                "1.",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "1."),
             (Enter(Leaf(Paragraph)), ""),
@@ -1919,14 +1912,14 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1935,12 +1928,12 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-",
+                "",
             ),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "1."),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1949,7 +1942,7 @@ mod test {
                     },
                     marker: "1.",
                 })),
-                "1.",
+                "",
             ),
         );
     }
@@ -1972,7 +1965,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
@@ -1987,7 +1980,7 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
@@ -2002,13 +1995,13 @@ mod test {
                     },
                     marker: "*",
                 })),
-                "*",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "*"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "*"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2017,9 +2010,9 @@ mod test {
                     },
                     marker: "*",
                 })),
-                "*",
+                "",
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2028,9 +2021,9 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+",
+                "",
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2039,7 +2032,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -2062,7 +2055,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
@@ -2077,14 +2070,14 @@ mod test {
                     },
                     marker: "*",
                 })),
-                "*"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "*"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::List))), "*"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2093,9 +2086,9 @@ mod test {
                     },
                     marker: "*",
                 })),
-                "*"
+                ""
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2104,7 +2097,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "cd"),
@@ -2128,13 +2121,13 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2143,7 +2136,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (
                 Enter(Container(List {
@@ -2153,18 +2146,18 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2173,7 +2166,7 @@ mod test {
                     },
                     marker: "+",
                 })),
-                "+"
+                ""
             ),
         );
     }
@@ -2194,17 +2187,17 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":"
+                ""
             ),
-            (Enter(Leaf(DescriptionTerm)), ""),
+            (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "term"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2213,7 +2206,7 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":"
+                ""
             ),
         );
         test_parse!(
@@ -2238,13 +2231,13 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":",
+                "",
             ),
-            (Enter(Leaf(DescriptionTerm)), ""),
+            (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "apple\n"),
             (Inline, "fruit"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "Paragraph one"),
@@ -2262,19 +2255,19 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-",
+                "",
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "sub"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "list"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2283,14 +2276,14 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-",
+                "",
             ),
-            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
-            (Enter(Leaf(DescriptionTerm)), ""),
+            (Exit(Container(ListItem(ListItemKind::Description))), ""),
+            (Enter(Leaf(DescriptionTerm)), ":"),
             (Inline, "orange"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
-            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
+            (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2299,7 +2292,7 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":",
+                "",
             ),
         );
     }
@@ -2316,13 +2309,13 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":"
+                ""
             ),
-            (Enter(Leaf(DescriptionTerm)), ""),
+            (Enter(Leaf(DescriptionTerm)), ":"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2331,7 +2324,7 @@ mod test {
                     },
                     marker: ":",
                 })),
-                ":"
+                ""
             ),
         );
     }
@@ -2346,27 +2339,27 @@ mod test {
             ),
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: true })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "a"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "b"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "c"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: true })), "|"),
+            (Exit(Container(TableRow { head: true })), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "1"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "2"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "3"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), "")
         );
     }
@@ -2377,10 +2370,10 @@ mod test {
             "||",
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, ""),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), ""),
         );
     }
@@ -2401,10 +2394,10 @@ mod test {
             "|a|\npara",
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "a"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
@@ -2421,16 +2414,16 @@ mod test {
             ),
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Left))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Left))), ""),
             (Inline, "left"),
             (Exit(Leaf(TableCell(Alignment::Left))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Center))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Center))), ""),
             (Inline, "center"),
             (Exit(Leaf(TableCell(Alignment::Center))), "|"),
-            (Enter(Leaf(TableCell(Alignment::Right))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Right))), ""),
             (Inline, "right"),
             (Exit(Leaf(TableCell(Alignment::Right))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), "")
         );
         test_parse!(
@@ -2440,10 +2433,10 @@ mod test {
             ),
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: true })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Right))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Right))), ""),
             (Inline, ""),
             (Exit(Leaf(TableCell(Alignment::Right))), "|"),
-            (Exit(Container(TableRow { head: true })), "|"),
+            (Exit(Container(TableRow { head: true })), ""),
             (Exit(Container(Table)), ""),
         );
     }
@@ -2457,10 +2450,10 @@ mod test {
             (Inline, "caption"),
             (Exit(Leaf(Caption)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "a"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), ""),
         );
     }
@@ -2482,10 +2475,10 @@ mod test {
             (Inline, "continued"),
             (Exit(Leaf(Caption)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "a"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), ""),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
@@ -2500,10 +2493,10 @@ mod test {
             "|a|\n^ ",
             (Enter(Container(Table)), ""),
             (Enter(Container(TableRow { head: false })), "|"),
-            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), ""),
             (Inline, "a"),
             (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
-            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(TableRow { head: false })), ""),
             (Exit(Container(Table)), ""),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "^"),
@@ -2523,24 +2516,32 @@ mod test {
     #[test]
     fn parse_div() {
         test_parse!(
-            concat!("::: cls\n", "abc\n", ":::\n",),
-            (Enter(Container(Div { class: "cls" })), "cls"),
+            concat!(
+                "::: cls\n", //
+                "abc\n",     //
+                ":::\n",     //
+            ),
+            (Enter(Container(Div { class: "cls" })), "::: cls\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Div { class: "cls" })), "cls"),
+            (Exit(Container(Div { class: "cls" })), ":::\n"),
         );
     }
 
     #[test]
     fn parse_div_no_class() {
         test_parse!(
-            concat!(":::\n", "abc\n", ":::\n",),
-            (Enter(Container(Div { class: "" })), ""),
+            concat!(
+                ":::\n", //
+                "abc\n", //
+                ":::\n", //
+            ),
+            (Enter(Container(Div { class: "" })), ":::\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Div { class: "" })), ""),
+            (Exit(Container(Div { class: "" })), ":::\n"),
         );
     }
 
@@ -2548,7 +2549,7 @@ mod test {
     fn parse_inner_indent() {
         test_parse!(
             concat!(
-                "- - a\n",
+                "- - a\n", //
                 "  - b\n", //
             ),
             (
@@ -2559,7 +2560,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (
@@ -2570,18 +2571,18 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2590,9 +2591,9 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
-            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2601,7 +2602,7 @@ mod test {
                     },
                     marker: "-",
                 })),
-                "-"
+                ""
             ),
         );
     }
@@ -2680,10 +2681,10 @@ mod test {
                 indent: 0,
                 kind: FenceKind::CodeBlock(b'`'),
                 fence_length: 4,
-                has_spec: true,
+                spec: "lang",
                 has_closing_fence: true,
             },
-            "lang",
+            "````  lang\n",
             5,
         );
         test_block!(
@@ -2699,10 +2700,10 @@ mod test {
                 indent: 0,
                 kind: FenceKind::CodeBlock(b'`'),
                 fence_length: 3,
-                has_spec: false,
+                spec: "",
                 has_closing_fence: true,
             },
-            "",
+            "```\n",
             3,
         );
         test_block!(
@@ -2723,9 +2724,10 @@ mod test {
             "[tag]: url\n",
             Kind::Definition {
                 indent: 0,
-                footnote: false
+                footnote: false,
+                label: "tag",
             },
-            "tag",
+            "[tag]:",
             1
         );
     }
@@ -2739,9 +2741,10 @@ mod test {
             ),
             Kind::Definition {
                 indent: 0,
-                footnote: false
+                footnote: false,
+                label: "tag",
             },
-            "tag",
+            "[tag]:",
             2,
         );
         test_block!(
@@ -2751,9 +2754,10 @@ mod test {
             ),
             Kind::Definition {
                 indent: 0,
-                footnote: false
+                footnote: false,
+                label: "tag",
             },
-            "tag",
+            "[tag]:",
             1,
         );
     }
@@ -2764,9 +2768,10 @@ mod test {
             "[^tag]:\n",
             Kind::Definition {
                 indent: 0,
-                footnote: true
+                footnote: true,
+                label: "tag",
             },
-            "tag",
+            "[^tag]:",
             1
         );
     }
@@ -2777,9 +2782,10 @@ mod test {
             "[^tag]: a\n",
             Kind::Definition {
                 indent: 0,
-                footnote: true
+                footnote: true,
+                label: "tag",
             },
-            "tag",
+            "[^tag]:",
             1
         );
     }
@@ -2793,9 +2799,10 @@ mod test {
             ),
             Kind::Definition {
                 indent: 0,
-                footnote: true
+                footnote: true,
+                label: "tag",
             },
-            "tag",
+            "[^tag]:",
             2,
         );
     }
@@ -2811,9 +2818,10 @@ mod test {
             ),
             Kind::Definition {
                 indent: 0,
-                footnote: true
+                footnote: true,
+                label: "tag",
             },
-            "tag",
+            "[^tag]:",
             3,
         );
     }
