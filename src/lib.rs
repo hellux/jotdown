@@ -918,7 +918,7 @@ impl<'s> Parser<'s> {
                         block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div => Container::Div { class: content },
-                            block::Container::Footnote => Container::Footnote { label: content },
+                            block::Container::Footnote { label } => Container::Footnote { label },
                             block::Container::List {
                                 kind: block::ListKind { ty, tight },
                                 marker,

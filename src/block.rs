@@ -94,7 +94,7 @@ pub enum Container<'s> {
     ListItem(ListItemKind),
 
     /// Span is footnote tag.
-    Footnote,
+    Footnote { label: &'s str },
 
     /// Span is empty, before first '|' character.
     Table,
@@ -275,7 +275,9 @@ impl<'s> TreeParser<'s> {
                 } => Block::Leaf(LinkDefinition {
                     label: span.of(self.src),
                 }),
-                Kind::Definition { footnote: true, .. } => Block::Container(Footnote),
+                Kind::Definition { footnote: true, .. } => Block::Container(Footnote {
+                    label: span.of(self.src),
+                }),
                 Kind::Blockquote => Block::Container(Blockquote),
                 Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
                     ListType::Task => ListItemKind::Task {
@@ -1530,11 +1532,11 @@ mod test {
     fn parse_footnote() {
         test_parse!(
             "[^tag]: description\n",
-            (Enter(Container(Footnote)), "tag"),
+            (Enter(Container(Footnote { label: "tag" })), "tag"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(Footnote)), "tag"),
+            (Exit(Container(Footnote { label: "tag" })), "tag"),
         );
     }
 
@@ -1552,12 +1554,12 @@ mod test {
             (Inline, "[^a]"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Enter(Container(Footnote)), "a"),
+            (Enter(Container(Footnote { label: "a" })), "a"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "note"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(Footnote)), "a"),
+            (Exit(Container(Footnote { label: "a" })), "a"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
