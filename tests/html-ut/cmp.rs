@@ -1,13 +1,5 @@
-#[rustfmt::skip]
-#[cfg(feature = "suite_bench")]
-mod bench;
-#[rustfmt::skip]
-#[cfg(feature = "suite")]
-mod suite;
-
-#[cfg(any(feature = "suite", feature = "suite_bench"))]
 #[macro_export]
-macro_rules! suite_test {
+macro_rules! compare {
     ($src:expr, $expected:expr) => {
         use jotdown::Render;
         let src = $src;

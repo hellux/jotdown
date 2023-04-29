@@ -15,34 +15,34 @@ docs:
 
 .PHONY: lint
 lint:
+	cargo clippy --workspace -- -D warnings
+	cargo clippy --workspace --no-default-features -- -D warnings
+	cargo clippy --workspace --all-features -- -D warnings
 	cargo fmt --all -- --check
-	cargo clippy -- -D warnings
-	cargo clippy --no-default-features -- -D warnings
-	cargo clippy --all-features -- -D warnings
 
 .PHONY: check
 check:
 	cargo test --workspace
 	cargo test --workspace --no-default-features
 
-.PHONY: suite
-suite:
+.PHONY: test_html_ut
+test_html_ut:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/test -name '*.test' | xargs basename -a); do \
-		ln -fs ../../modules/djot.js/test/$$f tests/suite/djot_js_$$f; \
+		ln -fs ../../../modules/djot.js/test/$$f tests/html-ut/ut/djot_js_$$f; \
 	done
-	(cd tests/suite && make)
-	cargo test --features suite suite::
+	cargo test -p test-html-ut
+	cargo test -p test-html-ut -- --ignored | grep 'test result: FAILED. 0 passed'
 
-.PHONY: suite_bench
-suite_bench:
+.PHONY: test_html_ref
+test_html_ref:
 	git submodule update --init modules/djot.js
 	for f in $$(find modules/djot.js/bench -name '*.dj' | xargs basename -a); do \
 		dst=$$(echo $$f | sed 's/-/_/g'); \
-		ln -fs ../../modules/djot.js/bench/$$f tests/bench/$$dst; \
+		ln -fs ../../modules/djot.js/bench/$$f tests/html-ref/$$dst; \
 	done
-	(cd tests/bench && make)
-	cargo test --features suite_bench bench::
+	cargo test -p test-html-ref
+	cargo test -p test-html-ref -- --ignored | grep 'test result: FAILED. 0 passed'
 
 .PHONY: bench
 bench:
@@ -51,9 +51,6 @@ bench:
 		dst=$$(echo $$f | sed 's/-/_/g'); \
 		ln -fs ../../modules/djot.js/bench/$$f bench/input/$$dst; \
 	done
-
-cov: suite suite_bench
-	LLVM_COV=llvm-cov LLVM_PROFDATA=llvm-profdata cargo llvm-cov --features=suite,suite_bench --workspace --html --ignore-run-fail
 
 AFL_TARGET?=parse
 AFL_JOBS?=1
@@ -101,11 +98,12 @@ afl_tmin:
 
 clean:
 	cargo clean
+	rm -rf bench/iai/target
 	git submodule deinit -f --all
-	find tests -type l -path 'tests/suite/*.test' -print0 | xargs -0 rm -f
-	(cd tests/suite && make clean)
-	rm -f tests/bench/*.dj
-	(cd tests/bench && make clean)
+	find tests -type l -path 'tests/html-ut/ut/*.test' -print0 | xargs -0 rm -f
+	(cd tests/html-ut && make clean)
+	rm -f tests/html-ref/*.dj
+	(cd tests/html-ref && make clean)
 	find bench -type l -path 'bench/*.dj' -print0 | xargs -0 rm -f
 	rm -rf tests/afl/out
 	(cd examples/jotdown_wasm && make clean)

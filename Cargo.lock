@@ -459,6 +459,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-html-ref"
+version = "0.1.0"
+dependencies = [
+ "jotdown",
+]
+
+[[package]]
+name = "test-html-ut"
+version = "0.1.0"
+dependencies = [
+ "jotdown",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

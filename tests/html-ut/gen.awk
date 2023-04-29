@@ -1,7 +1,7 @@
 BEGIN {
     FS=":"
     while (getline < "skip") skips[$1]=$2
-    print "use crate::suite_test;"
+    print "use crate::compare;"
     print ""
 }
 
@@ -20,7 +20,7 @@ $0 ~ "^`{3,}$" {
             close("src")
             system("rm -f src")
             print "\"##;"
-            print "    suite_test!(src, expected);"
+            print "    compare!(src, expected);"
             print "}"
             print ""
         }
