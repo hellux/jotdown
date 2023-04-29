@@ -943,12 +943,12 @@ impl<'s> Parser<'s> {
                                     Container::List { kind, tight }
                                 }
                             }
-                            block::Container::ListItem(ty) => match ty {
-                                block::ListType::Task => Container::TaskListItem {
-                                    checked: content.as_bytes()[3] != b' ',
-                                },
-                                block::ListType::Description => Container::DescriptionDetails,
-                                _ => Container::ListItem,
+                            block::Container::ListItem(kind) => match kind {
+                                block::ListItemKind::Task { checked } => {
+                                    Container::TaskListItem { checked }
+                                }
+                                block::ListItemKind::Description => Container::DescriptionDetails,
+                                block::ListItemKind::List => Container::ListItem,
                             },
                             block::Container::Table => Container::Table,
                             block::Container::TableRow { head } => {
