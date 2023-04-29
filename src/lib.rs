@@ -555,7 +555,7 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Block tree parsed at first.
-    tree: block::Tree,
+    tree: block::Tree<'s>,
 
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
@@ -598,7 +598,11 @@ struct PrePass<'s> {
 
 impl<'s> PrePass<'s> {
     #[must_use]
-    fn new(src: &'s str, mut tree: block::Tree, inline_parser: &mut inline::Parser<'s>) -> Self {
+    fn new(
+        src: &'s str,
+        mut tree: block::Tree<'s>,
+        inline_parser: &mut inline::Parser<'s>,
+    ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<&str> = Set::new();
@@ -606,10 +610,11 @@ impl<'s> PrePass<'s> {
         let mut attr_prev: Option<Span> = None;
         while let Some(e) = tree.next() {
             match e.kind {
-                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) => {
+                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
+                    label,
+                })) => {
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
-                    let tag = e.span.of(src);
                     let attrs =
                         attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
                     let url = match tree.count_children() {
@@ -617,7 +622,7 @@ impl<'s> PrePass<'s> {
                         1 => tree.take_inlines().next().unwrap().of(src).trim().into(),
                         _ => tree.take_inlines().map(|sp| sp.of(src).trim()).collect(),
                     };
-                    link_definitions.insert(tag, (url, attrs));
+                    link_definitions.insert(label, (url, attrs));
                 }
                 tree::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
                     // All headings ids have to be obtained initially, as references can appear
@@ -905,8 +910,8 @@ impl<'s> Parser<'s> {
                                     head: self.table_head_row,
                                 },
                                 block::Leaf::Caption => Container::Caption,
-                                block::Leaf::LinkDefinition => {
-                                    Container::LinkDefinition { label: content }
+                                block::Leaf::LinkDefinition { label } => {
+                                    Container::LinkDefinition { label }
                                 }
                             }
                         }

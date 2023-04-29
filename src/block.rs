@@ -12,13 +12,13 @@ use Container::*;
 use Leaf::*;
 use ListType::*;
 
-pub type Tree = tree::Tree<Node, Atom>;
-pub type TreeBuilder = tree::Builder<Node, Atom>;
+pub type Tree<'s> = tree::Tree<Node<'s>, Atom>;
+pub type TreeBuilder<'s> = tree::Builder<Node<'s>, Atom>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Node {
+pub enum Node<'s> {
     Container(Container),
-    Leaf(Leaf),
+    Leaf(Leaf<'s>),
 }
 
 #[must_use]
@@ -27,12 +27,12 @@ pub fn parse(src: &str) -> Tree {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Block {
+enum Block<'s> {
     /// An atomic block, containing no children elements.
     Atom(Atom),
 
     /// A leaf block, containing only inline elements.
-    Leaf(Leaf),
+    Leaf(Leaf<'s>),
 
     /// A container block, containing children blocks.
     Container(Container),
@@ -51,7 +51,7 @@ pub enum Atom {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Leaf {
+pub enum Leaf<'s> {
     /// Span is empty, before first character of paragraph.
     /// Each inline is a line.
     Paragraph,
@@ -72,7 +72,7 @@ pub enum Leaf {
 
     /// Span is the link tag.
     /// Inlines are lines of the URL.
-    LinkDefinition,
+    LinkDefinition { label: &'s str },
 
     /// Span is language specifier.
     /// Each inline is a line.
@@ -135,7 +135,7 @@ struct OpenList {
 /// Parser for block-level tree structure of entire document.
 struct TreeParser<'s> {
     src: &'s str,
-    tree: TreeBuilder,
+    tree: TreeBuilder<'s>,
 
     /// The previous block element was a blank line.
     prev_blankline: bool,
@@ -163,7 +163,7 @@ impl<'s> TreeParser<'s> {
     }
 
     #[must_use]
-    pub fn parse(mut self) -> Tree {
+    pub fn parse(mut self) -> Tree<'s> {
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
         while line_pos < lines.len() {
@@ -246,7 +246,33 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = false;
             }
 
-            match kind.block(top_level) {
+            let block = match kind {
+                Kind::Atom(a) => Block::Atom(a),
+                Kind::Paragraph => Block::Leaf(Paragraph),
+                Kind::Heading { level } => Block::Leaf(Heading {
+                    level: level.try_into().unwrap(),
+                    has_section: top_level,
+                }),
+                Kind::Fenced {
+                    kind: FenceKind::CodeBlock(..),
+                    ..
+                } => Block::Leaf(CodeBlock),
+                Kind::Fenced {
+                    kind: FenceKind::Div,
+                    ..
+                } => Block::Container(Div),
+                Kind::Definition {
+                    footnote: false, ..
+                } => Block::Leaf(LinkDefinition {
+                    label: span.of(self.src),
+                }),
+                Kind::Definition { footnote: true, .. } => Block::Container(Footnote),
+                Kind::Blockquote => Block::Container(Blockquote),
+                Kind::ListItem { ty, .. } => Block::Container(ListItem(ty)),
+                Kind::Table { .. } => Block::Container(Table),
+            };
+
+            match block {
                 Block::Atom(a) => self.tree.atom(a, span),
                 Block::Leaf(l) => self.parse_leaf(l, &kind, span, lines),
                 Block::Container(Table) => self.parse_table(lines, span),
@@ -259,7 +285,7 @@ impl<'s> TreeParser<'s> {
         }
     }
 
-    fn parse_leaf(&mut self, leaf: Leaf, k: &Kind, span: Span, lines: &mut [Span]) {
+    fn parse_leaf(&mut self, leaf: Leaf<'s>, k: &Kind, span: Span, lines: &mut [Span]) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = line
@@ -564,7 +590,7 @@ impl<'s> TreeParser<'s> {
     }
 }
 
-impl<'t> tree::Element<'t, Node, Atom> {
+impl<'t, 's> tree::Element<'t, Node<'s>, Atom> {
     fn list_mut(&mut self) -> Option<&mut ListKind> {
         if let tree::Element::Container(Node::Container(Container::List(l))) = self {
             Some(l)
@@ -936,35 +962,9 @@ impl Kind {
             }
         }
     }
-
-    fn block(&self, top_level: bool) -> Block {
-        match self {
-            Self::Atom(a) => Block::Atom(*a),
-            Self::Paragraph => Block::Leaf(Paragraph),
-            Self::Heading { level } => Block::Leaf(Heading {
-                level: (*level).try_into().unwrap(),
-                has_section: top_level,
-            }),
-            Self::Fenced {
-                kind: FenceKind::CodeBlock(..),
-                ..
-            } => Block::Leaf(CodeBlock),
-            Self::Fenced {
-                kind: FenceKind::Div,
-                ..
-            } => Block::Container(Div),
-            Self::Definition {
-                footnote: false, ..
-            } => Block::Leaf(LinkDefinition),
-            Self::Definition { footnote: true, .. } => Block::Container(Footnote),
-            Self::Blockquote => Block::Container(Blockquote),
-            Self::ListItem { ty, .. } => Block::Container(ListItem(*ty)),
-            Self::Table { .. } => Block::Container(Table),
-        }
-    }
 }
 
-impl std::fmt::Display for Block {
+impl<'s> std::fmt::Display for Block<'s> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Block::Atom(a) => std::fmt::Debug::fmt(a, f),
@@ -1501,9 +1501,9 @@ mod test {
     fn parse_link_definition() {
         test_parse!(
             "[tag]: url\n",
-            (Enter(Leaf(LinkDefinition)), "tag"),
+            (Enter(Leaf(LinkDefinition { label: "tag" })), "tag"),
             (Inline, "url"),
-            (Exit(Leaf(LinkDefinition)), "tag"),
+            (Exit(Leaf(LinkDefinition { label: "tag" })), "tag"),
         );
     }
 
