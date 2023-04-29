@@ -29,7 +29,7 @@ pub struct Event<C, A> {
 }
 
 #[derive(Clone)]
-pub struct Tree<C: 'static, A: 'static> {
+pub struct Tree<C, A> {
     nodes: std::rc::Rc<[InternalNode<C, A>]>,
     branch: Vec<NodeIndex>,
     head: Option<NodeIndex>,
@@ -349,9 +349,7 @@ impl<C, A> Builder<C, A> {
     }
 }
 
-impl<C: std::fmt::Debug + Clone + 'static, A: std::fmt::Debug + Clone + 'static> std::fmt::Debug
-    for Builder<C, A>
-{
+impl<C: std::fmt::Debug + Clone, A: std::fmt::Debug + Clone> std::fmt::Debug for Builder<C, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.clone().finish().fmt(f)
     }
