@@ -91,7 +91,7 @@ pub enum Container<'s> {
     List { kind: ListKind, marker: &'s str },
 
     /// Span is the list marker.
-    ListItem(ListType),
+    ListItem(ListItemKind),
 
     /// Span is footnote tag.
     Footnote,
@@ -110,6 +110,13 @@ pub enum Container<'s> {
 pub struct ListKind {
     pub ty: ListType,
     pub tight: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListItemKind {
+    Task { checked: bool },
+    Description,
+    List,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,7 +277,13 @@ impl<'s> TreeParser<'s> {
                 }),
                 Kind::Definition { footnote: true, .. } => Block::Container(Footnote),
                 Kind::Blockquote => Block::Container(Blockquote),
-                Kind::ListItem { ty, .. } => Block::Container(ListItem(ty)),
+                Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
+                    ListType::Task => ListItemKind::Task {
+                        checked: span.of(self.src).as_bytes()[3] != b' ',
+                    },
+                    ListType::Description => ListItemKind::Description,
+                    _ => ListItemKind::List,
+                })),
                 Kind::Table { .. } => Block::Container(Table),
             };
 
@@ -378,7 +391,7 @@ impl<'s> TreeParser<'s> {
             *sp = sp.skip_chars(skip.min(count), self.src);
         });
 
-        if let ListItem(ty) = c {
+        if let Kind::ListItem { ty, .. } = k {
             let same_depth = self
                 .open_lists
                 .last()
@@ -389,20 +402,20 @@ impl<'s> TreeParser<'s> {
                 let tight = true;
                 let node = self.tree.enter(
                     Node::Container(Container::List {
-                        kind: ListKind { ty, tight },
+                        kind: ListKind { ty: *ty, tight },
                         marker: span.of(self.src),
                     }),
                     span,
                 );
                 self.open_lists.push(OpenList {
-                    ty,
+                    ty: *ty,
                     depth: self.tree.depth().try_into().unwrap(),
                     node,
                 });
             }
         }
 
-        let dt = if let ListItem(Description) = c {
+        let dt = if let ListItem(ListItemKind::Description) = c {
             let dt = self
                 .tree
                 .enter(Node::Leaf(DescriptionTerm), span.empty_after());
@@ -1016,6 +1029,7 @@ mod test {
     use super::FenceKind;
     use super::Kind;
     use super::Leaf::*;
+    use super::ListItemKind;
     use super::ListKind;
     use super::ListType::*;
     use super::Node::*;
@@ -1575,11 +1589,11 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "abc"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1610,16 +1624,16 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1652,22 +1666,22 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1702,12 +1716,12 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1722,7 +1736,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1730,7 +1744,7 @@ mod test {
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "d"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1741,7 +1755,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1776,7 +1790,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1791,17 +1805,17 @@ mod test {
                 })),
                 "+",
             ),
-            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "aa"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
-            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "ab"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), "+"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1812,12 +1826,12 @@ mod test {
                 })),
                 "+",
             ),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1847,7 +1861,7 @@ mod test {
                 })),
                 "1.",
             ),
-            (Enter(Container(ListItem(Ordered(Decimal, Period)))), "1."),
+            (Enter(Container(ListItem(ListItemKind::List))), "1."),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1862,12 +1876,12 @@ mod test {
                 })),
                 "-",
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1881,7 +1895,7 @@ mod test {
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Ordered(Decimal, Period)))), "1."),
+            (Exit(Container(ListItem(ListItemKind::List))), "1."),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1915,7 +1929,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1930,7 +1944,7 @@ mod test {
                 })),
                 "+",
             ),
-            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
@@ -1945,11 +1959,11 @@ mod test {
                 })),
                 "*",
             ),
-            (Enter(Container(ListItem(Unordered(b'*')))), "*"),
+            (Enter(Container(ListItem(ListItemKind::List))), "*"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'*')))), "*"),
+            (Exit(Container(ListItem(ListItemKind::List))), "*"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1960,7 +1974,7 @@ mod test {
                 })),
                 "*",
             ),
-            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), "+"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -1971,7 +1985,7 @@ mod test {
                 })),
                 "+",
             ),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2005,7 +2019,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
@@ -2020,12 +2034,12 @@ mod test {
                 })),
                 "*"
             ),
-            (Enter(Container(ListItem(Unordered(b'*')))), "*"),
+            (Enter(Container(ListItem(ListItemKind::List))), "*"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(Unordered(b'*')))), "*"),
+            (Exit(Container(ListItem(ListItemKind::List))), "*"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2036,7 +2050,7 @@ mod test {
                 })),
                 "*"
             ),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2071,11 +2085,11 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2096,16 +2110,16 @@ mod test {
                 })),
                 "+"
             ),
-            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
-            (Enter(Container(ListItem(Unordered(b'+')))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), "+"),
+            (Enter(Container(ListItem(ListItemKind::List))), "+"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "c"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'+')))), "+"),
+            (Exit(Container(ListItem(ListItemKind::List))), "+"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2140,12 +2154,12 @@ mod test {
             (Enter(Leaf(DescriptionTerm)), ""),
             (Inline, "term"),
             (Exit(Leaf(DescriptionTerm)), ""),
-            (Enter(Container(ListItem(Description))), ":"),
+            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "description"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Description))), ":"),
+            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2357,7 +2371,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Enter(Container(List {
                     kind: ListKind {
@@ -2368,16 +2382,16 @@ mod test {
                 })),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
-            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
@@ -2388,7 +2402,7 @@ mod test {
                 })),
                 "-"
             ),
-            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Exit(Container(List {
                     kind: ListKind {
