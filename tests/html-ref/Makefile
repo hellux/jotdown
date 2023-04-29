@@ -6,8 +6,8 @@ TEST=${TEST_DJ:.dj=}
 DJOT_JS=../../modules/djot.js
 DJOT_JS_SRC=$(shell find ${DJOT_JS}/src -name '.ts')
 
-mod.rs: ${TEST_DJ} html
-	echo "use crate::suite_test;" > $@
+ref.rs: ${TEST_DJ} html
+	echo "use crate::compare;" > $@
 	for name in ${TEST}; do \
 		name_snake=$$(basename -a $$name); \
 		skip_reason=$$(grep -E "^$${name_snake}:" skip | cut -d: -f2); \
@@ -17,10 +17,8 @@ mod.rs: ${TEST_DJ} html
 		printf '    let src = r###"'; \
 		cat $$name.dj; \
 		echo '"###;'; \
-		printf '    let expected = r###"'; \
-		cat $$name.html; \
-		echo '"###;'; \
-		echo "    suite_test!(src, expected);"; \
+		printf '    let expected = "%s";' "$$name.html"; \
+		echo "    compare!(src, expected);"; \
 		echo "}"; \
 	done >> $@
 
@@ -36,6 +34,7 @@ djot-js: ${DJOT_JS_SRC}
 	chmod +x $@
 
 clean:
-	rm -f *.rs *.html
+	rm -f ref.rs
+	rm -f *.html
 	rm -f html
 	rm -f djot-js

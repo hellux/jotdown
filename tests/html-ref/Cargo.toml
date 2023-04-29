@@ -1,0 +1,12 @@
+[package]
+name = "test-html-ref"
+description = "Reference implementation HTML output comparison tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jotdown = { path = "../.." }
+
+[lib]
+name = "test_html_ref"
+path = "lib.rs"

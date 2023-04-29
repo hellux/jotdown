@@ -121,19 +121,19 @@ including:
 - footnotes.
 
 The HTML output is in some cases not exactly identical to the [reference
-implementation][djot-js]. There are two test suites that compares Jotdown with
-the reference implementation. One uses the unit tests of the reference
-implementation and runs them with Jotdown. It can be run with:
+implementation][djot-js]. There are two test suites that compares Jotdown's
+HTML output with that of the reference implementation. One uses the unit tests
+of the reference implementation and runs them with Jotdown. It can be run with:
 
 ```
-$ make suite
+$ make test_html_ut
 ```
 
 Another target uses the reference implementation to generate html output for
 its benchmark files and compares it to the output of Jotdown:
 
 ```
-$ make suite_bench
+$ make test_html_ref
 ```
 
 Note that it requires node in order to run the reference implementation.

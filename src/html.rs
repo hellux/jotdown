@@ -392,7 +392,10 @@ impl<'s> Writer<'s> {
             Event::Softbreak => out.write_char('\n')?,
             Event::Escape | Event::Blankline => {}
             Event::ThematicBreak(attrs) => {
-                out.write_str("\n<hr")?;
+                if self.not_first_line {
+                    out.write_char('\n')?;
+                }
+                out.write_str("<hr")?;
                 for (a, v) in attrs.iter() {
                     write!(out, r#" {}=""#, a)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
