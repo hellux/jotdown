@@ -881,8 +881,8 @@ impl<'s> Parser<'s> {
                             self.inline_parser.reset();
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
-                                block::Leaf::Heading { has_section } => Container::Heading {
-                                    level: content.len().try_into().unwrap(),
+                                block::Leaf::Heading { level, has_section } => Container::Heading {
+                                    level,
                                     has_section,
                                     id: self
                                         .pre_pass

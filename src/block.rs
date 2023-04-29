@@ -58,7 +58,7 @@ pub enum Leaf {
 
     /// Span is `#` characters.
     /// Each inline is a line.
-    Heading { has_section: bool },
+    Heading { level: u16, has_section: bool },
 
     /// Span is empty.
     DescriptionTerm,
@@ -941,7 +941,8 @@ impl Kind {
         match self {
             Self::Atom(a) => Block::Atom(*a),
             Self::Paragraph => Block::Leaf(Paragraph),
-            Self::Heading { .. } => Block::Leaf(Heading {
+            Self::Heading { level } => Block::Leaf(Heading {
+                level: (*level).try_into().unwrap(),
                 has_section: top_level,
             }),
             Self::Fenced {
@@ -1087,13 +1088,37 @@ mod test {
                 "## b\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "a"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading { has_section: true })), "##"),
+            (
+                Enter(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Inline, "b"),
-            (Exit(Leaf(Heading { has_section: true })), "##"),
+            (
+                Exit(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Exit(Container(Section)), "##"),
             (Exit(Container(Section)), "#"),
         );
@@ -1107,9 +1132,21 @@ mod test {
                 "heading\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "heading"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1125,17 +1162,41 @@ mod test {
                 "15\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "2"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "#"),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "8\n"),
             (Inline, "12\n"),
             (Inline, "15"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1149,11 +1210,23 @@ mod test {
                 "c\n", //
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "a\n"),
             (Inline, "b\n"),
             (Inline, "c"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1175,39 +1248,111 @@ mod test {
                 "# b\n",
             ),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "a"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading { has_section: true })), "##"),
+            (
+                Enter(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Inline, "aa"),
-            (Exit(Leaf(Heading { has_section: true })), "##"),
+            (
+                Exit(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "####"),
-            (Enter(Leaf(Heading { has_section: true })), "####"),
+            (
+                Enter(Leaf(Heading {
+                    level: 4,
+                    has_section: true
+                })),
+                "####"
+            ),
             (Inline, "aaaa"),
-            (Exit(Leaf(Heading { has_section: true })), "####"),
+            (
+                Exit(Leaf(Heading {
+                    level: 4,
+                    has_section: true
+                })),
+                "####"
+            ),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "####"),
             (Exit(Container(Section)), "##"),
             (Enter(Container(Section)), "##"),
-            (Enter(Leaf(Heading { has_section: true })), "##"),
+            (
+                Enter(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Inline, "ab"),
-            (Exit(Leaf(Heading { has_section: true })), "##"),
+            (
+                Exit(Leaf(Heading {
+                    level: 2,
+                    has_section: true
+                })),
+                "##"
+            ),
             (Atom(Blankline), "\n"),
             (Enter(Container(Section)), "###"),
-            (Enter(Leaf(Heading { has_section: true })), "###"),
+            (
+                Enter(Leaf(Heading {
+                    level: 3,
+                    has_section: true
+                })),
+                "###"
+            ),
             (Inline, "aba"),
-            (Exit(Leaf(Heading { has_section: true })), "###"),
+            (
+                Exit(Leaf(Heading {
+                    level: 3,
+                    has_section: true
+                })),
+                "###"
+            ),
             (Atom(Blankline), "\n"),
             (Exit(Container(Section)), "###"),
             (Exit(Container(Section)), "##"),
             (Exit(Container(Section)), "#"),
             (Enter(Container(Section)), "#"),
-            (Enter(Leaf(Heading { has_section: true })), "#"),
+            (
+                Enter(Leaf(Heading {
+                    level: 1,
+                    has_section: true
+                })),
+                "#"
+            ),
             (Inline, "b"),
-            (Exit(Leaf(Heading { has_section: true })), "#"),
+            (
+                Exit(Leaf(Heading {
+                    level: 1,
+                    has_section: true,
+                })),
+                "#"
+            ),
             (Exit(Container(Section)), "#"),
         );
     }
@@ -1245,9 +1390,21 @@ mod test {
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Enter(Leaf(Heading { has_section: false })), "##"),
+            (
+                Enter(Leaf(Heading {
+                    level: 2,
+                    has_section: false,
+                })),
+                "##"
+            ),
             (Inline, "hl"),
-            (Exit(Leaf(Heading { has_section: false })), "##"),
+            (
+                Exit(Leaf(Heading {
+                    level: 2,
+                    has_section: false,
+                })),
+                "##"
+            ),
             (Atom(Blankline), "\n"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "para"),
