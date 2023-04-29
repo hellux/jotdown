@@ -576,7 +576,7 @@ pub struct Parser<'s> {
 #[derive(Clone)]
 struct Heading {
     /// Location of heading in src.
-    location: usize,
+    location: u32,
     /// Automatically generated id from heading text.
     id_auto: String,
     /// Text of heading, formatting stripped.
@@ -694,7 +694,7 @@ impl<'s> PrePass<'s> {
                         std::mem::transmute::<&str, &'static str>(id_auto.as_ref())
                     });
                     headings.push(Heading {
-                        location: e.span.start(),
+                        location: e.span.start() as u32,
                         id_auto,
                         text,
                         id_override,
@@ -728,7 +728,7 @@ impl<'s> PrePass<'s> {
         h.id_override.as_ref().unwrap_or(&h.id_auto)
     }
 
-    fn heading_id_by_location(&self, location: usize) -> Option<&str> {
+    fn heading_id_by_location(&self, location: u32) -> Option<&str> {
         self.headings
             .binary_search_by_key(&location, |h| h.location)
             .ok()
@@ -886,12 +886,16 @@ impl<'s> Parser<'s> {
                             self.inline_parser.reset();
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
-                                block::Leaf::Heading { level, has_section } => Container::Heading {
+                                block::Leaf::Heading {
+                                    level,
+                                    has_section,
+                                    pos,
+                                } => Container::Heading {
                                     level,
                                     has_section,
                                     id: self
                                         .pre_pass
-                                        .heading_id_by_location(ev.span.start())
+                                        .heading_id_by_location(pos)
                                         .unwrap_or_default()
                                         .to_string()
                                         .into(),
@@ -957,10 +961,10 @@ impl<'s> Parser<'s> {
                                 }
                                 Container::TableRow { head }
                             }
-                            block::Container::Section => Container::Section {
+                            block::Container::Section { pos } => Container::Section {
                                 id: self
                                     .pre_pass
-                                    .heading_id_by_location(ev.span.start())
+                                    .heading_id_by_location(pos)
                                     .unwrap_or_default()
                                     .to_string()
                                     .into(),
