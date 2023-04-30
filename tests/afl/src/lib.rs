@@ -5,27 +5,26 @@ use html5ever::tendril::TendrilSink;
 use html5ever::tokenizer;
 use html5ever::tree_builder;
 
+/// Perform sanity checks on events.
 pub fn parse(data: &[u8]) {
-    if let Ok(s) = std::str::from_utf8(data) {
-        jotdown::Parser::new(s).last();
-    }
-}
-
-/// Ensure containers are always balanced, i.e. opened and closed in correct order.
-pub fn parse_balance(data: &[u8]) {
     if let Ok(s) = std::str::from_utf8(data) {
         let mut open = Vec::new();
         for event in jotdown::Parser::new(s) {
             match event {
                 jotdown::Event::Start(c, ..) => open.push(c.clone()),
-                jotdown::Event::End(c) => assert_eq!(open.pop().unwrap(), c),
+                jotdown::Event::End(c) => {
+                    // closes correct event
+                    assert_eq!(open.pop().unwrap(), c);
+                }
                 _ => {}
             }
         }
+        // no missing close
         assert_eq!(open, &[]);
     }
 }
 
+/// Validate rendered html output.
 pub fn html(data: &[u8]) {
     if data.iter().any(|i| *i == 0) {
         return;
