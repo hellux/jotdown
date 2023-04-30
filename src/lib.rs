@@ -51,6 +51,7 @@
 use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::io;
+use std::ops::Range;
 
 #[cfg(feature = "html")]
 pub mod html;
@@ -793,7 +794,117 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn inline(&mut self) -> Option<Event<'s>> {
+    /// Turn the [`Parser`] into an iterator of tuples, each with an [`Event`] and a start/end byte
+    /// offset for its corresponding input (as a [`Range<usize>`]).
+    ///
+    /// Generally, the range of each event does not overlap with any other event and the ranges are
+    /// in same order as the events are emitted, i.e. the start offset of an event must be greater
+    /// or equal to the (exclusive) end offset of all events that were emitted before that event.
+    /// However, there are some exceptions to this rule:
+    ///
+    /// - Blank lines inbetween block attributes and the block causes the blankline events to
+    /// overlap with the block start event.
+    /// - Caption events are emitted before the table rows while the input for the caption content
+    /// is located after the table rows, causing the ranges to be out of order.
+    ///
+    /// Characters between events, that are not part of any event range, are typically whitespace
+    /// but may also consist of unattached attributes or `>` characters from blockquotes.
+    ///
+    /// # Examples
+    ///
+    /// Start and end events of containers correspond only to the start and end markers for that
+    /// container, not its inner content:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "> _hello_ [text](url)\n";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         (">", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("_", Start(Emphasis, ..)),
+    ///         ("hello", Str(..)),
+    ///         ("_", End(Emphasis)),
+    ///         (" ", Str(..)),
+    ///         ("[", Start(Link { .. }, ..)),
+    ///         ("text", Str(..)),
+    ///         ("](url)", End(Link { .. })),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    ///
+    /// _Block_ attributes that belong to a container are included in the  _start_ event.  _Inline_
+    /// attributes that belong to a container are included in the _end_ event:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "
+    /// {.quote}
+    /// > [Hello]{lang=en} world!";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         ("\n", Blankline),
+    ///         ("{.quote}\n>", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("[", Start(Span, ..)),
+    ///         ("Hello", Str(..)),
+    ///         ("]{lang=en}", End(Span)),
+    ///         (" world!", Str(..)),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    ///
+    /// Inline events that span multiple lines may contain characters from outer block containers
+    /// (e.g. `>` characters from blockquotes or whitespace from list items):
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "
+    /// > [txt](multi
+    /// > line)";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         ("\n", Blankline),
+    ///         (">", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("[", Start(Link { .. }, ..)),
+    ///         ("txt", Str(..)),
+    ///         ("](multi\n> line)", End(Link { .. })),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    pub fn into_offset_iter(self) -> OffsetIter<'s> {
+        OffsetIter { parser: self }
+    }
+
+    fn inline(&mut self) -> Option<(Event<'s>, Range<usize>)> {
         let next = self.inline_parser.next()?;
 
         let (inline, mut attributes) = match next {
@@ -809,7 +920,7 @@ impl<'s> Parser<'s> {
 
         inline.map(|inline| {
             let enter = matches!(inline.kind, inline::EventKind::Enter(_));
-            match inline.kind {
+            let event = match inline.kind {
                 inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                     let t = match c {
                         inline::Container::Span => Container::Span,
@@ -893,11 +1004,12 @@ impl<'s> Parser<'s> {
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
-            }
+            };
+            (event, inline.span.into())
         })
     }
 
-    fn block(&mut self) -> Option<Event<'s>> {
+    fn block(&mut self) -> Option<(Event<'s>, Range<usize>)> {
         while let Some(mut ev) = &mut self.blocks.next() {
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
@@ -1030,14 +1142,18 @@ impl<'s> Parser<'s> {
                                 Some(block::EventKind::Inline),
                             ),
                         );
-                        return self.next();
+                        return self.next_span();
                     }
                 }
                 block::EventKind::Stale => continue,
             };
-            return Some(event);
+            return Some((event, ev.span.into()));
         }
         None
+    }
+
+    fn next_span(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+        self.inline().or_else(|| self.block())
     }
 }
 
@@ -1045,7 +1161,23 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inline().or_else(|| self.block())
+        self.next_span().map(|(e, _)| e)
+    }
+}
+
+/// An iterator that is identical to a [`Parser`], except that it also emits the location of each
+/// event within the input.
+///
+/// See the documentation of [`Parser::into_offset_iter`] for more information.
+pub struct OffsetIter<'s> {
+    parser: Parser<'s>,
+}
+
+impl<'s> Iterator for OffsetIter<'s> {
+    type Item = (Event<'s>, Range<usize>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.parser.next_span()
     }
 }
 
