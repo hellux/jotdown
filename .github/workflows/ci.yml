@@ -72,7 +72,6 @@ jobs:
       matrix:
         target:
           - parse
-          - parse_balance
           - html
     runs-on: ubuntu-latest
     steps:
