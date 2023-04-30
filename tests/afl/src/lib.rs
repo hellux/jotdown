@@ -8,8 +8,42 @@ use html5ever::tree_builder;
 /// Perform sanity checks on events.
 pub fn parse(data: &[u8]) {
     if let Ok(s) = std::str::from_utf8(data) {
+        let whitelist_whitespace = s.contains('{') && s.contains('}'); // attributes are outside events
         let mut open = Vec::new();
-        for event in jotdown::Parser::new(s) {
+        let mut last = (jotdown::Event::Str("".into()), 0..0);
+        for (event, range) in jotdown::Parser::new(s).into_offset_iter() {
+            // no overlap, out of order
+            assert!(
+                last.1.end <= range.start
+                // block attributes may overlap with start event
+                || (
+                    matches!(last.0, jotdown::Event::Blankline)
+                    && (
+                        matches!(
+                            event,
+                            jotdown::Event::Start(ref cont, ..) if cont.is_block()
+                        )
+                        || matches!(event, jotdown::Event::ThematicBreak(..))
+                    )
+                )
+                // caption event is before table rows but src is after
+                || (
+                    matches!(
+                        last.0,
+                        jotdown::Event::Start(jotdown::Container::Caption, ..)
+                        | jotdown::Event::End(jotdown::Container::Caption)
+                    )
+                    && range.end <= last.1.start
+                ),
+                "{} > {} {:?} {:?}",
+                last.1.end,
+                range.start,
+                last.0,
+                event
+            );
+            last = (event.clone(), range.clone());
+            // range is valid unicode, does not cross char boundary
+            let _ = &s[range];
             match event {
                 jotdown::Event::Start(c, ..) => open.push(c.clone()),
                 jotdown::Event::End(c) => {
@@ -21,6 +55,12 @@ pub fn parse(data: &[u8]) {
         }
         // no missing close
         assert_eq!(open, &[]);
+        // only whitespace after last event
+        assert!(
+            whitelist_whitespace || s[last.1.end..].chars().all(char::is_whitespace),
+            "non whitespace {:?}",
+            &s[last.1.end..],
+        );
     }
 }
 
