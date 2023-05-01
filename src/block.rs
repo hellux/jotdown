@@ -2249,6 +2249,20 @@ mod test {
     }
 
     #[test]
+    fn parse_table_empty() {
+        test_parse!(
+            "||",
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: false })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Inline, ""),
+            (Exit(Leaf(TableCell(Alignment::Unspecified))), "|"),
+            (Exit(Container(TableRow { head: false })), "|"),
+            (Exit(Container(Table)), ""),
+        );
+    }
+
+    #[test]
     fn parse_table_escaped() {
         test_parse!(
             "|a\\|\n",
