@@ -337,12 +337,14 @@ impl<'s> Parser<'s> {
                         matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
                     })
                 {
-                    return self.ahead_attributes(
-                        AttributesElementType::Container {
-                            e_placeholder: event_opener - 1,
-                        },
-                        false,
-                    );
+                    return self
+                        .ahead_attributes(
+                            AttributesElementType::Container {
+                                e_placeholder: event_opener - 1,
+                            },
+                            false,
+                        )
+                        .or(Some(Continue));
                 }
             } else {
                 // continue verbatim
@@ -788,6 +790,7 @@ impl<'s> Parser<'s> {
                         },
                         false,
                     )
+                    .or(Some(Continue))
                 } else {
                     closed
                 }
@@ -1570,6 +1573,28 @@ mod test {
             (Str, "abc"),
             (Exit(Emphasis), "_"),
             (Exit(Strong), "*"),
+        );
+    }
+
+    #[test]
+    fn container_unclosed_attr() {
+        test_parse!(
+            "^.^{unclosed",
+            (Enter(Superscript), "^"),
+            (Str, "."),
+            (Exit(Superscript), "^"),
+            (Str, "{unclosed"),
+        );
+    }
+
+    #[test]
+    fn verbatim_unclosed_attr() {
+        test_parse!(
+            "`.`{unclosed",
+            (Enter(Verbatim), "`"),
+            (Str, "."),
+            (Exit(Verbatim), "`"),
+            (Str, "{unclosed"),
         );
     }
 
