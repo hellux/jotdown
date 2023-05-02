@@ -899,7 +899,6 @@ impl<'s> Parser<'s> {
 
     fn block(&mut self) -> Option<Event<'s>> {
         while let Some(mut ev) = &mut self.blocks.next() {
-            let content = ev.span.of(self.src);
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => Event::Blankline,
@@ -913,7 +912,7 @@ impl<'s> Parser<'s> {
                         if self.block_attributes_pos.is_none() {
                             self.block_attributes_pos = Some(ev.span.start());
                         }
-                        self.block_attributes.parse(content);
+                        self.block_attributes.parse(ev.span.of(self.src));
                         continue;
                     }
                 },
@@ -1022,7 +1021,7 @@ impl<'s> Parser<'s> {
                 }
                 block::EventKind::Inline => {
                     if self.verbatim {
-                        Event::Str(content.into())
+                        Event::Str(ev.span.of(self.src).into())
                     } else {
                         self.inline_parser.feed_line(
                             ev.span,
