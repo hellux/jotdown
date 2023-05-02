@@ -2214,6 +2214,38 @@ mod test {
     }
 
     #[test]
+    fn parse_description_list_empty() {
+        test_parse!(
+            ":\n",
+            (
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: true,
+                    },
+                    marker: ":",
+                })),
+                ":"
+            ),
+            (Enter(Leaf(DescriptionTerm)), ""),
+            (Exit(Leaf(DescriptionTerm)), ""),
+            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: true,
+                    },
+                    marker: ":",
+                })),
+                ":"
+            ),
+        );
+    }
+
+    #[test]
     fn parse_table() {
         test_parse!(
             concat!(
