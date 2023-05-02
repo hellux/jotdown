@@ -21,7 +21,10 @@
             output.innerText = jotdown_render(input.innerText);
         } else if (fmt.value == "events") {
             output.classList.add("verbatim")
-            output.innerText = jotdown_parse(input.innerText);
+            output.innerText = jotdown_parse(input.innerText, false);
+        } else if (fmt.value == "events_spans") {
+            output.classList.add("verbatim")
+            output.innerText = jotdown_parse(input.innerText, true);
         } else if (fmt.value == "events_indent") {
             output.classList.add("verbatim")
             output.innerText = jotdown_parse_indent(input.innerText);
@@ -50,6 +53,7 @@
         <option value="preview">preview</option>
         <option value="html">html</option>
         <option value="events">events</option>
+        <option value="events_spans">events (with offsets)</option>
         <option value="events_indent">events (indented)</option>
       </select>
     </div>

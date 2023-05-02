@@ -22,10 +22,16 @@ pub fn jotdown_render(djot: &str) -> String {
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_parse(djot: &str) -> String {
-    jotdown::Parser::new(djot)
-        .map(|e| format!("{:?}\n", e))
-        .collect()
+pub fn jotdown_parse(djot: &str, spans: bool) -> String {
+    let mut out = String::new();
+    for (e, sp) in jotdown::Parser::new(djot).into_offset_iter() {
+        write!(out, "{:?}", e).unwrap();
+        if spans {
+            write!(out, " {:?} {:?}", &djot[sp.clone()], sp).unwrap();
+        }
+        writeln!(out).unwrap();
+    }
+    out
 }
 
 #[must_use]
