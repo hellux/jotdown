@@ -2216,6 +2216,92 @@ mod test {
                 ":"
             ),
         );
+        test_parse!(
+            concat!(
+                ": apple\n",
+                "   fruit\n",
+                "\n",
+                "   Paragraph one\n",
+                "\n",
+                "   Paragraph two\n",
+                "\n",
+                "   - sub\n",
+                "   - list\n",
+                "\n",
+                ": orange\n",
+            ),
+            (
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: false
+                    },
+                    marker: ":",
+                })),
+                ":",
+            ),
+            (Enter(Leaf(DescriptionTerm)), ""),
+            (Inline, "apple\n"),
+            (Inline, "fruit"),
+            (Exit(Leaf(DescriptionTerm)), ""),
+            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "Paragraph one"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "Paragraph two"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (
+                Enter(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
+                "-",
+            ),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "sub"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Container(ListItem(ListItemKind::List))), "-"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "list"),
+            (Exit(Leaf(Paragraph)), ""),
+            (Atom(Blankline), "\n"),
+            (Exit(Container(ListItem(ListItemKind::List))), "-"),
+            (
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Unordered(b'-'),
+                        tight: true
+                    },
+                    marker: "-",
+                })),
+                "-",
+            ),
+            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (Enter(Leaf(DescriptionTerm)), ""),
+            (Inline, "orange"),
+            (Exit(Leaf(DescriptionTerm)), ""),
+            (Enter(Container(ListItem(ListItemKind::Description))), ":"),
+            (Exit(Container(ListItem(ListItemKind::Description))), ":"),
+            (
+                Exit(Container(List {
+                    kind: ListKind {
+                        ty: Description,
+                        tight: false
+                    },
+                    marker: ":",
+                })),
+                ":",
+            ),
+        );
     }
 
     #[test]
