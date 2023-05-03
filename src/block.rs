@@ -461,34 +461,32 @@ impl<'s> TreeParser<'s> {
                 } else {
                     match kind {
                         lex::Kind::Sym(lex::Symbol::Pipe) => {
-                            {
-                                let span = Span::new(cell_start, pos).trim(self.src);
-                                let cell = span.of(self.src);
-                                let separator_cell = match cell.len() {
-                                    0 => false,
-                                    1 => cell == "-",
-                                    2 => matches!(cell, ":-" | "--" | "-:"),
-                                    l => {
-                                        matches!(cell.as_bytes()[0], b'-' | b':')
-                                            && matches!(cell.as_bytes()[l - 1], b'-' | b':')
-                                            && cell.chars().skip(1).take(l - 2).all(|c| c == '-')
-                                    }
-                                };
-                                separator_row &= separator_cell;
-                                self.tree.enter(
-                                    Node::Leaf(TableCell(
-                                        self.alignments
-                                            .get(column_index)
-                                            .copied()
-                                            .unwrap_or(Alignment::Unspecified),
-                                    )),
-                                    Span::by_len(cell_start - 1, 1),
-                                );
-                                self.tree.inline(span);
-                                self.tree.exit(); // cell
-                                cell_start = pos + len;
-                                column_index += 1;
-                            }
+                            let span = Span::new(cell_start, pos).trim(self.src);
+                            let cell = span.of(self.src);
+                            let separator_cell = match cell.len() {
+                                0 => false,
+                                1 => cell == "-",
+                                2 => matches!(cell, ":-" | "--" | "-:"),
+                                l => {
+                                    matches!(cell.as_bytes()[0], b'-' | b':')
+                                        && matches!(cell.as_bytes()[l - 1], b'-' | b':')
+                                        && cell.chars().skip(1).take(l - 2).all(|c| c == '-')
+                                }
+                            };
+                            separator_row &= separator_cell;
+                            self.tree.enter(
+                                Node::Leaf(TableCell(
+                                    self.alignments
+                                        .get(column_index)
+                                        .copied()
+                                        .unwrap_or(Alignment::Unspecified),
+                                )),
+                                Span::by_len(cell_start - 1, 1),
+                            );
+                            self.tree.inline(span);
+                            self.tree.exit(); // cell
+                            cell_start = pos + len;
+                            column_index += 1;
                         }
                         lex::Kind::Seq(lex::Sequence::Backtick) => {
                             verbatim = Some(len);
