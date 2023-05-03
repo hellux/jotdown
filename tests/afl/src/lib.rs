@@ -171,9 +171,6 @@ impl<'a> tree_builder::TreeSink for Dom<'a> {
             "Found special tag while closing generic tag",
             "Formatting element not current node",
             "Formatting element not open",
-            // FIXME bug caused by empty table at end of list
-            "No matching tag to close",
-            "Unexpected open element while closing",
         ];
         if !whitelist.iter().any(|e| msg.starts_with(e)) {
             #[cfg(feature = "debug")]
