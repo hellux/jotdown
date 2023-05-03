@@ -2342,6 +2342,19 @@ mod test {
             (Exit(Container(TableRow { head: false })), "|"),
             (Exit(Container(Table)), "")
         );
+        test_parse!(
+            concat!(
+                "||\n",   //
+                "|-:|\n", //
+            ),
+            (Enter(Container(Table)), ""),
+            (Enter(Container(TableRow { head: true })), "|"),
+            (Enter(Leaf(TableCell(Alignment::Right))), "|"),
+            (Inline, ""),
+            (Exit(Leaf(TableCell(Alignment::Right))), "|"),
+            (Exit(Container(TableRow { head: true })), "|"),
+            (Exit(Container(Table)), ""),
+        );
     }
 
     #[test]
