@@ -95,6 +95,9 @@ afl_tmin:
 	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
 		cargo afl tmin -i $$f -o tmin/$$(basename $$f) tests/afl/target/release/${AFL_TARGET}; \
 	done
+	while [ -n "$$(md5sum tmin/* | sort -k1 | rev | uniq -d -f1)" ]; do \
+		md5sum tmin/* | sort -k1 | rev | uniq -d -f1 | rev | awk '{print $$2}' | xargs rm -f; \
+	done
 
 clean:
 	cargo clean
