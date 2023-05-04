@@ -1554,6 +1554,11 @@ mod test {
             (Inline, "  block\n"),
             (Exit(Leaf(CodeBlock { language: "" })), ""),
         );
+        test_parse!(
+            "    ```abc\n",
+            (Enter(Leaf(CodeBlock { language: "abc" })), "abc"),
+            (Exit(Leaf(CodeBlock { language: "abc" })), "abc"),
+        );
     }
 
     #[test]
