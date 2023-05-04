@@ -1763,40 +1763,40 @@ mod test {
             ),
             (
                 Enter(Container(List(ListKind {
-                    ty: Unordered(45),
+                    ty: Unordered(b'-'),
                     tight: true
                 }))),
                 "-"
             ),
-            (Enter(Container(ListItem(Unordered(45)))), "-"),
+            (Enter(Container(ListItem(Unordered(b'-')))), "-"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "a"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List(ListKind {
-                    ty: Unordered(42),
+                    ty: Unordered(b'*'),
                     tight: true
                 }))),
                 "*"
             ),
-            (Enter(Container(ListItem(Unordered(42)))), "*"),
+            (Enter(Container(ListItem(Unordered(b'*')))), "*"),
             (Enter(Leaf(Paragraph)), ""),
             (Inline, "b"),
             (Exit(Leaf(Paragraph)), ""),
             (Atom(Blankline), "\n"),
-            (Exit(Container(ListItem(Unordered(42)))), "*"),
+            (Exit(Container(ListItem(Unordered(b'*')))), "*"),
             (
                 Exit(Container(List(ListKind {
-                    ty: Unordered(42),
+                    ty: Unordered(b'*'),
                     tight: true
                 }))),
                 "*"
             ),
-            (Exit(Container(ListItem(Unordered(45)))), "-"),
+            (Exit(Container(ListItem(Unordered(b'-')))), "-"),
             (
                 Exit(Container(List(ListKind {
-                    ty: Unordered(45),
+                    ty: Unordered(b'-'),
                     tight: true
                 }))),
                 "-"
