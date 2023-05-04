@@ -10,6 +10,7 @@ use crate::OrderedListNumbering::*;
 use crate::Render;
 use crate::SpanLinkType;
 
+/// [`Render`] implementor that writes HTML output.
 #[derive(Default)]
 pub struct Renderer {}
 
