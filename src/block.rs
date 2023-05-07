@@ -350,7 +350,7 @@ impl<'s> TreeParser<'s> {
         k: &Kind,
         span_start: Span,
         span_end: Span,
-        lines: &mut [Span],
+        mut lines: &mut [Span],
     ) {
         if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
@@ -365,6 +365,18 @@ impl<'s> TreeParser<'s> {
             // trim starting whitespace of each inline
             for line in lines.iter_mut() {
                 *line = line.trim_start(self.src);
+            }
+
+            // skip first inline if empty
+            if lines.get(0).map_or(false, |l| l.is_empty()) {
+                lines = &mut lines[1..];
+            };
+
+            if matches!(leaf, LinkDefinition { .. }) {
+                // trim ending whitespace of each inline
+                for line in lines.iter_mut() {
+                    *line = line.trim_end(self.src);
+                }
             }
 
             // trim ending whitespace of block
@@ -412,7 +424,7 @@ impl<'s> TreeParser<'s> {
             }
 
             // trim '#' characters
-            for line in lines[1..].iter_mut() {
+            for line in lines.iter_mut().skip(1) {
                 *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_whitespace());
             }
         }
