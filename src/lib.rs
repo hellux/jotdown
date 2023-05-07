@@ -1064,6 +1064,7 @@ impl<'s> Parser<'s> {
                                 },
                                 block::Leaf::Caption => Container::Caption,
                                 block::Leaf::LinkDefinition { label } => {
+                                    self.verbatim = enter;
                                     Container::LinkDefinition { label }
                                 }
                             }
@@ -1709,7 +1710,6 @@ mod test {
             Blankline,
             Start(LinkDefinition { label: "tag" }, Attributes::new()),
             Str("u".into()),
-            Softbreak,
             Str("rl".into()),
             End(LinkDefinition { label: "tag" }),
         );
@@ -1718,19 +1718,24 @@ mod test {
                 "[text][tag]\n",
                 "\n",
                 "[tag]:\n",
-                " url\n", //
+                " url\n",  //
+                " cont\n", //
             ),
             Start(Paragraph, Attributes::new()),
             Start(
-                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Link("urlcont".into(), LinkType::Span(SpanLinkType::Reference)),
                 Attributes::new()
             ),
             Str("text".into()),
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Link(
+                "urlcont".into(),
+                LinkType::Span(SpanLinkType::Reference)
+            )),
             End(Paragraph),
             Blankline,
             Start(LinkDefinition { label: "tag" }, Attributes::new()),
             Str("url".into()),
+            Str("cont".into()),
             End(LinkDefinition { label: "tag" }),
         );
     }
