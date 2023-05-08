@@ -649,7 +649,9 @@ impl<'s> Parser<'s> {
                     (e, e + 1)
                 };
 
-                if e_opener == self.events.len() - 1 && !matches!(opener, Opener::Link { .. }) {
+                if e_opener == self.events.len() - 1
+                    && !matches!(opener, Opener::Link { .. } | Opener::Span { .. })
+                {
                     // empty container
                     return None;
                 }
@@ -1467,6 +1469,38 @@ mod test {
     #[test]
     fn span() {
         test_parse!("[abc]", (Str, "[abc]"));
+    }
+
+    #[test]
+    fn span_no_text() {
+        test_parse!("[]", (Str, "[]"));
+        test_parse!(
+            "[](url)",
+            (Enter(InlineLink(0)), "["),
+            (Exit(InlineLink(0)), "](url)"),
+        );
+        test_parse!(
+            "![](url)",
+            (Enter(InlineImage(0)), "!["),
+            (Exit(InlineImage(0)), "](url)"),
+        );
+        test_parse!(
+            "[][label]",
+            (Enter(ReferenceLink(0)), "["),
+            (Exit(ReferenceLink(0)), "][label]"),
+        );
+        test_parse!(
+            "[]{.cls}",
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0
+                },
+                "{.cls}",
+            ),
+            (Enter(Span), "["),
+            (Exit(Span), "]")
+        );
     }
 
     #[test]
