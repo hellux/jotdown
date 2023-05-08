@@ -734,7 +734,7 @@ impl<'s> PrePass<'s> {
         self.headings_lex
             .binary_search_by_key(&tag, |i| &self.headings[*i].text)
             .ok()
-            .map(|i| self.heading_id(i))
+            .map(|i| self.heading_id(self.headings_lex[i]))
     }
 }
 
@@ -1203,6 +1203,65 @@ mod test {
             End(Section {
                 id: "Some-Section".into()
             }),
+        );
+        test_parse!(
+            concat!(
+                "[a][]\n", //
+                "[b][]\n", //
+                "\n",      //
+                "# b\n",   //
+                "\n",      //
+                "# a\n",   //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("#a".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("a".into()),
+            End(Link("#a".into(), LinkType::Span(SpanLinkType::Reference))),
+            Softbreak,
+            Start(
+                Link("#b".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("b".into()),
+            End(Link("#b".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            Blankline,
+            Start(Section { id: "b".into() }, Attributes::new()),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "b".into(),
+                },
+                Attributes::new(),
+            ),
+            Str("b".into()),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "b".into(),
+            }),
+            Blankline,
+            End(Section { id: "b".into() }),
+            Start(Section { id: "a".into() }, Attributes::new()),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "a".into(),
+                },
+                Attributes::new(),
+            ),
+            Str("a".into()),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "a".into(),
+            }),
+            End(Section { id: "a".into() }),
         );
     }
 
