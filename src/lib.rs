@@ -579,6 +579,8 @@ struct Heading {
     location: usize,
     /// Automatically generated id from heading text.
     id_auto: String,
+    /// Text of heading, formatting stripped.
+    text: String,
     /// Overriding id from an explicit attribute on the heading.
     id_override: Option<String>,
 }
@@ -630,6 +632,7 @@ impl<'s> PrePass<'s> {
                         .map(ToString::to_string);
 
                     let mut id_auto = String::new();
+                    let mut text = String::new();
                     let mut last_whitespace = true;
                     let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inline_parser.reset();
@@ -637,6 +640,7 @@ impl<'s> PrePass<'s> {
                         inline_parser.feed_line(*sp, i == inlines.len() - 1);
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
+                                text.push_str(ev.span.of(src));
                                 let mut chars = ev.span.of(src).chars().peekable();
                                 while let Some(c) = chars.next() {
                                     if c.is_whitespace() {
@@ -654,6 +658,7 @@ impl<'s> PrePass<'s> {
                                 }
                             }
                             inline::EventKind::Atom(inline::Atom::Softbreak) => {
+                                text.push(' ');
                                 id_auto.push('-');
                             }
                             _ => {}
@@ -686,6 +691,7 @@ impl<'s> PrePass<'s> {
                     headings.push(Heading {
                         location: e.span.start(),
                         id_auto,
+                        text,
                         id_override,
                     });
                 }
@@ -703,7 +709,7 @@ impl<'s> PrePass<'s> {
         }
 
         let mut headings_lex = (0..headings.len()).collect::<Vec<_>>();
-        headings_lex.sort_by_key(|i| &headings[*i].id_auto);
+        headings_lex.sort_by_key(|i| &headings[*i].text);
 
         Self {
             link_definitions,
@@ -726,7 +732,7 @@ impl<'s> PrePass<'s> {
 
     fn heading_id_by_tag(&self, tag: &str) -> Option<&str> {
         self.headings_lex
-            .binary_search_by_key(&tag, |i| &self.headings[*i].id_auto)
+            .binary_search_by_key(&tag, |i| &self.headings[*i].text)
             .ok()
             .map(|i| self.heading_id(i))
     }
@@ -1146,6 +1152,57 @@ mod test {
                 id: "def".into(),
             }),
             End(Section { id: "def".into() }),
+        );
+    }
+
+    #[test]
+    fn heading_ref() {
+        test_parse!(
+            concat!(
+                "A [link][Some Section] to another section.\n", //
+                "\n",                                           //
+                "# Some Section",                               //
+            ),
+            Start(Paragraph, Attributes::new()),
+            Str("A ".into()),
+            Start(
+                Link(
+                    "#Some-Section".into(),
+                    LinkType::Span(SpanLinkType::Reference)
+                ),
+                Attributes::new()
+            ),
+            Str("link".into()),
+            End(Link(
+                "#Some-Section".into(),
+                LinkType::Span(SpanLinkType::Reference)
+            )),
+            Str(" to another section.".into()),
+            End(Paragraph),
+            Blankline,
+            Start(
+                Section {
+                    id: "Some-Section".into()
+                },
+                Attributes::new()
+            ),
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "Some-Section".into(),
+                },
+                Attributes::new(),
+            ),
+            Str("Some Section".into()),
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "Some-Section".into(),
+            }),
+            End(Section {
+                id: "Some-Section".into()
+            }),
         );
     }
 
