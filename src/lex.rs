@@ -20,7 +20,6 @@ pub enum Kind {
     Close(Delimiter),
     Sym(Symbol),
     Seq(Sequence),
-    DollarBacktick(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -239,20 +238,6 @@ impl<'s> Lexer<'s> {
 
                     '`' => self.eat_seq(Backtick),
                     '.' => self.eat_seq(Period),
-                    '$' => {
-                        self.eat_while(|c| c == '$');
-                        let mut n_ticks: u8 = 0;
-                        self.eat_while(|c| {
-                            if c == '`' {
-                                if let Some(l) = n_ticks.checked_add(1) {
-                                    n_ticks = l;
-                                    return true;
-                                }
-                            }
-                            false
-                        });
-                        DollarBacktick(n_ticks)
-                    }
 
                     _ => Text,
                 }
@@ -417,12 +402,5 @@ mod test {
             Seq(Hyphen).l(1),
             Seq(Period).l(1),
         );
-    }
-
-    #[test]
-    fn dollar_backtick() {
-        test_lex!("$`", DollarBacktick(1).l(2));
-        test_lex!("$$$`", DollarBacktick(1).l(4));
-        test_lex!("$$````", DollarBacktick(4).l(6));
     }
 }
