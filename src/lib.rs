@@ -290,7 +290,7 @@ pub enum Container<'s> {
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
-    CodeBlock { lang: Option<&'s str> },
+    CodeBlock { language: Option<&'s str> },
     /// An inline divider element.
     Span,
     /// An inline link, the first field is either a destination URL or an unresolved tag.
@@ -903,7 +903,7 @@ impl<'s> Parser<'s> {
                                         Container::RawBlock { format }
                                     } else {
                                         Container::CodeBlock {
-                                            lang: (!content.is_empty()).then(|| content),
+                                            language: (!content.is_empty()).then(|| content),
                                         }
                                     }
                                 }

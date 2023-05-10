@@ -266,8 +266,8 @@ impl<'s> Writer<'s> {
                         };
                         write!(out, r#" style="text-align: {};">"#, a)?;
                     }
-                    Container::CodeBlock { lang } => {
-                        if let Some(l) = lang {
+                    Container::CodeBlock { language } => {
+                        if let Some(l) = language {
                             out.write_str(r#"><code class="language-"#)?;
                             write_attr(l, &mut out)?;
                             out.write_str(r#"">"#)?;
