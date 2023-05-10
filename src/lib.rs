@@ -290,7 +290,7 @@ pub enum Container<'s> {
     /// A block with raw markup for a specific output format.
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
-    CodeBlock { language: Option<&'s str> },
+    CodeBlock { language: &'s str },
     /// An inline divider element.
     Span,
     /// An inline link, the first field is either a destination URL or an unresolved tag.
@@ -902,9 +902,7 @@ impl<'s> Parser<'s> {
                                     if let Some(format) = content.strip_prefix('=') {
                                         Container::RawBlock { format }
                                     } else {
-                                        Container::CodeBlock {
-                                            language: (!content.is_empty()).then(|| content),
-                                        }
+                                        Container::CodeBlock { language: content }
                                     }
                                 }
                                 block::Leaf::TableCell(alignment) => Container::TableCell {

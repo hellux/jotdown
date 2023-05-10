@@ -267,12 +267,12 @@ impl<'s> Writer<'s> {
                         write!(out, r#" style="text-align: {};">"#, a)?;
                     }
                     Container::CodeBlock { language } => {
-                        if let Some(l) = language {
-                            out.write_str(r#"><code class="language-"#)?;
-                            write_attr(l, &mut out)?;
-                            out.write_str(r#"">"#)?;
-                        } else {
+                        if language.is_empty() {
                             out.write_str("><code>")?;
+                        } else {
+                            out.write_str(r#"><code class="language-"#)?;
+                            write_attr(language, &mut out)?;
+                            out.write_str(r#"">"#)?;
                         }
                     }
                     Container::Image(..) => {
