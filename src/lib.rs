@@ -270,7 +270,7 @@ pub enum Container<'s> {
     /// A section belonging to a top level heading.
     Section { id: CowStr<'s> },
     /// A block-level divider element.
-    Div { class: Option<&'s str> },
+    Div { class: &'s str },
     /// A paragraph.
     Paragraph,
     /// A heading.
@@ -919,9 +919,7 @@ impl<'s> Parser<'s> {
                         }
                         block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
-                            block::Container::Div { .. } => Container::Div {
-                                class: (!ev.span.is_empty()).then(|| content),
-                            },
+                            block::Container::Div => Container::Div { class: content },
                             block::Container::Footnote => Container::Footnote { label: content },
                             block::Container::List(block::ListKind { ty, tight }) => {
                                 if matches!(ty, block::ListType::Description) {
