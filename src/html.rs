@@ -208,14 +208,11 @@ impl<'s> Writer<'s> {
                 if attrs.iter().any(|(a, _)| a == "class")
                     || matches!(
                         c,
-                        Container::Div { class: Some(_) }
-                            | Container::Math { .. }
-                            | Container::List {
-                                kind: ListKind::Task,
-                                ..
-                            }
-                            | Container::TaskListItem { .. }
-                    )
+                        Container::Div { class } if !class.is_empty())
+                    || matches!(c, |Container::Math { .. }| Container::List {
+                        kind: ListKind::Task,
+                        ..
+                    } | Container::TaskListItem { .. })
                 {
                     out.write_str(r#" class=""#)?;
                     let mut first_written = false;
@@ -246,11 +243,13 @@ impl<'s> Writer<'s> {
                             .try_for_each(|part| write_attr(part, &mut out))?;
                     }
                     // div class goes after classes from attrs
-                    if let Container::Div { class: Some(cls) } = c {
-                        if first_written {
-                            out.write_char(' ')?;
+                    if let Container::Div { class } = c {
+                        if !class.is_empty() {
+                            if first_written {
+                                out.write_char(' ')?;
+                            }
+                            out.write_str(class)?;
                         }
-                        out.write_str(cls)?;
                     }
                     out.write_char('"')?;
                 }
