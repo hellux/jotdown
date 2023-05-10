@@ -372,19 +372,38 @@ impl<'s> Parser<'s> {
                 self.push(EventKind::Str);
             };
             Some(Continue)
-        } else {
-            let (ty, len_opener) = match first.kind {
-                lex::Kind::DollarBacktick(l) if first.len - l as usize == 1 => {
-                    Some((InlineMath, l))
-                }
-                lex::Kind::DollarBacktick(l) if first.len - l as usize == 2 => {
-                    Some((DisplayMath, l))
-                }
-                lex::Kind::Seq(Sequence::Backtick) if first.len < 256 => {
-                    Some((Verbatim, first.len as u8))
-                }
-                _ => None,
-            }?;
+        } else if matches!(first.kind, lex::Kind::Seq(Sequence::Backtick)) {
+            let len_opener = u8::try_from(first.len).ok()?;
+            let ty = if let Some(sp) = self
+                .events
+                .back()
+                .and_then(|e| matches!(&e.kind, EventKind::Str).then(|| e.span))
+                .filter(|sp| {
+                    sp.end() == self.input.span.start()
+                        && sp.of(self.input.src).as_bytes()[sp.len() - 1] == b'$'
+                        && sp
+                            .end()
+                            .checked_sub(2)
+                            .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                }) {
+                let (ty, num_dollar) = if sp.len() > 1
+                    && sp.of(self.input.src).as_bytes()[sp.len() - 2] == b'$'
+                    && sp
+                        .end()
+                        .checked_sub(3)
+                        .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                {
+                    (DisplayMath, 2)
+                } else {
+                    (InlineMath, 1)
+                };
+                let border = sp.end() - num_dollar;
+                self.events.back_mut().unwrap().span = Span::new(sp.start(), border);
+                self.input.span = Span::new(border, self.input.span.end());
+                ty
+            } else {
+                Verbatim
+            };
             self.push_sp(EventKind::Placeholder, self.input.span.empty_before());
             self.verbatim = Some(VerbatimState {
                 event_opener: self.events.len(),
@@ -394,6 +413,8 @@ impl<'s> Parser<'s> {
             });
             self.attributes = None;
             self.push(EventKind::Enter(ty))
+        } else {
+            None
         }
     }
 
