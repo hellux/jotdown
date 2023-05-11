@@ -1694,6 +1694,22 @@ mod test {
             (Inline, "para"),
             (Exit(Leaf(Paragraph)), ""),
         );
+        test_parse!(
+            concat!(
+                "{.a}\n", //
+                "\n",     //
+                "{.b}\n", //
+                "\n",     //
+                "para\n", //
+            ),
+            (Atom(Attributes), "{.a}\n"),
+            (Atom(Blankline), "\n"),
+            (Atom(Attributes), "{.b}\n"),
+            (Atom(Blankline), "\n"),
+            (Enter(Leaf(Paragraph)), ""),
+            (Inline, "para"),
+            (Exit(Leaf(Paragraph)), ""),
+        );
     }
 
     #[test]
