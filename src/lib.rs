@@ -1004,6 +1004,7 @@ impl<'s> Parser<'s> {
                     if enter {
                         Event::Start(cont, self.block_attributes.take())
                     } else {
+                        self.block_attributes = Attributes::new();
                         Event::End(cont)
                     }
                 }
