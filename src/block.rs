@@ -127,6 +127,7 @@ struct TreeParser<'s> {
     /// The previous block element was a blank line.
     prev_blankline: bool,
     prev_loose: bool,
+    attr_start: Option<usize>,
     /// Stack of currently open lists.
     open_lists: Vec<OpenList>,
     /// Stack of currently open sections.
@@ -147,6 +148,7 @@ impl<'s> TreeParser<'s> {
             src,
             prev_blankline: false,
             prev_loose: false,
+            attr_start: None,
             open_lists: Vec::new(),
             alignments: Vec::new(),
             open_sections: Vec::new(),
@@ -330,6 +332,12 @@ impl<'s> TreeParser<'s> {
                 }
             }
 
+            if matches!(kind, Kind::Atom(Attributes)) {
+                self.attr_start = self.attr_start.or_else(|| Some(self.events.len() - 1));
+            } else if !matches!(kind, Kind::Atom(Blankline)) {
+                self.attr_start = None;
+            }
+
             line_count
         } else {
             0
@@ -379,8 +387,24 @@ impl<'s> TreeParser<'s> {
                     .rposition(|l| l < level)
                     .map_or(0, |i| i + 1);
                 let pos = span_start.start() as u32;
-                for _ in 0..(self.open_sections.len() - first_close) {
-                    self.exit(Span::empty_at(span_start.start())); // section
+                for i in 0..(self.open_sections.len() - first_close) {
+                    let node = if let EventKind::Enter(node) =
+                        self.events[self.open.pop().unwrap()].kind
+                    {
+                        node
+                    } else {
+                        panic!();
+                    };
+                    let end = self
+                        .attr_start
+                        .map_or(span_start.start(), |a| self.events[a].span.start());
+                    self.events.insert(
+                        self.attr_start.map_or(self.events.len(), |a| a + i),
+                        Event {
+                            kind: EventKind::Exit(node),
+                            span: Span::new(end, end),
+                        },
+                    );
                 }
                 self.open_sections.drain(first_close..);
                 self.open_sections.push(*level);
