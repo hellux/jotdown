@@ -524,7 +524,13 @@ impl<'s> Parser<'s> {
         self.input.span = Span::new(start_attr, state.end_attr);
         self.input.lexer = lex::Lexer::new(&self.input.src[state.end_attr..line_end]);
 
-        if !attrs.is_empty() {
+        if attrs.is_empty() {
+            if matches!(state.elem_ty, AttributesElementType::Container { .. }) {
+                let last = self.events.len() - 1;
+                self.events[last].span =
+                    Span::new(self.events[last].span.start(), self.input.span.end());
+            }
+        } else {
             let attr_index = self.store_attributes.len() as AttributesIndex;
             self.store_attributes.push(attrs);
             let attr_event = Event {
@@ -537,11 +543,13 @@ impl<'s> Parser<'s> {
             match state.elem_ty {
                 AttributesElementType::Container { e_placeholder } => {
                     self.events[e_placeholder] = attr_event;
+                    let last = self.events.len() - 1;
                     if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
                         self.events[e_placeholder + 1].kind = EventKind::Enter(Span);
-                        let last = self.events.len() - 1;
                         self.events[last].kind = EventKind::Exit(Span);
                     }
+                    self.events[last].span =
+                        Span::new(self.events[last].span.start(), self.input.span.end());
                 }
                 AttributesElementType::Word => {
                     self.events.push_back(attr_event);
@@ -971,7 +979,7 @@ impl<'s> Parser<'s> {
             let attr = self.events.pop_front().unwrap();
             self.events.push_front(Event {
                 kind: EventKind::Exit(Span),
-                span: span_str.empty_after(),
+                span: attr.span,
             });
             self.events.push_front(Event {
                 kind: EventKind::Str,
@@ -1265,7 +1273,7 @@ mod test {
             ),
             (Enter(Verbatim), "`"),
             (Str, "raw"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim), "`{#id}"),
             (Str, " post"),
         );
     }
@@ -1455,7 +1463,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "[text]("),
-            (Exit(Span), ""),
+            (Exit(Span), "{.cls}"),
         );
     }
 
@@ -1519,7 +1527,7 @@ mod test {
                 "{.cls}",
             ),
             (Enter(Span), "["),
-            (Exit(Span), "]")
+            (Exit(Span), "]{.cls}")
         );
     }
 
@@ -1536,7 +1544,7 @@ mod test {
             ),
             (Enter(Span), "["),
             (Str, "abc"),
-            (Exit(Span), "]"),
+            (Exit(Span), "]{.def}"),
         );
         test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
     }
@@ -1554,7 +1562,7 @@ mod test {
             ),
             (Enter(Span), "["),
             (Str, "x_y"),
-            (Exit(Span), "]"),
+            (Exit(Span), "]{.bar_}"),
         );
     }
 
@@ -1686,7 +1694,7 @@ mod test {
             ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{.attr}"),
         );
     }
 
@@ -1696,13 +1704,13 @@ mod test {
             "_abc def_{}",
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{}"),
         );
         test_parse!(
             "_abc def_{ % comment % } ghi",
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{ % comment % }"),
             (Str, " ghi"),
         );
     }
@@ -1720,7 +1728,7 @@ mod test {
             ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{.a}{.b}{.c}"),
             (Str, " "),
         );
     }
@@ -1738,7 +1746,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "word"),
-            (Exit(Span), ""),
+            (Exit(Span), "{a=b}"),
         );
         test_parse!(
             "some word{.a}{.b} with attrs",
@@ -1752,7 +1760,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "word"),
-            (Exit(Span), ""),
+            (Exit(Span), "{.a}{.b}"),
             (Str, " with attrs"),
         );
     }
