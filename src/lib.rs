@@ -559,8 +559,9 @@ pub struct Parser<'s> {
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
 
-    /// Last parsed block attributes
+    /// Last parsed block attributes, and its starting offset.
     block_attributes: Attributes<'s>,
+    block_attributes_pos: Option<usize>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -785,6 +786,7 @@ impl<'s> Parser<'s> {
             blocks: blocks.into_iter().peekable(),
             pre_pass,
             block_attributes: Attributes::new(),
+            block_attributes_pos: None,
             table_head_row: false,
             verbatim: false,
             inline_parser,
@@ -896,15 +898,21 @@ impl<'s> Parser<'s> {
     }
 
     fn block(&mut self) -> Option<Event<'s>> {
-        while let Some(ev) = &mut self.blocks.next() {
+        while let Some(mut ev) = &mut self.blocks.next() {
             let content = ev.span.of(self.src);
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => Event::Blankline,
                     block::Atom::ThematicBreak => {
+                        if let Some(pos) = self.block_attributes_pos.take() {
+                            ev.span = Span::new(pos, ev.span.end());
+                        }
                         Event::ThematicBreak(self.block_attributes.take())
                     }
                     block::Atom::Attributes => {
+                        if self.block_attributes_pos.is_none() {
+                            self.block_attributes_pos = Some(ev.span.start());
+                        }
                         self.block_attributes.parse(content);
                         continue;
                     }
@@ -1002,9 +1010,13 @@ impl<'s> Parser<'s> {
                         },
                     };
                     if enter {
+                        if let Some(pos) = self.block_attributes_pos.take() {
+                            ev.span = Span::new(pos, ev.span.end());
+                        }
                         Event::Start(cont, self.block_attributes.take())
                     } else {
                         self.block_attributes = Attributes::new();
+                        self.block_attributes_pos = None;
                         Event::End(cont)
                     }
                 }
