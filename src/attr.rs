@@ -14,7 +14,7 @@ pub fn valid<I: Iterator<Item = char>>(chars: I) -> usize {
     let mut n = 0;
     let mut state = Start;
     for c in chars {
-        n += 1;
+        n += c.len_utf8();
         state = state.step(c);
         match state {
             Done | Invalid => break,
@@ -517,6 +517,12 @@ mod test {
     #[test]
     fn valid_full() {
         let src = "{.class %comment%}";
+        assert_eq!(super::valid(src.chars()), src.len());
+    }
+
+    #[test]
+    fn valid_unicode() {
+        let src = r#"{a="б"}"#;
         assert_eq!(super::valid(src.chars()), src.len());
     }
 
