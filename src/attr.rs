@@ -8,26 +8,24 @@ pub(crate) fn parse(src: &str) -> Attributes {
     a
 }
 
-pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
+pub fn valid<I: Iterator<Item = char>>(chars: I) -> usize {
     use State::*;
 
-    let mut has_attr = false;
     let mut n = 0;
     let mut state = Start;
     for c in chars {
         n += 1;
         state = state.step(c);
         match state {
-            Class | Identifier | Value | ValueQuoted => has_attr = true,
             Done | Invalid => break,
             _ => {}
         }
     }
 
     if matches!(state, Done) {
-        (n, has_attr)
+        n
     } else {
-        (0, false)
+        0
     }
 }
 
@@ -519,25 +517,25 @@ mod test {
     #[test]
     fn valid_full() {
         let src = "{.class %comment%}";
-        assert_eq!(super::valid(src.chars()), (src.len(), true));
+        assert_eq!(super::valid(src.chars()), src.len());
     }
 
     #[test]
     fn valid_empty() {
         let src = "{}";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src.chars()), src.len());
     }
 
     #[test]
     fn valid_whitespace() {
         let src = "{ \n }";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src.chars()), src.len());
     }
 
     #[test]
     fn valid_comment() {
         let src = "{%comment%}";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src.chars()), src.len());
     }
 
     #[test]
@@ -545,15 +543,15 @@ mod test {
         let src = "{.class}";
         assert_eq!(
             super::valid(src.chars().chain("{.ignore}".chars())),
-            (src.len(), true),
+            src.len(),
         );
     }
 
     #[test]
     fn valid_invalid() {
-        assert_eq!(super::valid(" {.valid}".chars()), (0, false));
-        assert_eq!(super::valid("{.class invalid}".chars()), (0, false));
-        assert_eq!(super::valid("abc".chars()), (0, false));
-        assert_eq!(super::valid("{.abc.}".chars()), (0, false));
+        assert_eq!(super::valid(" {.valid}".chars()), 0);
+        assert_eq!(super::valid("{.class invalid}".chars()), 0);
+        assert_eq!(super::valid("abc".chars()), 0);
+        assert_eq!(super::valid("{.abc.}".chars()), 0);
     }
 }

@@ -836,7 +836,7 @@ impl<'s> IdentifiedBlock<'s> {
                     None
                 }
             }
-            '{' => (attr::valid(line.chars()).0 == lt)
+            '{' => (attr::valid(line.chars()) == lt)
                 .then(|| (Kind::Atom(Attributes), Span::by_len(indent_bytes, l))),
             '|' => {
                 if lt >= 2 && line_t.ends_with('|') && !line_t.ends_with("\\|") {
