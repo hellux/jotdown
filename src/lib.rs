@@ -629,13 +629,25 @@ impl<'s> PrePass<'s> {
                     let url = if !next_is_inline(&mut blocks) {
                         "".into()
                     } else {
-                        let start = blocks.next().unwrap().span.of(src).trim();
+                        let start = blocks
+                            .next()
+                            .unwrap()
+                            .span
+                            .of(src)
+                            .trim_matches(|c: char| c.is_ascii_whitespace());
                         if !next_is_inline(&mut blocks) {
                             start.into()
                         } else {
                             let mut url = start.to_string();
                             while next_is_inline(&mut blocks) {
-                                url.push_str(blocks.next().unwrap().span.of(src).trim());
+                                url.push_str(
+                                    blocks
+                                        .next()
+                                        .unwrap()
+                                        .span
+                                        .of(src)
+                                        .trim_matches(|c: char| c.is_ascii_whitespace()),
+                                );
                             }
                             url.into()
                         }
@@ -677,8 +689,11 @@ impl<'s> PrePass<'s> {
                                 text.push_str(ev.span.of(src));
                                 let mut chars = ev.span.of(src).chars().peekable();
                                 while let Some(c) = chars.next() {
-                                    if c.is_whitespace() {
-                                        while chars.peek().map_or(false, |c| c.is_whitespace()) {
+                                    if c.is_ascii_whitespace() {
+                                        while chars
+                                            .peek()
+                                            .map_or(false, |c| c.is_ascii_whitespace())
+                                        {
                                             chars.next();
                                         }
                                         if !last_whitespace {
