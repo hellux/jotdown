@@ -834,8 +834,9 @@ impl<'s> IdentifiedBlock<'s> {
                     None
                 }
             }
-            '{' => (attr::valid(line.chars()) == lt)
-                .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
+            '{' => {
+                (attr::valid(line) == lt).then(|| (Kind::Atom(Attributes), Span::by_len(indent, l)))
+            }
             '|' => {
                 if lt >= 2 && line_t.ends_with('|') && !line_t.ends_with("\\|") {
                     Some((Kind::Table { caption: false }, Span::empty_at(indent)))
@@ -902,10 +903,10 @@ impl<'s> IdentifiedBlock<'s> {
                 let spec =
                     &line_t[fence_length..].trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let valid_spec = if f == ':' {
-                    spec.chars().all(attr::is_name)
+                    spec.bytes().all(attr::is_name)
                 } else {
-                    !spec.chars().any(|c| c.is_ascii_whitespace())
-                        && !spec.chars().any(|c| c == '`')
+                    !spec.bytes().any(|c| c.is_ascii_whitespace())
+                        && !spec.bytes().any(|c| c == b'`')
                 };
                 (valid_spec && fence_length >= 3).then(|| {
                     (
