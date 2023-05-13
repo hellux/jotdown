@@ -94,7 +94,7 @@ impl<'s> Input<'s> {
     fn new(src: &'s str) -> Self {
         Self {
             src,
-            lexer: lex::Lexer::new(""),
+            lexer: lex::Lexer::new(b""),
             complete: false,
             span_line: Span::new(0, 0),
             ahead: std::collections::VecDeque::new(),
@@ -118,13 +118,13 @@ impl<'s> Input<'s> {
     }
 
     fn set_current_line(&mut self, line: Span) {
-        self.lexer = lex::Lexer::new(line.of(self.src));
+        self.lexer = lex::Lexer::new(line.of(self.src).as_bytes());
         self.span_line = line;
         self.span = line.empty_before();
     }
 
     fn reset(&mut self) {
-        self.lexer = lex::Lexer::new("");
+        self.lexer = lex::Lexer::new(b"");
         self.complete = false;
         self.ahead.clear();
     }
@@ -154,21 +154,22 @@ impl<'s> Input<'s> {
             self.lexer.peek().map(|t| &t.kind),
             Some(lex::Kind::Open(Delimiter::BraceEqual))
         ) {
-            let mut ahead = self.lexer.ahead().chars();
             let mut end = false;
-            let len = (&mut ahead)
+            let len = self
+                .lexer
+                .ahead()
+                .iter()
                 .skip(2) // {=
                 .take_while(|c| {
-                    if *c == '{' {
+                    if **c == b'{' {
                         return false;
                     }
-                    if *c == '}' {
+                    if **c == b'}' {
                         end = true;
                     };
-                    !end && !c.is_whitespace()
+                    !end && !c.is_ascii_whitespace()
                 })
-                .map(char::len_utf8)
-                .sum();
+                .count();
             (len > 0 && end).then(|| {
                 let tok = self.eat();
                 debug_assert_eq!(
@@ -178,7 +179,7 @@ impl<'s> Input<'s> {
                         len: 2,
                     })
                 );
-                self.lexer = lex::Lexer::new(ahead.as_str());
+                self.lexer.skip_ahead(len + 1);
                 self.span.after(len)
             })
         } else {
@@ -493,7 +494,7 @@ impl<'s> Parser<'s> {
                     if opener_eaten {
                         self.input.span = Span::empty_at(start_attr);
                         self.input.lexer = lex::Lexer::new(
-                            &self.input.src[start_attr..self.input.span_line.end()],
+                            &self.input.src.as_bytes()[start_attr..self.input.span_line.end()],
                         );
                     }
                     return Some(More);
@@ -523,7 +524,7 @@ impl<'s> Parser<'s> {
             self.input.set_current_line(l);
         }
         self.input.span = Span::new(start_attr, state.end_attr);
-        self.input.lexer = lex::Lexer::new(&self.input.src[state.end_attr..line_end]);
+        self.input.lexer = lex::Lexer::new(&self.input.src.as_bytes()[state.end_attr..line_end]);
 
         if attrs.is_empty() {
             if matches!(state.elem_ty, AttributesElementType::Container { .. }) {
@@ -563,26 +564,28 @@ impl<'s> Parser<'s> {
 
     fn parse_autolink(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Lt) {
-            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut is_url = false;
-            let len = (&mut ahead)
+            let len = self
+                .input
+                .lexer
+                .ahead()
+                .iter()
                 .take_while(|c| {
-                    if *c == '<' {
+                    if **c == b'<' {
                         return false;
                     }
-                    if *c == '>' {
+                    if **c == b'>' {
                         end = true;
                     };
-                    if matches!(*c, ':' | '@') {
+                    if matches!(*c, b':' | b'@') {
                         is_url = true;
                     }
-                    !end && !c.is_whitespace()
+                    !end && !c.is_ascii_whitespace()
                 })
-                .map(char::len_utf8)
-                .sum();
+                .count();
             if end && is_url {
-                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.lexer.skip_ahead(len + 1);
                 let span_url = self.input.span.after(len);
                 let url = span_url.of(self.input.src);
                 self.push(EventKind::Enter(Autolink(url)));
@@ -597,22 +600,24 @@ impl<'s> Parser<'s> {
 
     fn parse_symbol(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         if first.kind == lex::Kind::Sym(Symbol::Colon) {
-            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
             let mut valid = true;
-            let len = (&mut ahead)
+            let len = self
+                .input
+                .lexer
+                .ahead()
+                .iter()
                 .take_while(|c| {
-                    if *c == ':' {
+                    if **c == b':' {
                         end = true;
-                    } else if !c.is_ascii_alphanumeric() && !matches!(c, '-' | '+' | '_') {
+                    } else if !c.is_ascii_alphanumeric() && !matches!(c, b'-' | b'+' | b'_') {
                         valid = false;
                     }
-                    !end && !c.is_whitespace()
+                    !end && !c.is_ascii_whitespace()
                 })
-                .map(char::len_utf8)
-                .sum();
+                .count();
             if end && valid {
-                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.lexer.skip_ahead(len + 1);
                 let span_symbol = self.input.span.after(len);
                 self.input.span = Span::new(self.input.span.start(), span_symbol.end() + 1);
                 return self.push(EventKind::Atom(Atom::Symbol(
@@ -641,22 +646,24 @@ impl<'s> Parser<'s> {
                     len: 1,
                 })
             );
-            let mut ahead = self.input.lexer.ahead().chars();
             let mut end = false;
-            let len = (&mut ahead)
+            let len = self
+                .input
+                .lexer
+                .ahead()
+                .iter()
                 .take_while(|c| {
-                    if *c == '[' {
+                    if **c == b'[' {
                         return false;
                     }
-                    if *c == ']' {
+                    if **c == b']' {
                         end = true;
                     };
-                    !end && *c != '\n'
+                    !end && **c != b'\n'
                 })
-                .map(char::len_utf8)
-                .sum();
+                .count();
             if end {
-                self.input.lexer = lex::Lexer::new(ahead.as_str());
+                self.input.lexer.skip_ahead(len + 1);
                 let span_label = self.input.span.after(len);
                 let label = span_label.of(self.input.src);
                 self.input.span = Span::new(self.input.span.start(), span_label.end() + 1);
@@ -837,9 +844,9 @@ impl<'s> Parser<'s> {
                     .input
                     .lexer
                     .ahead()
-                    .chars()
+                    .iter()
                     .next()
-                    .map_or(true, char::is_whitespace);
+                    .map_or(true, |c| c.is_ascii_whitespace());
                 if opener.bidirectional() && whitespace_after {
                     return None;
                 }

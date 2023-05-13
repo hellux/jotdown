@@ -3,8 +3,6 @@
 f4f22fc:attribute key class order
 ae6fc15:bugged left/right quote
 168469a:bugged left/right quote
-2056174:unicode whitespace emph
-2e8fffa:unicode whitespace strong
 e1f5b5e:untrimmed whitespace before linebreak
 07888f3:div close within raw block
 8423412:heading id conflict with existing id

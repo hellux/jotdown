@@ -71,7 +71,7 @@ impl Sequence {
 
 #[derive(Clone)]
 pub(crate) struct Lexer<'s> {
-    src: &'s str,
+    src: &'s [u8],
     /// Current position within `src`.
     pos: usize,
     /// Next character should be escaped.
@@ -81,7 +81,7 @@ pub(crate) struct Lexer<'s> {
 }
 
 impl<'s> Lexer<'s> {
-    pub fn new(src: &'s str) -> Self {
+    pub fn new(src: &'s [u8]) -> Self {
         Lexer {
             src,
             pos: 0,
@@ -99,8 +99,12 @@ impl<'s> Lexer<'s> {
         self.next.as_ref()
     }
 
-    pub fn ahead(&self) -> &'s str {
+    pub fn ahead(&self) -> &'s [u8] {
         &self.src[self.pos - self.next.as_ref().map_or(0, |t| t.len)..]
+    }
+
+    pub fn skip_ahead(&mut self, n: usize) {
+        *self = Self::new(&self.src[self.pos + n..]);
     }
 
     fn next_token(&mut self) -> Option<Token> {
@@ -119,7 +123,7 @@ impl<'s> Lexer<'s> {
     }
 
     fn peek_byte_n(&mut self, n: usize) -> Option<u8> {
-        self.src.as_bytes().get(self.pos + n).copied()
+        self.src.get(self.pos + n).copied()
     }
 
     fn peek_byte(&mut self) -> Option<u8> {
@@ -128,7 +132,7 @@ impl<'s> Lexer<'s> {
 
     fn eat_byte(&mut self) -> Option<u8> {
         if self.pos < self.src.len() {
-            let c = self.src.as_bytes()[self.pos];
+            let c = self.src[self.pos];
             self.pos += 1;
             Some(c)
         } else {
@@ -155,9 +159,9 @@ impl<'s> Lexer<'s> {
                 b'\n' => Hardbreak,
                 b'\t' | b' '
                     if self.src[self.pos..]
-                        .bytes()
+                        .iter()
                         .find(|c| !matches!(c, b' ' | b'\t'))
-                        == Some(b'\n') =>
+                        == Some(&b'\n') =>
                 {
                     while self.eat_byte() != Some(b'\n') {}
                     Hardbreak
@@ -319,7 +323,7 @@ mod test {
     macro_rules! test_lex {
         ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let actual = super::Lexer::new($src).collect::<Vec<_>>();
+            let actual = super::Lexer::new($src.as_bytes()).collect::<Vec<_>>();
             let expected = vec![$($($token),*,)?];
             assert_eq!(actual, expected, "{}", $src);
         };

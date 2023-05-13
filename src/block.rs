@@ -601,7 +601,7 @@ impl<'s> TreeParser<'s> {
             let row_event_enter =
                 self.enter(Node::Container(TableRow { head: false }), row.with_len(1));
             let rem = row.skip(1); // |
-            let lex = lex::Lexer::new(rem.of(self.src));
+            let lex = lex::Lexer::new(rem.of(self.src).as_bytes());
             let mut pos = rem.start();
             let mut cell_start = pos;
             let mut separator_row = true;
