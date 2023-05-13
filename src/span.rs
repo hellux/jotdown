@@ -85,25 +85,28 @@ impl Span {
         &s[self.start()..self.end()]
     }
 
-    pub fn skip_chars(self, n: usize, s: &str) -> Self {
-        let n_bytes: usize = self.of(s).chars().take(n).map(char::len_utf8).sum();
-        Self::new(self.start() + n_bytes, self.end())
-    }
-
     pub fn trim_start_matches<P: FnMut(char) -> bool>(self, s: &str, pat: P) -> Self {
         Self::from_slice(s, self.of(s).trim_start_matches(pat))
     }
 
     pub fn trim_start(self, s: &str) -> Self {
-        Self::from_slice(s, self.of(s).trim_start())
+        Self::from_slice(
+            s,
+            self.of(s)
+                .trim_start_matches(|c: char| c.is_ascii_whitespace()),
+        )
     }
 
     pub fn trim_end(self, s: &str) -> Self {
-        Self::from_slice(s, self.of(s).trim_end())
+        Self::from_slice(
+            s,
+            self.of(s)
+                .trim_end_matches(|c: char| c.is_ascii_whitespace()),
+        )
     }
 
     pub fn trim(self, s: &str) -> Self {
-        Self::from_slice(s, self.of(s).trim_start().trim_end())
+        self.trim_start(s).trim_end(s)
     }
 
     fn from_slice(s: &str, slice: &str) -> Self {

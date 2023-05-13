@@ -356,10 +356,10 @@ impl<'s> TreeParser<'s> {
             for line in lines.iter_mut() {
                 let indent_line = line
                     .of(self.src)
-                    .chars()
-                    .take_while(|c| *c != '\n' && c.is_whitespace())
+                    .bytes()
+                    .take_while(|c| *c != b'\n' && c.is_ascii_whitespace())
                     .count();
-                *line = line.skip_chars((*indent).min(indent_line), self.src);
+                *line = line.skip((*indent).min(indent_line));
             }
         } else {
             // trim starting whitespace of each inline
@@ -425,7 +425,7 @@ impl<'s> TreeParser<'s> {
 
             // trim '#' characters
             for line in lines.iter_mut().skip(1) {
-                *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_whitespace());
+                *line = line.trim_start_matches(self.src, |c| c == '#' || c.is_ascii_whitespace());
             }
         }
 
@@ -449,28 +449,26 @@ impl<'s> TreeParser<'s> {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|sp| {
             let src = sp.of(self.src);
-            let src_t = src.trim();
-            let spaces = src.chars().take_while(|c| c.is_whitespace()).count();
+            let src_t = src.trim_matches(|c: char| c.is_ascii_whitespace());
+            let whitespace = src_t.as_ptr() as usize - src.as_ptr() as usize;
             let skip = match k {
                 Kind::Blockquote => {
                     if src_t == ">" {
-                        spaces + 1
+                        whitespace + 1
                     } else if src_t.starts_with('>')
-                        && src_t.chars().nth(1).map_or(false, char::is_whitespace)
+                        && src_t[1..].starts_with(|c: char| c.is_ascii_whitespace())
                     {
-                        spaces + 1 + usize::from(src_t.len() > 1)
+                        whitespace + 1 + usize::from(src_t.len() > 1)
                     } else {
                         0
                     }
                 }
-                Kind::ListItem { .. } | Kind::Definition { .. } => {
-                    spaces.min(outer.of(self.src).chars().count())
-                }
-                Kind::Fenced { indent, .. } => spaces.min(*indent),
+                Kind::ListItem { .. } | Kind::Definition { .. } => whitespace.min(outer.len()),
+                Kind::Fenced { indent, .. } => whitespace.min(*indent),
                 _ => panic!("non-container {:?}", k),
             };
-            let count = sp.of(self.src).chars().take_while(|c| *c != '\n').count();
-            *sp = sp.skip_chars(skip.min(count), self.src);
+            let len = sp.of(self.src).bytes().take_while(|c| *c != b'\n').count();
+            *sp = sp.skip(skip.min(len));
         });
 
         if let Kind::ListItem { ty, .. } = k {
@@ -578,12 +576,14 @@ impl<'s> TreeParser<'s> {
 
         let caption_line = lines
             .iter()
-            .position(|sp| sp.of(self.src).trim_start().starts_with('^'))
+            .position(|sp| {
+                sp.of(self.src)
+                    .trim_start_matches(|c: char| c.is_ascii_whitespace())
+                    .starts_with('^')
+            })
             .map_or(lines.len(), |caption_line| {
                 self.enter(Node::Leaf(Caption), span_start);
-                lines[caption_line] = lines[caption_line]
-                    .trim_start(self.src)
-                    .skip_chars(2, self.src);
+                lines[caption_line] = lines[caption_line].trim_start(self.src).skip(2);
                 lines[lines.len() - 1] = lines[lines.len() - 1].trim_end(self.src);
                 for line in &lines[caption_line..] {
                     self.inline(*line);
@@ -624,7 +624,7 @@ impl<'s> TreeParser<'s> {
                                 l => {
                                     matches!(cell.as_bytes()[0], b'-' | b':')
                                         && matches!(cell.as_bytes()[l - 1], b'-' | b':')
-                                        && cell.chars().skip(1).take(l - 2).all(|c| c == '-')
+                                        && cell.bytes().skip(1).take(l - 2).all(|c| c == b'-')
                                 }
                             };
                             separator_row &= separator_cell;
@@ -799,48 +799,46 @@ struct IdentifiedBlock<'s> {
 
 impl<'s> IdentifiedBlock<'s> {
     fn new(line: &'s str) -> Self {
-        let mut chars = line.chars();
-        let indent = chars
-            .clone()
-            .take_while(|c| *c != '\n' && c.is_whitespace())
-            .count();
-        (&mut chars).take(indent).last();
-        let indent_bytes = line.len() - chars.as_str().len();
-        let line = chars.as_str();
-        let line_t = line.trim_end();
+        let l = line.len();
+
+        let line = line.trim_start_matches(|c: char| c.is_ascii_whitespace() && c != '\n');
+        let indent = l - line.len();
+        let line_t = line.trim_end_matches(|c: char| c.is_ascii_whitespace());
+
         let l = line.len();
         let lt = line_t.len();
+        let mut chars = line.chars();
 
         let first = if let Some(c) = chars.next() {
             c
         } else {
             return Self {
                 kind: Kind::Atom(Blankline),
-                span: Span::empty_at(indent_bytes),
+                span: Span::empty_at(indent),
             };
         };
 
         match first {
-            '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent_bytes, 1))),
+            '\n' => Some((Kind::Atom(Blankline), Span::by_len(indent, 1))),
             '#' => chars
                 .find(|c| *c != '#')
-                .map_or(true, char::is_whitespace)
+                .map_or(true, |c| c.is_ascii_whitespace())
                 .then(|| {
-                    let level = line.chars().take_while(|c| *c == '#').count();
-                    (Kind::Heading { level }, Span::by_len(indent_bytes, level))
+                    let level = line.bytes().take_while(|c| *c == b'#').count();
+                    (Kind::Heading { level }, Span::by_len(indent, level))
                 }),
             '>' => {
-                if chars.next().map_or(true, char::is_whitespace) {
-                    Some((Kind::Blockquote, Span::by_len(indent_bytes, 1)))
+                if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
+                    Some((Kind::Blockquote, Span::by_len(indent, 1)))
                 } else {
                     None
                 }
             }
             '{' => (attr::valid(line.chars()) == lt)
-                .then(|| (Kind::Atom(Attributes), Span::by_len(indent_bytes, l))),
+                .then(|| (Kind::Atom(Attributes), Span::by_len(indent, l))),
             '|' => {
                 if lt >= 2 && line_t.ends_with('|') && !line_t.ends_with("\\|") {
-                    Some((Kind::Table { caption: false }, Span::empty_at(indent_bytes)))
+                    Some((Kind::Table { caption: false }, Span::empty_at(indent)))
                 } else {
                     None
                 }
@@ -854,17 +852,17 @@ impl<'s> IdentifiedBlock<'s> {
                         footnote,
                         label: &label[usize::from(footnote)..],
                     },
-                    Span::by_len(0, indent_bytes + 3 + l),
+                    Span::by_len(0, indent + 3 + l),
                 )
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
-                Some((Kind::Atom(ThematicBreak), Span::by_len(indent_bytes, lt)))
+                Some((Kind::Atom(ThematicBreak), Span::by_len(indent, lt)))
             }
             b @ ('-' | '*' | '+') => chars.next().map_or(true, |c| c == ' ').then(|| {
                 let task_list = chars.next() == Some('[')
                     && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
-                    && chars.next().map_or(true, char::is_whitespace);
+                    && chars.next().map_or(true, |c| c.is_ascii_whitespace());
                 if task_list {
                     (
                         Kind::ListItem {
@@ -872,7 +870,7 @@ impl<'s> IdentifiedBlock<'s> {
                             ty: Task,
                             last_blankline: false,
                         },
-                        Span::by_len(indent_bytes, 5),
+                        Span::by_len(indent, 5),
                     )
                 } else {
                     (
@@ -881,25 +879,33 @@ impl<'s> IdentifiedBlock<'s> {
                             ty: Unordered(b as u8),
                             last_blankline: false,
                         },
-                        Span::by_len(indent_bytes, 1),
+                        Span::by_len(indent, 1),
                     )
                 }
             }),
-            ':' if chars.clone().next().map_or(true, char::is_whitespace) => Some((
-                Kind::ListItem {
-                    indent,
-                    ty: Description,
-                    last_blankline: false,
-                },
-                Span::by_len(indent_bytes, 1),
-            )),
+            ':' if chars
+                .clone()
+                .next()
+                .map_or(true, |c| c.is_ascii_whitespace()) =>
+            {
+                Some((
+                    Kind::ListItem {
+                        indent,
+                        ty: Description,
+                        last_blankline: false,
+                    },
+                    Span::by_len(indent, 1),
+                ))
+            }
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
-                let spec = &line_t[fence_length..].trim_start();
+                let spec =
+                    &line_t[fence_length..].trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let valid_spec = if f == ':' {
                     spec.chars().all(attr::is_name)
                 } else {
-                    !spec.chars().any(char::is_whitespace) && !spec.chars().any(|c| c == '`')
+                    !spec.chars().any(|c| c.is_ascii_whitespace())
+                        && !spec.chars().any(|c| c == '`')
                 };
                 (valid_spec && fence_length >= 3).then(|| {
                     (
@@ -913,7 +919,7 @@ impl<'s> IdentifiedBlock<'s> {
                             spec,
                             has_closing_fence: false,
                         },
-                        Span::by_len(indent_bytes, line.len()),
+                        Span::by_len(indent, line.len()),
                     )
                 })
             }
@@ -924,14 +930,14 @@ impl<'s> IdentifiedBlock<'s> {
                         ty: Ordered(num, style),
                         last_blankline: false,
                     },
-                    Span::by_len(indent_bytes, len),
+                    Span::by_len(indent, len),
                 )
             }),
         }
         .map(|(kind, span)| Self { kind, span })
         .unwrap_or(Self {
             kind: Kind::Paragraph,
-            span: Span::empty_at(indent_bytes),
+            span: Span::empty_at(indent),
         })
     }
 
@@ -940,7 +946,7 @@ impl<'s> IdentifiedBlock<'s> {
         for c in chars {
             if matches!(c, '-' | '*') {
                 n += 1;
-            } else if !c.is_whitespace() {
+            } else if !c.is_ascii_whitespace() {
                 return false;
             }
         }
@@ -1023,7 +1029,7 @@ impl<'s> IdentifiedBlock<'s> {
             numbering
         };
 
-        if chars.next().map_or(true, char::is_whitespace) {
+        if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
             Some((numbering, style, len_num + len_style))
         } else {
             None
@@ -1054,18 +1060,19 @@ impl<'s> Kind<'s> {
                 last_blankline,
                 ..
             } => {
-                let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
+                let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
+                let whitespace = line.len() - line_t.len();
                 let para = !*last_blankline && matches!(next, Self::Paragraph);
-                let blankline = matches!(next, Self::Atom(Blankline));
-                *last_blankline = blankline;
-                blankline || spaces > *indent || para
+                *last_blankline = matches!(next, Self::Atom(Blankline));
+                *last_blankline || whitespace > *indent || para
             }
             Self::Definition {
                 indent, footnote, ..
             } => {
                 if *footnote {
-                    let spaces = line.chars().take_while(|c| c.is_whitespace()).count();
-                    matches!(next, Self::Atom(Blankline)) || spaces > *indent
+                    let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
+                    let whitespace = line.len() - line_t.len();
+                    matches!(next, Self::Atom(Blankline)) || whitespace > *indent
                 } else {
                     line.starts_with(' ') && !matches!(next, Self::Atom(Blankline))
                 }
@@ -1093,7 +1100,10 @@ impl<'s> Kind<'s> {
             }
             Self::Table { caption } => {
                 matches!(next, Self::Table { .. } | Self::Atom(Blankline)) || {
-                    if line.trim().starts_with("^ ") {
+                    if line
+                        .trim_matches(|c: char| c.is_ascii_whitespace())
+                        .starts_with("^ ")
+                    {
                         *caption = true;
                         true
                     } else {
