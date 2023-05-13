@@ -8,7 +8,6 @@ fn main() {
 
     let f = match target.as_str() {
         "parse" => jotdown_afl::parse,
-        "parse_balance" => jotdown_afl::parse_balance,
         "html" => jotdown_afl::html,
         _ => panic!("unknown target '{}'", target),
     };

@@ -51,6 +51,7 @@
 use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::io;
+use std::ops::Range;
 
 #[cfg(feature = "html")]
 pub mod html;
@@ -60,7 +61,6 @@ mod block;
 mod inline;
 mod lex;
 mod span;
-mod tree;
 
 use span::Span;
 
@@ -555,13 +555,14 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Block tree parsed at first.
-    tree: block::Tree,
+    blocks: std::iter::Peekable<std::vec::IntoIter<block::Event<'s>>>,
 
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
 
-    /// Last parsed block attributes
+    /// Last parsed block attributes, and its starting offset.
     block_attributes: Attributes<'s>,
+    block_attributes_pos: Option<usize>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -576,7 +577,7 @@ pub struct Parser<'s> {
 #[derive(Clone)]
 struct Heading {
     /// Location of heading in src.
-    location: usize,
+    location: u32,
     /// Automatically generated id from heading text.
     id_auto: String,
     /// Text of heading, formatting stripped.
@@ -598,28 +599,50 @@ struct PrePass<'s> {
 
 impl<'s> PrePass<'s> {
     #[must_use]
-    fn new(src: &'s str, mut tree: block::Tree, inline_parser: &mut inline::Parser<'s>) -> Self {
+    fn new(
+        src: &'s str,
+        blocks: std::slice::Iter<block::Event<'s>>,
+        inline_parser: &mut inline::Parser<'s>,
+    ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<&str> = Set::new();
 
+        let mut blocks = blocks.peekable();
+
         let mut attr_prev: Option<Span> = None;
-        while let Some(e) = tree.next() {
+        while let Some(e) = blocks.next() {
             match e.kind {
-                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition)) => {
+                block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
+                    label,
+                })) => {
+                    fn next_is_inline(
+                        bs: &mut std::iter::Peekable<std::slice::Iter<block::Event>>,
+                    ) -> bool {
+                        matches!(bs.peek().map(|e| &e.kind), Some(block::EventKind::Inline))
+                    }
+
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
-                    let tag = e.span.of(src);
                     let attrs =
                         attr_prev.map_or_else(Attributes::new, |sp| attr::parse(sp.of(src)));
-                    let url = match tree.count_children() {
-                        0 => "".into(),
-                        1 => tree.take_inlines().next().unwrap().of(src).trim().into(),
-                        _ => tree.take_inlines().map(|sp| sp.of(src).trim()).collect(),
+                    let url = if !next_is_inline(&mut blocks) {
+                        "".into()
+                    } else {
+                        let start = blocks.next().unwrap().span.of(src).trim();
+                        if !next_is_inline(&mut blocks) {
+                            start.into()
+                        } else {
+                            let mut url = start.to_string();
+                            while next_is_inline(&mut blocks) {
+                                url.push_str(blocks.next().unwrap().span.of(src).trim());
+                            }
+                            url.into()
+                        }
                     };
-                    link_definitions.insert(tag, (url, attrs));
+                    link_definitions.insert(label, (url, attrs));
                 }
-                tree::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
+                block::EventKind::Enter(block::Node::Leaf(block::Leaf::Heading { .. })) => {
                     // All headings ids have to be obtained initially, as references can appear
                     // before the heading. Additionally, determining the id requires inline parsing
                     // as formatting must be removed.
@@ -634,10 +657,21 @@ impl<'s> PrePass<'s> {
                     let mut id_auto = String::new();
                     let mut text = String::new();
                     let mut last_whitespace = true;
-                    let inlines = tree.take_inlines().collect::<Vec<_>>();
                     inline_parser.reset();
-                    inlines.iter().enumerate().for_each(|(i, sp)| {
-                        inline_parser.feed_line(*sp, i == inlines.len() - 1);
+                    let mut last_end = 0;
+                    loop {
+                        let span_inline = blocks.next().and_then(|e| {
+                            if matches!(e.kind, block::EventKind::Inline) {
+                                last_end = e.span.end();
+                                Some(e.span)
+                            } else {
+                                None
+                            }
+                        });
+                        inline_parser.feed_line(
+                            span_inline.unwrap_or_else(|| Span::empty_at(last_end)),
+                            span_inline.is_none(),
+                        );
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
                                 text.push_str(ev.span.of(src));
@@ -662,8 +696,11 @@ impl<'s> PrePass<'s> {
                                 id_auto.push('-');
                             }
                             _ => {}
-                        })
-                    });
+                        });
+                        if span_inline.is_none() {
+                            break;
+                        }
+                    }
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
 
                     // ensure id unique
@@ -689,17 +726,17 @@ impl<'s> PrePass<'s> {
                         std::mem::transmute::<&str, &'static str>(id_auto.as_ref())
                     });
                     headings.push(Heading {
-                        location: e.span.start(),
+                        location: e.span.start() as u32,
                         id_auto,
                         text,
                         id_override,
                     });
                 }
-                tree::EventKind::Atom(block::Atom::Attributes) => {
+                block::EventKind::Atom(block::Atom::Attributes) => {
                     attr_prev = Some(e.span);
                 }
-                tree::EventKind::Enter(..)
-                | tree::EventKind::Exit(block::Node::Container(block::Container::Section {
+                block::EventKind::Enter(..)
+                | block::EventKind::Exit(block::Node::Container(block::Container::Section {
                     ..
                 })) => {}
                 _ => {
@@ -723,7 +760,7 @@ impl<'s> PrePass<'s> {
         h.id_override.as_ref().unwrap_or(&h.id_auto)
     }
 
-    fn heading_id_by_location(&self, location: usize) -> Option<&str> {
+    fn heading_id_by_location(&self, location: u32) -> Option<&str> {
         self.headings
             .binary_search_by_key(&location, |h| h.location)
             .ok()
@@ -741,22 +778,133 @@ impl<'s> PrePass<'s> {
 impl<'s> Parser<'s> {
     #[must_use]
     pub fn new(src: &'s str) -> Self {
-        let tree = block::parse(src);
+        let blocks = block::parse(src);
         let mut inline_parser = inline::Parser::new(src);
-        let pre_pass = PrePass::new(src, tree.clone(), &mut inline_parser);
+        let pre_pass = PrePass::new(src, blocks.iter(), &mut inline_parser);
 
         Self {
             src,
-            tree,
+            blocks: blocks.into_iter().peekable(),
             pre_pass,
             block_attributes: Attributes::new(),
+            block_attributes_pos: None,
             table_head_row: false,
             verbatim: false,
             inline_parser,
         }
     }
 
-    fn inline(&mut self) -> Option<Event<'s>> {
+    /// Turn the [`Parser`] into an iterator of tuples, each with an [`Event`] and a start/end byte
+    /// offset for its corresponding input (as a [`Range<usize>`]).
+    ///
+    /// Generally, the range of each event does not overlap with any other event and the ranges are
+    /// in same order as the events are emitted, i.e. the start offset of an event must be greater
+    /// or equal to the (exclusive) end offset of all events that were emitted before that event.
+    /// However, there are some exceptions to this rule:
+    ///
+    /// - Blank lines inbetween block attributes and the block causes the blankline events to
+    /// overlap with the block start event.
+    /// - Caption events are emitted before the table rows while the input for the caption content
+    /// is located after the table rows, causing the ranges to be out of order.
+    ///
+    /// Characters between events, that are not part of any event range, are typically whitespace
+    /// but may also consist of unattached attributes or `>` characters from blockquotes.
+    ///
+    /// # Examples
+    ///
+    /// Start and end events of containers correspond only to the start and end markers for that
+    /// container, not its inner content:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "> _hello_ [text](url)\n";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         (">", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("_", Start(Emphasis, ..)),
+    ///         ("hello", Str(..)),
+    ///         ("_", End(Emphasis)),
+    ///         (" ", Str(..)),
+    ///         ("[", Start(Link { .. }, ..)),
+    ///         ("text", Str(..)),
+    ///         ("](url)", End(Link { .. })),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    ///
+    /// _Block_ attributes that belong to a container are included in the  _start_ event.  _Inline_
+    /// attributes that belong to a container are included in the _end_ event:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "
+    /// {.quote}
+    /// > [Hello]{lang=en} world!";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         ("\n", Blankline),
+    ///         ("{.quote}\n>", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("[", Start(Span, ..)),
+    ///         ("Hello", Str(..)),
+    ///         ("]{lang=en}", End(Span)),
+    ///         (" world!", Str(..)),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    ///
+    /// Inline events that span multiple lines may contain characters from outer block containers
+    /// (e.g. `>` characters from blockquotes or whitespace from list items):
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::Event::*;
+    /// # use jotdown::Container::*;
+    /// let input = "
+    /// > [txt](multi
+    /// > line)";
+    /// assert!(matches!(
+    ///     Parser::new(input)
+    ///         .into_offset_iter()
+    ///         .map(|(e, r)| (&input[r], e))
+    ///         .collect::<Vec<_>>()
+    ///         .as_slice(),
+    ///     &[
+    ///         ("\n", Blankline),
+    ///         (">", Start(Blockquote, ..)),
+    ///         ("", Start(Paragraph, ..)),
+    ///         ("[", Start(Link { .. }, ..)),
+    ///         ("txt", Str(..)),
+    ///         ("](multi\n> line)", End(Link { .. })),
+    ///         ("", End(Paragraph)),
+    ///         ("", End(Blockquote)),
+    ///     ],
+    /// ));
+    /// ```
+    pub fn into_offset_iter(self) -> OffsetIter<'s> {
+        OffsetIter { parser: self }
+    }
+
+    fn inline(&mut self) -> Option<(Event<'s>, Range<usize>)> {
         let next = self.inline_parser.next()?;
 
         let (inline, mut attributes) = match next {
@@ -772,16 +920,14 @@ impl<'s> Parser<'s> {
 
         inline.map(|inline| {
             let enter = matches!(inline.kind, inline::EventKind::Enter(_));
-            match inline.kind {
+            let event = match inline.kind {
                 inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
                     let t = match c {
                         inline::Container::Span => Container::Span,
                         inline::Container::Verbatim => Container::Verbatim,
                         inline::Container::InlineMath => Container::Math { display: false },
                         inline::Container::DisplayMath => Container::Math { display: true },
-                        inline::Container::RawFormat => Container::RawInline {
-                            format: inline.span.of(self.src),
-                        },
+                        inline::Container::RawFormat { format } => Container::RawInline { format },
                         inline::Container::Subscript => Container::Subscript,
                         inline::Container::Superscript => Container::Superscript,
                         inline::Container::Insert => Container::Insert,
@@ -822,14 +968,13 @@ impl<'s> Parser<'s> {
                                 Container::Image(url_or_tag, ty)
                             }
                         }
-                        inline::Container::Autolink => {
-                            let url: CowStr = inline.span.of(self.src).into();
+                        inline::Container::Autolink(url) => {
                             let ty = if url.contains('@') {
                                 LinkType::Email
                             } else {
                                 LinkType::AutoLink
                             };
-                            Container::Link(url, ty)
+                            Container::Link(url.into(), ty)
                         }
                     };
                     if enter {
@@ -839,10 +984,8 @@ impl<'s> Parser<'s> {
                     }
                 }
                 inline::EventKind::Atom(a) => match a {
-                    inline::Atom::FootnoteReference => {
-                        Event::FootnoteReference(inline.span.of(self.src))
-                    }
-                    inline::Atom::Symbol => Event::Symbol(inline.span.of(self.src).into()),
+                    inline::Atom::FootnoteReference { label } => Event::FootnoteReference(label),
+                    inline::Atom::Symbol(sym) => Event::Symbol(sym.into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
                         (inline::QuoteType::Single, false) => Event::RightSingleQuote,
@@ -861,48 +1004,58 @@ impl<'s> Parser<'s> {
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
                 }
-            }
+            };
+            (event, inline.span.into())
         })
     }
 
-    fn block(&mut self) -> Option<Event<'s>> {
-        while let Some(ev) = &mut self.tree.next() {
-            let content = ev.span.of(self.src);
+    fn block(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+        while let Some(mut ev) = &mut self.blocks.next() {
             let event = match ev.kind {
-                tree::EventKind::Atom(a) => match a {
+                block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => Event::Blankline,
                     block::Atom::ThematicBreak => {
+                        if let Some(pos) = self.block_attributes_pos.take() {
+                            ev.span = Span::new(pos, ev.span.end());
+                        }
                         Event::ThematicBreak(self.block_attributes.take())
                     }
                     block::Atom::Attributes => {
-                        self.block_attributes.parse(content);
+                        if self.block_attributes_pos.is_none() {
+                            self.block_attributes_pos = Some(ev.span.start());
+                        }
+                        self.block_attributes.parse(ev.span.of(self.src));
                         continue;
                     }
                 },
-                tree::EventKind::Enter(c) | tree::EventKind::Exit(c) => {
-                    let enter = matches!(ev.kind, tree::EventKind::Enter(..));
+                block::EventKind::Enter(c) | block::EventKind::Exit(c) => {
+                    let enter = matches!(ev.kind, block::EventKind::Enter(..));
                     let cont = match c {
                         block::Node::Leaf(l) => {
                             self.inline_parser.reset();
                             match l {
                                 block::Leaf::Paragraph => Container::Paragraph,
-                                block::Leaf::Heading { has_section } => Container::Heading {
-                                    level: content.len().try_into().unwrap(),
+                                block::Leaf::Heading {
+                                    level,
+                                    has_section,
+                                    pos,
+                                } => Container::Heading {
+                                    level,
                                     has_section,
                                     id: self
                                         .pre_pass
-                                        .heading_id_by_location(ev.span.start())
+                                        .heading_id_by_location(pos)
                                         .unwrap_or_default()
                                         .to_string()
                                         .into(),
                                 },
                                 block::Leaf::DescriptionTerm => Container::DescriptionTerm,
-                                block::Leaf::CodeBlock => {
+                                block::Leaf::CodeBlock { language } => {
                                     self.verbatim = enter;
-                                    if let Some(format) = content.strip_prefix('=') {
+                                    if let Some(format) = language.strip_prefix('=') {
                                         Container::RawBlock { format }
                                     } else {
-                                        Container::CodeBlock { language: content }
+                                        Container::CodeBlock { language }
                                     }
                                 }
                                 block::Leaf::TableCell(alignment) => Container::TableCell {
@@ -910,16 +1063,20 @@ impl<'s> Parser<'s> {
                                     head: self.table_head_row,
                                 },
                                 block::Leaf::Caption => Container::Caption,
-                                block::Leaf::LinkDefinition => {
-                                    Container::LinkDefinition { label: content }
+                                block::Leaf::LinkDefinition { label } => {
+                                    self.verbatim = enter;
+                                    Container::LinkDefinition { label }
                                 }
                             }
                         }
                         block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
-                            block::Container::Div => Container::Div { class: content },
-                            block::Container::Footnote => Container::Footnote { label: content },
-                            block::Container::List(block::ListKind { ty, tight }) => {
+                            block::Container::Div { class } => Container::Div { class },
+                            block::Container::Footnote { label } => Container::Footnote { label },
+                            block::Container::List {
+                                kind: block::ListKind { ty, tight },
+                                marker,
+                            } => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
                                 } else {
@@ -927,9 +1084,8 @@ impl<'s> Parser<'s> {
                                         block::ListType::Unordered(..) => ListKind::Unordered,
                                         block::ListType::Task => ListKind::Task,
                                         block::ListType::Ordered(numbering, style) => {
-                                            let start = numbering
-                                                .parse_number(style.number(content))
-                                                .max(1);
+                                            let start =
+                                                numbering.parse_number(style.number(marker)).max(1);
                                             ListKind::Ordered {
                                                 numbering,
                                                 style,
@@ -941,12 +1097,12 @@ impl<'s> Parser<'s> {
                                     Container::List { kind, tight }
                                 }
                             }
-                            block::Container::ListItem(ty) => match ty {
-                                block::ListType::Task => Container::TaskListItem {
-                                    checked: content.as_bytes()[3] != b' ',
-                                },
-                                block::ListType::Description => Container::DescriptionDetails,
-                                _ => Container::ListItem,
+                            block::Container::ListItem(kind) => match kind {
+                                block::ListItemKind::Task { checked } => {
+                                    Container::TaskListItem { checked }
+                                }
+                                block::ListItemKind::Description => Container::DescriptionDetails,
+                                block::ListItemKind::List => Container::ListItem,
                             },
                             block::Container::Table => Container::Table,
                             block::Container::TableRow { head } => {
@@ -955,10 +1111,10 @@ impl<'s> Parser<'s> {
                                 }
                                 Container::TableRow { head }
                             }
-                            block::Container::Section => Container::Section {
+                            block::Container::Section { pos } => Container::Section {
                                 id: self
                                     .pre_pass
-                                    .heading_id_by_location(ev.span.start())
+                                    .heading_id_by_location(pos)
                                     .unwrap_or_default()
                                     .to_string()
                                     .into(),
@@ -966,24 +1122,39 @@ impl<'s> Parser<'s> {
                         },
                     };
                     if enter {
+                        if let Some(pos) = self.block_attributes_pos.take() {
+                            ev.span = Span::new(pos, ev.span.end());
+                        }
                         Event::Start(cont, self.block_attributes.take())
                     } else {
+                        self.block_attributes = Attributes::new();
+                        self.block_attributes_pos = None;
                         Event::End(cont)
                     }
                 }
-                tree::EventKind::Inline => {
+                block::EventKind::Inline => {
                     if self.verbatim {
-                        Event::Str(content.into())
+                        Event::Str(ev.span.of(self.src).into())
                     } else {
-                        self.inline_parser
-                            .feed_line(ev.span, self.tree.branch_is_empty());
-                        return self.next();
+                        self.inline_parser.feed_line(
+                            ev.span,
+                            !matches!(
+                                self.blocks.peek().map(|e| &e.kind),
+                                Some(block::EventKind::Inline),
+                            ),
+                        );
+                        return self.next_span();
                     }
                 }
+                block::EventKind::Stale => continue,
             };
-            return Some(event);
+            return Some((event, ev.span.into()));
         }
         None
+    }
+
+    fn next_span(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+        self.inline().or_else(|| self.block())
     }
 }
 
@@ -991,7 +1162,23 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inline().or_else(|| self.block())
+        self.next_span().map(|(e, _)| e)
+    }
+}
+
+/// An iterator that is identical to a [`Parser`], except that it also emits the location of each
+/// event within the input.
+///
+/// See the documentation of [`Parser::into_offset_iter`] for more information.
+pub struct OffsetIter<'s> {
+    parser: Parser<'s>,
+}
+
+impl<'s> Iterator for OffsetIter<'s> {
+    type Item = (Event<'s>, Range<usize>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.parser.next_span()
     }
 }
 
@@ -1523,7 +1710,6 @@ mod test {
             Blankline,
             Start(LinkDefinition { label: "tag" }, Attributes::new()),
             Str("u".into()),
-            Softbreak,
             Str("rl".into()),
             End(LinkDefinition { label: "tag" }),
         );
@@ -1532,19 +1718,24 @@ mod test {
                 "[text][tag]\n",
                 "\n",
                 "[tag]:\n",
-                " url\n", //
+                " url\n",  //
+                " cont\n", //
             ),
             Start(Paragraph, Attributes::new()),
             Start(
-                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Link("urlcont".into(), LinkType::Span(SpanLinkType::Reference)),
                 Attributes::new()
             ),
             Str("text".into()),
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Link(
+                "urlcont".into(),
+                LinkType::Span(SpanLinkType::Reference)
+            )),
             End(Paragraph),
             Blankline,
             Start(LinkDefinition { label: "tag" }, Attributes::new()),
             Str("url".into()),
+            Str("cont".into()),
             End(LinkDefinition { label: "tag" }),
         );
     }

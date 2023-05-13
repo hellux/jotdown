@@ -4,6 +4,12 @@ pub struct Span {
     end: u32,
 }
 
+impl From<Span> for std::ops::Range<usize> {
+    fn from(span: Span) -> Self {
+        span.start()..span.end()
+    }
+}
+
 impl Span {
     pub fn new(start: usize, end: usize) -> Self {
         Self::by_len(start, end.checked_sub(start).unwrap())

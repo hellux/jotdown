@@ -12,9 +12,9 @@ use Container::*;
 use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Atom {
-    FootnoteReference,
-    Symbol,
+pub enum Atom<'s> {
+    FootnoteReference { label: &'s str },
+    Symbol(&'s str),
     Softbreak,
     Hardbreak,
     Escape,
@@ -26,7 +26,7 @@ pub enum Atom {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Container {
+pub enum Container<'s> {
     Span,
     Subscript,
     Superscript,
@@ -36,16 +36,14 @@ pub enum Container {
     Strong,
     Mark,
     Verbatim,
-    /// Span is the format.
-    RawFormat,
+    RawFormat { format: &'s str },
     InlineMath,
     DisplayMath,
     ReferenceLink(CowStrIndex),
     ReferenceImage(CowStrIndex),
     InlineLink(CowStrIndex),
     InlineImage(CowStrIndex),
-    /// Open delimiter span is URL, closing is '>'.
-    Autolink,
+    Autolink(&'s str),
 }
 
 type CowStrIndex = u32;
@@ -57,10 +55,10 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind {
-    Enter(Container),
-    Exit(Container),
-    Atom(Atom),
+pub enum EventKind<'s> {
+    Enter(Container<'s>),
+    Exit(Container<'s>),
+    Atom(Atom<'s>),
     Str,
     Attributes {
         container: bool,
@@ -72,8 +70,8 @@ pub enum EventKind {
 type AttributesIndex = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event {
-    pub kind: EventKind,
+pub struct Event<'s> {
+    pub kind: EventKind<'s>,
     pub span: Span,
 }
 
@@ -218,7 +216,7 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event>,
+    events: std::collections::VecDeque<Event<'s>>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
@@ -268,12 +266,12 @@ impl<'s> Parser<'s> {
         self.store_attributes.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind, span: Span) -> Option<ControlFlow> {
+    fn push_sp(&mut self, kind: EventKind<'s>, span: Span) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
         Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind) -> Option<ControlFlow> {
+    fn push(&mut self, kind: EventKind<'s>) -> Option<ControlFlow> {
         self.push_sp(kind, self.input.span)
     }
 
@@ -310,17 +308,16 @@ impl<'s> Parser<'s> {
                 && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
             {
                 let raw_format = self.input.ahead_raw_format();
-                let mut span_closer = self.input.span;
                 if let Some(span_format) = raw_format {
-                    self.events[event_opener].kind = EventKind::Enter(RawFormat);
-                    self.events[event_opener].span = span_format;
-                    self.input.span = span_format.translate(1);
-                    span_closer = span_format;
+                    self.events[event_opener].kind = EventKind::Enter(RawFormat {
+                        format: span_format.of(self.input.src),
+                    });
+                    self.input.span = Span::new(self.input.span.start(), span_format.end() + 1);
                 };
                 let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                     debug_assert!(matches!(
                         ty,
-                        Verbatim | RawFormat | InlineMath | DisplayMath
+                        Verbatim | RawFormat { .. } | InlineMath | DisplayMath
                     ));
                     ty
                 } else {
@@ -330,7 +327,7 @@ impl<'s> Parser<'s> {
                 {
                     self.events.drain(*event_skip..);
                 }
-                self.push_sp(EventKind::Exit(ty_opener), span_closer);
+                self.push(EventKind::Exit(ty_opener));
                 self.verbatim = None;
                 if raw_format.is_none()
                     && self.input.peek().map_or(false, |t| {
@@ -527,7 +524,13 @@ impl<'s> Parser<'s> {
         self.input.span = Span::new(start_attr, state.end_attr);
         self.input.lexer = lex::Lexer::new(&self.input.src[state.end_attr..line_end]);
 
-        if !attrs.is_empty() {
+        if attrs.is_empty() {
+            if matches!(state.elem_ty, AttributesElementType::Container { .. }) {
+                let last = self.events.len() - 1;
+                self.events[last].span =
+                    Span::new(self.events[last].span.start(), self.input.span.end());
+            }
+        } else {
             let attr_index = self.store_attributes.len() as AttributesIndex;
             self.store_attributes.push(attrs);
             let attr_event = Event {
@@ -540,11 +543,13 @@ impl<'s> Parser<'s> {
             match state.elem_ty {
                 AttributesElementType::Container { e_placeholder } => {
                     self.events[e_placeholder] = attr_event;
+                    let last = self.events.len() - 1;
                     if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
                         self.events[e_placeholder + 1].kind = EventKind::Enter(Span);
-                        let last = self.events.len() - 1;
                         self.events[last].kind = EventKind::Exit(Span);
                     }
+                    self.events[last].span =
+                        Span::new(self.events[last].span.start(), self.input.span.end());
                 }
                 AttributesElementType::Word => {
                     self.events.push_back(attr_event);
@@ -577,12 +582,13 @@ impl<'s> Parser<'s> {
                 .sum();
             if end && is_url {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Enter(Autolink));
+                let span_url = self.input.span.after(len);
+                let url = span_url.of(self.input.src);
+                self.push(EventKind::Enter(Autolink(url)));
+                self.input.span = span_url;
                 self.push(EventKind::Str);
-                self.push(EventKind::Exit(Autolink));
                 self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                return self.push(EventKind::Exit(Autolink(url)));
             }
         }
         None
@@ -606,10 +612,11 @@ impl<'s> Parser<'s> {
                 .sum();
             if end && valid {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Atom(Symbol));
-                self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                let span_symbol = self.input.span.after(len);
+                self.input.span = Span::new(self.input.span.start(), span_symbol.end() + 1);
+                return self.push(EventKind::Atom(Atom::Symbol(
+                    span_symbol.of(self.input.src),
+                )));
             }
         }
         None
@@ -649,10 +656,10 @@ impl<'s> Parser<'s> {
                 .sum();
             if end {
                 self.input.lexer = lex::Lexer::new(ahead.as_str());
-                self.input.span = self.input.span.after(len);
-                self.push(EventKind::Atom(FootnoteReference));
-                self.input.span = self.input.span.after(1);
-                return Some(Continue);
+                let span_label = self.input.span.after(len);
+                let label = span_label.of(self.input.src);
+                self.input.span = Span::new(self.input.span.start(), span_label.end() + 1);
+                return self.push(EventKind::Atom(FootnoteReference { label }));
             }
         }
         None
@@ -925,7 +932,7 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Span) -> Event {
+    fn merge_str_events(&mut self, span_str: Span) -> Event<'s> {
         let mut span = span_str;
         let should_merge = |e: &Event, span: Span| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder)
@@ -952,7 +959,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Span) -> Event {
+    fn apply_word_attributes(&mut self, span_str: Span) -> Event<'s> {
         if let Some(i) = span_str
             .of(self.input.src)
             .bytes()
@@ -972,7 +979,7 @@ impl<'s> Parser<'s> {
             let attr = self.events.pop_front().unwrap();
             self.events.push_front(Event {
                 kind: EventKind::Exit(Span),
-                span: span_str.empty_after(),
+                span: attr.span,
             });
             self.events.push_front(Event {
                 kind: EventKind::Str,
@@ -1089,8 +1096,8 @@ impl Opener {
     }
 }
 
-enum DelimEventKind {
-    Container(Container),
+enum DelimEventKind<'s> {
+    Container(Container<'s>),
     Span(SpanType),
     Quote(QuoteType),
     Link {
@@ -1100,7 +1107,7 @@ enum DelimEventKind {
     },
 }
 
-impl From<Opener> for DelimEventKind {
+impl<'s> From<Opener> for DelimEventKind<'s> {
     fn from(d: Opener) -> Self {
         match d {
             Opener::Span(ty) => Self::Span(ty),
@@ -1127,7 +1134,7 @@ impl From<Opener> for DelimEventKind {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event;
+    type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.events.is_empty()
@@ -1158,7 +1165,7 @@ impl<'s> Iterator for Parser<'s> {
             let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                 debug_assert!(matches!(
                     ty,
-                    Verbatim | RawFormat | InlineMath | DisplayMath
+                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
                 ));
                 ty
             } else {
@@ -1266,7 +1273,7 @@ mod test {
             ),
             (Enter(Verbatim), "`"),
             (Str, "raw"),
-            (Exit(Verbatim), "`"),
+            (Exit(Verbatim), "`{#id}"),
             (Str, " post"),
         );
     }
@@ -1336,16 +1343,16 @@ mod test {
     fn raw_format() {
         test_parse!(
             "`raw`{=format}",
-            (Enter(RawFormat), "format"),
+            (Enter(RawFormat { format: "format" }), "`"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(RawFormat { format: "format" }), "`{=format}"),
         );
         test_parse!(
             "before `raw`{=format} after",
             (Str, "before "),
-            (Enter(RawFormat), "format"),
+            (Enter(RawFormat { format: "format" }), "`"),
             (Str, "raw"),
-            (Exit(RawFormat), "format"),
+            (Exit(RawFormat { format: "format" }), "`{=format}"),
             (Str, " after"),
         );
     }
@@ -1456,7 +1463,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "[text]("),
-            (Exit(Span), ""),
+            (Exit(Span), "{.cls}"),
         );
     }
 
@@ -1520,7 +1527,7 @@ mod test {
                 "{.cls}",
             ),
             (Enter(Span), "["),
-            (Exit(Span), "]")
+            (Exit(Span), "]{.cls}")
         );
     }
 
@@ -1537,7 +1544,7 @@ mod test {
             ),
             (Enter(Span), "["),
             (Str, "abc"),
-            (Exit(Span), "]"),
+            (Exit(Span), "]{.def}"),
         );
         test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
     }
@@ -1555,7 +1562,7 @@ mod test {
             ),
             (Enter(Span), "["),
             (Str, "x_y"),
-            (Exit(Span), "]"),
+            (Exit(Span), "]{.bar_}"),
         );
     }
 
@@ -1563,24 +1570,24 @@ mod test {
     fn autolink() {
         test_parse!(
             "<https://example.com>",
-            (Enter(Autolink), "https://example.com"),
+            (Enter(Autolink("https://example.com",)), "<"),
             (Str, "https://example.com"),
-            (Exit(Autolink), "https://example.com")
+            (Exit(Autolink("https://example.com",)), ">")
         );
         test_parse!(
             "<a@b.c>",
-            (Enter(Autolink), "a@b.c"),
+            (Enter(Autolink("a@b.c")), "<"),
             (Str, "a@b.c"),
-            (Exit(Autolink), "a@b.c"),
+            (Exit(Autolink("a@b.c")), ">"),
         );
         test_parse!(
             "<http://a.b><http://c.d>",
-            (Enter(Autolink), "http://a.b"),
+            (Enter(Autolink("http://a.b")), "<"),
             (Str, "http://a.b"),
-            (Exit(Autolink), "http://a.b"),
-            (Enter(Autolink), "http://c.d"),
+            (Exit(Autolink("http://a.b")), ">"),
+            (Enter(Autolink("http://c.d")), "<"),
             (Str, "http://c.d"),
-            (Exit(Autolink), "http://c.d"),
+            (Exit(Autolink("http://c.d")), ">"),
         );
         test_parse!("<not-a-url>", (Str, "<not-a-url>"));
     }
@@ -1590,7 +1597,7 @@ mod test {
         test_parse!(
             "text[^footnote]. more text",
             (Str, "text"),
-            (Atom(FootnoteReference), "footnote"),
+            (Atom(FootnoteReference { label: "footnote" }), "[^footnote]"),
             (Str, ". more text"),
         );
     }
@@ -1687,7 +1694,7 @@ mod test {
             ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{.attr}"),
         );
     }
 
@@ -1697,13 +1704,13 @@ mod test {
             "_abc def_{}",
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{}"),
         );
         test_parse!(
             "_abc def_{ % comment % } ghi",
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{ % comment % }"),
             (Str, " ghi"),
         );
     }
@@ -1721,7 +1728,7 @@ mod test {
             ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
-            (Exit(Emphasis), "_"),
+            (Exit(Emphasis), "_{.a}{.b}{.c}"),
             (Str, " "),
         );
     }
@@ -1739,7 +1746,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "word"),
-            (Exit(Span), ""),
+            (Exit(Span), "{a=b}"),
         );
         test_parse!(
             "some word{.a}{.b} with attrs",
@@ -1753,7 +1760,7 @@ mod test {
             ),
             (Enter(Span), ""),
             (Str, "word"),
-            (Exit(Span), ""),
+            (Exit(Span), "{.a}{.b}"),
             (Str, " with attrs"),
         );
     }
