@@ -1105,22 +1105,6 @@ impl<'s> Kind<'s> {
     }
 }
 
-impl<'s> std::fmt::Display for Block<'s> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Block::Atom(a) => std::fmt::Debug::fmt(a, f),
-            Block::Leaf(e) => std::fmt::Debug::fmt(e, f),
-            Block::Container(c) => std::fmt::Debug::fmt(c, f),
-        }
-    }
-}
-
-impl std::fmt::Display for Atom {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Inline")
-    }
-}
-
 /// Similar to `std::str::split('\n')` but newline is included and spans are used instead of `str`.
 fn lines(src: &str) -> impl Iterator<Item = Span> + '_ {
     let mut chars = src.chars();
