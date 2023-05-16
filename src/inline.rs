@@ -279,8 +279,8 @@ impl<'s> Parser<'s> {
         self.input.reset_span();
 
         if let Some(first) = self.input.eat() {
-            self.parse_attributes(&first)
-                .or_else(|| self.parse_verbatim(&first))
+            self.parse_verbatim(&first)
+                .or_else(|| self.parse_attributes(&first))
                 .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_symbol(&first))
                 .or_else(|| self.parse_footnote_reference(&first))
@@ -1279,6 +1279,22 @@ mod test {
     }
 
     #[test]
+    fn verbatim_attr_inside() {
+        test_parse!(
+            "`a{i=0}`",
+            (Enter(Verbatim), "`"),
+            (Str, "a{i=0}"),
+            (Exit(Verbatim), "`"),
+        );
+        test_parse!(
+            r"$`\sum_{i=0}^n 2^i`",
+            (Enter(InlineMath), "$`"),
+            (Str, r"\sum_{i=0}^n 2^i"),
+            (Exit(InlineMath), "`"),
+        );
+    }
+
+    #[test]
     fn verbatim_whitespace() {
         test_parse!(
             "`  `",
@@ -1762,6 +1778,23 @@ mod test {
             (Str, "word"),
             (Exit(Span), "{.a}{.b}"),
             (Str, " with attrs"),
+        );
+    }
+
+    #[test]
+    fn attr_quoted() {
+        test_parse!(
+            r#"word{a="`verb`"}"#,
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                r#"{a="`verb`"}"#,
+            ),
+            (Enter(Span), ""),
+            (Str, "word"),
+            (Exit(Span), r#"{a="`verb`"}"#),
         );
     }
 
