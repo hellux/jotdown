@@ -1,3 +1,33 @@
+## [0.3.0](https://github.com/hellux/jotdown/releases/tag/0.3.0) - 2023-05-16
+
+### Added
+
+- Source maps, via `Parser::into_offset_iter` (#39).
+
+### Changed
+
+- (breaking) `Render::render_event` has been removed (#36),
+  `Render::{push,write}{,_borrowed}` take non-mutable reference of self.
+- (breaking) Link definitions events are emmited (#36).
+- (breaking) Footnote events are emitted as they are encountered (#36), instead
+  of at the end of the document.
+- Empty spans are parsed as spans when followed by URL, label or attributes.
+- (breaking) Div class is non-optional, no class yields empty class string.
+- (breaking) `Container::CodeBlock.lang` renamed to `language`.
+- (breaking) Code block language is non-optional, no specfier yields empty
+  string.
+- Only ASCII whitespace is considered whitespace (#40).
+- Performance improved, up to 20% faster (#40).
+
+### Fixed
+
+- Unclosed attributes after verbatim.
+- Referenced headings with whitespace.
+- Order of heading ids during lookup.
+- Closing of math containers that end with backticks.
+- Sole math containers in table cells.
+- Attributes inside verbatim (#41).
+
 ## [0.2.1](https://github.com/hellux/jotdown/releases/tag/0.2.1) - 2023-04-25
 
 ### Changed
