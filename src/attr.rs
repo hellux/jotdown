@@ -8,26 +8,24 @@ pub(crate) fn parse(src: &str) -> Attributes {
     a
 }
 
-pub fn valid<I: Iterator<Item = char>>(chars: I) -> (usize, bool) {
+pub fn valid(src: &str) -> usize {
     use State::*;
 
-    let mut has_attr = false;
     let mut n = 0;
     let mut state = Start;
-    for c in chars {
+    for c in src.bytes() {
         n += 1;
         state = state.step(c);
         match state {
-            Class | Identifier | Value | ValueQuoted => has_attr = true,
             Done | Invalid => break,
             _ => {}
         }
     }
 
     if matches!(state, Done) {
-        (n, has_attr)
+        n
     } else {
-        (0, false)
+        0
     }
 }
 
@@ -258,11 +256,11 @@ impl Validator {
     /// Returns number of valid bytes parsed (0 means invalid) if finished, otherwise more input is
     /// needed.
     pub fn parse(&mut self, input: &str) -> Option<usize> {
-        let mut chars = input.chars();
-        for c in &mut chars {
+        let mut bytes = input.bytes();
+        for c in &mut bytes {
             self.state = self.state.step(c);
             match self.state {
-                State::Done => return Some(input.len() - chars.as_str().len()),
+                State::Done => return Some(input.len() - bytes.len()),
                 State::Invalid => return Some(0),
                 _ => {}
             }
@@ -299,7 +297,7 @@ impl<'s> Parser<'s> {
         let mut pos = 0;
         let mut pos_prev = 0;
 
-        for c in input.chars() {
+        for c in input.bytes() {
             let state_next = self.state.step(c);
             let st = std::mem::replace(&mut self.state, state_next);
 
@@ -320,7 +318,7 @@ impl<'s> Parser<'s> {
                 }
             };
 
-            pos += c.len_utf8();
+            pos += 1;
 
             debug_assert!(!matches!(self.state, Invalid));
 
@@ -360,40 +358,40 @@ enum State {
 }
 
 impl State {
-    fn step(self, c: char) -> State {
+    fn step(self, c: u8) -> State {
         use State::*;
 
         match self {
-            Start if c == '{' => Whitespace,
+            Start if c == b'{' => Whitespace,
             Start => Invalid,
             Whitespace => match c {
-                '}' => Done,
-                '.' => ClassFirst,
-                '#' => IdentifierFirst,
-                '%' => Comment,
+                b'}' => Done,
+                b'.' => ClassFirst,
+                b'#' => IdentifierFirst,
+                b'%' => Comment,
                 c if is_name(c) => Key,
-                c if c.is_whitespace() => Whitespace,
+                c if c.is_ascii_whitespace() => Whitespace,
                 _ => Invalid,
             },
-            Comment if c == '%' => Whitespace,
+            Comment if c == b'%' => Whitespace,
             Comment => Comment,
             ClassFirst if is_name(c) => Class,
             ClassFirst => Invalid,
             IdentifierFirst if is_name(c) => Identifier,
             IdentifierFirst => Invalid,
             s @ (Class | Identifier | Value) if is_name(c) => s,
-            Class | Identifier | Value if c.is_whitespace() => Whitespace,
-            Class | Identifier | Value if c == '}' => Done,
+            Class | Identifier | Value if c.is_ascii_whitespace() => Whitespace,
+            Class | Identifier | Value if c == b'}' => Done,
             Class | Identifier | Value => Invalid,
             Key if is_name(c) => Key,
-            Key if c == '=' => ValueFirst,
+            Key if c == b'=' => ValueFirst,
             Key => Invalid,
             ValueFirst if is_name(c) => Value,
-            ValueFirst if c == '"' => ValueQuoted,
+            ValueFirst if c == b'"' => ValueQuoted,
             ValueFirst => Invalid,
-            ValueQuoted | ValueNewline | ValueContinued if c == '"' => Whitespace,
-            ValueQuoted | ValueNewline | ValueContinued | ValueEscape if c == '\n' => ValueNewline,
-            ValueQuoted if c == '\\' => ValueEscape,
+            ValueQuoted | ValueNewline | ValueContinued if c == b'"' => Whitespace,
+            ValueQuoted | ValueNewline | ValueContinued | ValueEscape if c == b'\n' => ValueNewline,
+            ValueQuoted if c == b'\\' => ValueEscape,
             ValueQuoted | ValueEscape => ValueQuoted,
             ValueNewline | ValueContinued => ValueContinued,
             Invalid | Done => panic!("{:?}", self),
@@ -401,8 +399,8 @@ impl State {
     }
 }
 
-pub fn is_name(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-')
+pub fn is_name(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, b':' | b'_' | b'-')
 }
 
 #[cfg(test)]
@@ -435,11 +433,6 @@ mod test {
         );
         test_attr!("{.a .b}", ("class", "a b"));
         test_attr!("{#a #b}", ("id", "b"));
-    }
-
-    #[test]
-    fn unicode_whitespace() {
-        test_attr!("{.a .b}", ("class", "a b"));
     }
 
     #[test]
@@ -519,41 +512,45 @@ mod test {
     #[test]
     fn valid_full() {
         let src = "{.class %comment%}";
-        assert_eq!(super::valid(src.chars()), (src.len(), true));
+        assert_eq!(super::valid(src), src.len());
+    }
+
+    #[test]
+    fn valid_unicode() {
+        let src = r#"{a="б"}"#;
+        assert_eq!(super::valid(src), src.len());
     }
 
     #[test]
     fn valid_empty() {
         let src = "{}";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src), src.len());
     }
 
     #[test]
     fn valid_whitespace() {
         let src = "{ \n }";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src), src.len());
     }
 
     #[test]
     fn valid_comment() {
         let src = "{%comment%}";
-        assert_eq!(super::valid(src.chars()), (src.len(), false));
+        assert_eq!(super::valid(src), src.len());
     }
 
     #[test]
     fn valid_trailing() {
-        let src = "{.class}";
-        assert_eq!(
-            super::valid(src.chars().chain("{.ignore}".chars())),
-            (src.len(), true),
-        );
+        let src = "{.class}{.ignore}";
+        let src_valid = "{.class}";
+        assert_eq!(super::valid(src), src_valid.len());
     }
 
     #[test]
     fn valid_invalid() {
-        assert_eq!(super::valid(" {.valid}".chars()), (0, false));
-        assert_eq!(super::valid("{.class invalid}".chars()), (0, false));
-        assert_eq!(super::valid("abc".chars()), (0, false));
-        assert_eq!(super::valid("{.abc.}".chars()), (0, false));
+        assert_eq!(super::valid(" {.valid}"), 0);
+        assert_eq!(super::valid("{.class invalid}"), 0);
+        assert_eq!(super::valid("abc"), 0);
+        assert_eq!(super::valid("{.abc.}"), 0);
     }
 }
