@@ -1777,6 +1777,37 @@ mod test {
     }
 
     #[test]
+    fn link_reference_attrs_class() {
+        test_parse!(
+            concat!(
+                "[text][tag]{.link}\n",
+                "\n",
+                "{.def}\n",
+                "[tag]: url\n",
+                "para\n",
+            ),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                [("class", "link"), ("class", "def")].into_iter().collect(),
+            ),
+            Str("text".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            Blankline,
+            Start(
+                LinkDefinition { label: "tag" },
+                [("class", "def")].into_iter().collect()
+            ),
+            Str("url".into()),
+            End(LinkDefinition { label: "tag" }),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
+        );
+    }
+
+    #[test]
     fn autolink() {
         test_parse!(
             "<proto:url>\n",

@@ -145,7 +145,7 @@ impl<'s> Attributes<'s> {
         if let Some(attrs0) = &mut self.0 {
             if let Some(mut attrs1) = other.0 {
                 for (key, val) in attrs1.drain(..) {
-                    if !attrs0.iter().any(|(k, _)| *k == key) {
+                    if key == "class" || !attrs0.iter().any(|(k, _)| *k == key) {
                         attrs0.push((key, val));
                     }
                 }
