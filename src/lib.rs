@@ -1465,7 +1465,6 @@ mod test {
 
     #[test]
     fn para() {
-        /*
         test_parse!(
             "para",
             Start(Paragraph, Attributes::new()),
@@ -1478,7 +1477,6 @@ mod test {
             Str("pa     ra".into()),
             End(Paragraph),
         );
-        */
         test_parse!(
             "para0\n\npara1",
             Start(Paragraph, Attributes::new()),
