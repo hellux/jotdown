@@ -603,7 +603,7 @@ impl<'s> PrePass<'s> {
     ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
-        let mut used_ids: Set<&str> = Set::new();
+        let mut used_ids: Set<String> = Set::new();
 
         let mut blocks = blocks.peekable();
 
@@ -724,12 +724,7 @@ impl<'s> PrePass<'s> {
                         }
                     }
 
-                    // SAFETY: used_ids is dropped before the id_auto strings in headings. even if
-                    // the strings move due to headings reallocating, the string data on the heap
-                    // will not move
-                    used_ids.insert(unsafe {
-                        std::mem::transmute::<&str, &'static str>(id_auto.as_ref())
-                    });
+                    used_ids.insert(id_auto.clone());
                     headings.push(Heading {
                         location: e.span.start as u32,
                         id_auto,
