@@ -598,14 +598,12 @@ impl<'s> PrePass<'s> {
     #[must_use]
     fn new(
         src: &'s str,
-        blocks: std::slice::Iter<block::Event<'s>>,
+        mut blocks: std::slice::Iter<block::Event<'s>>,
         inline_parser: &mut inline::Parser<'s>,
     ) -> Self {
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<String> = Set::new();
-
-        let mut blocks = blocks.peekable();
 
         let mut attr_prev: Option<Range<usize>> = None;
         while let Some(e) = blocks.next() {
@@ -613,34 +611,43 @@ impl<'s> PrePass<'s> {
                 block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
                     label,
                 })) => {
-                    fn next_is_inline(
-                        bs: &mut std::iter::Peekable<std::slice::Iter<block::Event>>,
-                    ) -> bool {
-                        matches!(bs.peek().map(|e| &e.kind), Some(block::EventKind::Inline))
-                    }
-
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
                     let attrs = attr_prev
                         .as_ref()
                         .map_or_else(Attributes::new, |sp| attr::parse(&src[sp.clone()]));
-                    let url = if !next_is_inline(&mut blocks) {
-                        "".into()
-                    } else {
-                        let start = src[blocks.next().as_ref().unwrap().span.clone()]
-                            .trim_matches(|c: char| c.is_ascii_whitespace());
-                        if !next_is_inline(&mut blocks) {
-                            start.into()
-                        } else {
+                    let url = if let Some(block::Event {
+                        kind: block::EventKind::Inline,
+                        span,
+                    }) = blocks.next()
+                    {
+                        let start =
+                            src[span.clone()].trim_matches(|c: char| c.is_ascii_whitespace());
+                        if let Some(block::Event {
+                            kind: block::EventKind::Inline,
+                            span,
+                        }) = blocks.next()
+                        {
                             let mut url = start.to_string();
-                            while next_is_inline(&mut blocks) {
+                            url.push_str(
+                                src[span.clone()].trim_matches(|c: char| c.is_ascii_whitespace()),
+                            );
+                            while let Some(block::Event {
+                                kind: block::EventKind::Inline,
+                                span,
+                            }) = blocks.next()
+                            {
                                 url.push_str(
-                                    src[blocks.next().as_ref().unwrap().span.clone()]
+                                    src[span.clone()]
                                         .trim_matches(|c: char| c.is_ascii_whitespace()),
                                 );
                             }
-                            url.into()
+                            url.into() // owned
+                        } else {
+                            start.into() // borrowed
                         }
+                    } else {
+                        "".into() // static
                     };
                     link_definitions.insert(label, (url, attrs));
                 }
