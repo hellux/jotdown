@@ -1079,21 +1079,24 @@ impl<'s> IdentifiedBlock<'s> {
 impl<'s> Kind<'s> {
     /// Determine if a line continues the block.
     fn continues(&mut self, line: &'s str) -> bool {
-        let IdentifiedBlock { kind: next, .. } = IdentifiedBlock::new(line);
         match self {
             Self::Atom(..)
             | Self::Fenced {
                 has_closing_fence: true,
                 ..
             } => false,
-            Self::Blockquote => matches!(next, Self::Blockquote | Self::Paragraph),
+            Self::Blockquote => matches!(
+                IdentifiedBlock::new(line).kind,
+                Self::Blockquote | Self::Paragraph
+            ),
             Self::Heading { level } => {
+                let next = IdentifiedBlock::new(line).kind;
                 matches!(next, Self::Paragraph)
                     || matches!(next, Self::Heading { level: l } if l == *level )
             }
-            Self::Paragraph | Self::Table { caption: true } => {
-                !matches!(next, Self::Atom(Blankline))
-            }
+            Self::Paragraph | Self::Table { caption: true } => !line
+                .trim_matches(|c: char| c.is_ascii_whitespace())
+                .is_empty(),
             Self::ListItem {
                 indent,
                 last_blankline,
@@ -1101,25 +1104,29 @@ impl<'s> Kind<'s> {
             } => {
                 let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let whitespace = line.len() - line_t.len();
+                let next = IdentifiedBlock::new(line).kind;
                 let para = !*last_blankline && matches!(next, Self::Paragraph);
                 *last_blankline = matches!(next, Self::Atom(Blankline));
                 *last_blankline || whitespace > *indent || para
             }
             Self::Definition {
                 indent,
-                footnote,
+                footnote: true,
                 last_blankline,
                 ..
             } => {
-                if *footnote {
-                    let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
-                    let whitespace = line.len() - line_t.len();
-                    let cont_para = !*last_blankline && matches!(next, Self::Paragraph);
-                    *last_blankline = matches!(next, Self::Atom(Blankline));
-                    whitespace > *indent || *last_blankline || cont_para
-                } else {
-                    line.starts_with(' ') && !matches!(next, Self::Atom(Blankline))
-                }
+                let next = IdentifiedBlock::new(line).kind;
+                let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
+                let whitespace = line.len() - line_t.len();
+                let cont_para = !*last_blankline && matches!(next, Self::Paragraph);
+                *last_blankline = matches!(next, Self::Atom(Blankline));
+                whitespace > *indent || *last_blankline || cont_para
+            }
+            Self::Definition { .. } => {
+                let blankline = line
+                    .trim_matches(|c: char| c.is_ascii_whitespace())
+                    .is_empty();
+                line.starts_with(' ') && !blankline
             }
             Self::Fenced {
                 fence_length,
@@ -1132,7 +1139,7 @@ impl<'s> Kind<'s> {
                     fence_length: l,
                     spec,
                     ..
-                } = next
+                } = IdentifiedBlock::new(line).kind
                 {
                     if spec.is_empty() {
                         *has_closing_fence = k == *kind
@@ -1143,17 +1150,19 @@ impl<'s> Kind<'s> {
                 true
             }
             Self::Table { caption } => {
-                matches!(next, Self::Table { .. } | Self::Atom(Blankline)) || {
-                    if line
-                        .trim_matches(|c: char| c.is_ascii_whitespace())
-                        .starts_with("^ ")
-                    {
-                        *caption = true;
-                        true
-                    } else {
-                        false
+                let line_t = line.trim_matches(|c: char| c.is_ascii_whitespace());
+                line_t.is_empty()
+                    || (line_t.starts_with('|')
+                        && line_t.ends_with('|')
+                        && !line_t.ends_with("\\|"))
+                    || {
+                        if line_t.starts_with("^ ") {
+                            *caption = true;
+                            true
+                        } else {
+                            false
+                        }
                     }
-                }
             }
         }
     }
