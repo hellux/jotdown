@@ -231,10 +231,10 @@ impl<'s> TreeParser<'s> {
             };
 
             // part of first inline that is from the outer block
-            let outer = lines[0].start..span_start.end;
+            let outer_len = span_start.end - lines[0].start;
 
             // skip outer block part for inner content
-            lines[0].start += outer.len();
+            lines[0].start += outer_len;
 
             // skip opening and closing fence of code block / div
             let lines = if let Kind::Fenced {
@@ -329,7 +329,7 @@ impl<'s> TreeParser<'s> {
                 Block::Leaf(l) => self.parse_leaf(l, &kind, span_start, span_end, lines),
                 Block::Container(Table) => self.parse_table(lines, span_start, span_end),
                 Block::Container(c) => {
-                    self.parse_container(c, &kind, span_start, span_end, outer, lines);
+                    self.parse_container(c, &kind, span_start, span_end, outer_len, lines);
                 }
             }
 
@@ -450,7 +450,7 @@ impl<'s> TreeParser<'s> {
         k: &Kind,
         mut span_start: Range<usize>,
         span_end: Range<usize>,
-        outer: Range<usize>,
+        outer_len: usize,
         lines: &mut [Range<usize>],
     ) {
         // update spans, remove indentation / container prefix
@@ -470,7 +470,7 @@ impl<'s> TreeParser<'s> {
                         0
                     }
                 }
-                Kind::ListItem { .. } | Kind::Definition { .. } => whitespace.min(outer.len()),
+                Kind::ListItem { .. } | Kind::Definition { .. } => whitespace.min(outer_len),
                 Kind::Fenced { indent, .. } => whitespace.min(*indent),
                 _ => panic!("non-container {:?}", k),
             };
