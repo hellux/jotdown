@@ -15,21 +15,21 @@ use crate::SpanLinkType;
 pub struct Renderer {}
 
 impl Render for Renderer {
-    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> core::fmt::Result
     where
         I: Iterator<Item = Event<'s>>,
-        W: std::fmt::Write,
+        W: core::fmt::Write,
     {
         let mut w = Writer::default();
         events.try_for_each(|e| w.render_event(&e, &mut out))?;
         w.render_epilogue(&mut out)
     }
 
-    fn push_borrowed<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    fn push_borrowed<'s, E, I, W>(&self, mut events: I, mut out: W) -> core::fmt::Result
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
-        W: std::fmt::Write,
+        W: core::fmt::Write,
     {
         let mut w = Writer::default();
         events.try_for_each(|e| w.render_event(e.as_ref(), &mut out))?;
@@ -60,9 +60,9 @@ struct Writer<'s> {
 }
 
 impl<'s> Writer<'s> {
-    fn render_event<W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
+    fn render_event<W>(&mut self, e: &Event<'s>, mut out: W) -> core::fmt::Result
     where
-        W: std::fmt::Write,
+        W: core::fmt::Write,
     {
         if let Event::Start(Container::Footnote { label }, ..) = e {
             self.footnotes.start(label, Vec::new());
@@ -405,9 +405,9 @@ impl<'s> Writer<'s> {
         Ok(())
     }
 
-    fn render_epilogue<W>(&mut self, mut out: W) -> std::fmt::Result
+    fn render_epilogue<W>(&mut self, mut out: W) -> core::fmt::Result
     where
-        W: std::fmt::Write,
+        W: core::fmt::Write,
     {
         if self.footnotes.reference_encountered() {
             out.write_str("\n<section role=\"doc-endnotes\">\n<hr>\n<ol>")?;
@@ -450,23 +450,23 @@ impl<'s> Writer<'s> {
     }
 }
 
-fn write_text<W>(s: &str, out: W) -> std::fmt::Result
+fn write_text<W>(s: &str, out: W) -> core::fmt::Result
 where
-    W: std::fmt::Write,
+    W: core::fmt::Write,
 {
     write_escape(s, false, out)
 }
 
-fn write_attr<W>(s: &str, out: W) -> std::fmt::Result
+fn write_attr<W>(s: &str, out: W) -> core::fmt::Result
 where
-    W: std::fmt::Write,
+    W: core::fmt::Write,
 {
     write_escape(s, true, out)
 }
 
-fn write_escape<W>(mut s: &str, escape_quotes: bool, mut out: W) -> std::fmt::Result
+fn write_escape<W>(mut s: &str, escape_quotes: bool, mut out: W) -> core::fmt::Result
 where
-    W: std::fmt::Write,
+    W: core::fmt::Write,
 {
     let mut ent = "";
     while let Some(i) = s.find(|c| {

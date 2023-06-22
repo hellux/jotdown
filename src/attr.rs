@@ -1,5 +1,5 @@
 use crate::CowStr;
-use std::fmt;
+use core::fmt;
 
 /// Parse attributes, assumed to be valid.
 pub(crate) fn parse(src: &str) -> Attributes {
@@ -110,7 +110,7 @@ impl<'s> Iterator for AttributeValueParts<'s> {
             }
         }
 
-        (!self.ahead.is_empty()).then(|| std::mem::take(&mut self.ahead))
+        (!self.ahead.is_empty()).then(|| core::mem::take(&mut self.ahead))
     }
 }
 
@@ -222,8 +222,8 @@ impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
     }
 }
 
-impl<'s> std::fmt::Debug for Attributes<'s> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<'s> core::fmt::Debug for Attributes<'s> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{{")?;
         let mut first = true;
         for (k, v) in self.iter() {
@@ -299,7 +299,7 @@ impl<'s> Parser<'s> {
 
         for c in input.bytes() {
             let state_next = self.state.step(c);
-            let st = std::mem::replace(&mut self.state, state_next);
+            let st = core::mem::replace(&mut self.state, state_next);
 
             if st != self.state && !matches!((st, self.state), (ValueEscape, _) | (_, ValueEscape))
             {

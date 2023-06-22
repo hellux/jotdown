@@ -49,10 +49,10 @@
 
 #![allow(clippy::blocks_in_if_conditions)]
 
-use std::fmt;
-use std::fmt::Write as FmtWrite;
+use core::fmt;
+use core::fmt::Write as FmtWrite;
+use core::ops::Range;
 use std::io;
-use std::ops::Range;
 
 #[cfg(feature = "html")]
 pub mod html;
@@ -75,13 +75,13 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 ///
 /// # Examples
 ///
-/// Push to a [`String`] (implements [`std::fmt::Write`]):
+/// Push to a [`String`] (implements [`core::fmt::Write`]):
 ///
 /// ```
 /// # #[cfg(feature = "html")]
 /// # {
 /// # use jotdown::Render;
-/// # let events = std::iter::empty();
+/// # let events = core::iter::empty();
 /// let mut output = String::new();
 /// let renderer = jotdown::html::Renderer::default();
 /// renderer.push(events, &mut output);
@@ -94,7 +94,7 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # #[cfg(feature = "html")]
 /// # {
 /// # use jotdown::Render;
-/// # let events = std::iter::empty();
+/// # let events = core::iter::empty();
 /// let mut out = std::io::BufWriter::new(std::io::stdout());
 /// let renderer = jotdown::html::Renderer::default();
 /// renderer.write(events, &mut out).unwrap();
@@ -553,7 +553,7 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Block tree parsed at first.
-    blocks: std::iter::Peekable<std::vec::IntoIter<block::Event<'s>>>,
+    blocks: core::iter::Peekable<std::vec::IntoIter<block::Event<'s>>>,
 
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
@@ -599,7 +599,7 @@ impl<'s> PrePass<'s> {
     #[must_use]
     fn new(
         src: &'s str,
-        mut blocks: std::slice::Iter<block::Event<'s>>,
+        mut blocks: core::slice::Iter<block::Event<'s>>,
         inline_parser: &mut inline::Parser<'s>,
     ) -> Self {
         let mut link_definitions = Map::new();
@@ -1225,8 +1225,8 @@ mod test {
                     let a_width = a.iter().map(|a| a.len()).max().unwrap_or(0);
                     a.iter()
                         .map(AsRef::as_ref)
-                        .chain(std::iter::repeat(""))
-                        .zip(b.iter().map(AsRef::as_ref).chain(std::iter::repeat("")))
+                        .chain(core::iter::repeat(""))
+                        .zip(b.iter().map(AsRef::as_ref).chain(core::iter::repeat("")))
                         .take(max)
                         .map(|(a, b)|
                             format!(

@@ -1,4 +1,4 @@
-use std::ops::Range;
+use core::ops::Range;
 
 use crate::attr;
 use crate::lex;
@@ -510,7 +510,7 @@ impl<'s> Parser<'s> {
         let attrs = {
             let first = start_attr..self.input.span_line.end;
             let mut parser = attr::Parser::new(attr::Attributes::new());
-            for line in std::iter::once(first)
+            for line in core::iter::once(first)
                 .chain(self.input.ahead.iter().take(state.valid_lines).cloned())
             {
                 let line = line.start..usize::min(state.end_attr, line.end);
@@ -900,9 +900,9 @@ impl<'s> Parser<'s> {
                     let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
                     ((first.len - 2 * n) / 3, n)
                 };
-                std::iter::repeat(EmDash)
+                core::iter::repeat(EmDash)
                     .take(m)
-                    .chain(std::iter::repeat(EnDash).take(n))
+                    .chain(core::iter::repeat(EnDash).take(n))
                     .for_each(|atom| {
                         let end =
                             self.input.span.start + if matches!(atom, EnDash) { 2 } else { 3 };

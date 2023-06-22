@@ -1,4 +1,4 @@
-use std::ops::Range;
+use core::ops::Range;
 
 use crate::Alignment;
 use crate::OrderedListNumbering::*;
@@ -173,7 +173,7 @@ impl<'s> TreeParser<'s> {
             self.close_list(l, self.src.len());
         }
 
-        for _ in std::mem::take(&mut self.open_sections).drain(..) {
+        for _ in core::mem::take(&mut self.open_sections).drain(..) {
             self.exit(self.src.len()..self.src.len());
         }
         debug_assert_eq!(self.open, &[]);
@@ -713,7 +713,7 @@ impl<'s> TreeParser<'s> {
                             self.alignments
                                 .iter()
                                 .copied()
-                                .chain(std::iter::repeat(Alignment::Unspecified))
+                                .chain(core::iter::repeat(Alignment::Unspecified))
                                 .flat_map(|a| [a, a].into_iter()),
                         )
                         .for_each(|(e, new_align)| match &mut e.kind {
@@ -988,7 +988,7 @@ impl<'s> IdentifiedBlock<'s> {
         })
     }
 
-    fn is_thematic_break(chars: std::str::Chars) -> bool {
+    fn is_thematic_break(chars: core::str::Chars) -> bool {
         let mut n = 1;
         for c in chars {
             if matches!(c, '-' | '*') {
@@ -1002,7 +1002,7 @@ impl<'s> IdentifiedBlock<'s> {
 
     fn maybe_ordered_list_item(
         mut first: char,
-        mut chars: std::str::Chars,
+        mut chars: core::str::Chars,
     ) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
         fn is_roman_lower_digit(c: char) -> bool {
             matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
@@ -1166,10 +1166,10 @@ impl<'s> Kind<'s> {
     }
 }
 
-/// Similar to `std::str::split('\n')` but newline is included and spans are used instead of `str`.
+/// Similar to `core::str::split('\n')` but newline is included and spans are used instead of `str`.
 fn lines(src: &str) -> impl Iterator<Item = Range<usize>> + '_ {
     let mut chars = src.chars();
-    std::iter::from_fn(move || {
+    core::iter::from_fn(move || {
         if chars.as_str().is_empty() {
             None
         } else {
@@ -1226,8 +1226,8 @@ mod test {
                     let a_width = a.iter().map(|a| a.len()).max().unwrap_or(0);
                     a.iter()
                         .map(AsRef::as_ref)
-                        .chain(std::iter::repeat(""))
-                        .zip(b.iter().map(AsRef::as_ref).chain(std::iter::repeat("")))
+                        .chain(core::iter::repeat(""))
+                        .zip(b.iter().map(AsRef::as_ref).chain(core::iter::repeat("")))
                         .take(max)
                         .map(|(a, b)|
                             format!(
