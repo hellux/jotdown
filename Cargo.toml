@@ -35,10 +35,11 @@ exclude = [
 
 [[bin]]
 name = "jotdown"
-required-features = ["html"]
+required-features = ["cli"]
 doc = false
 
 [features]
-default = ["html"]
-html = [] # html renderer and minimal cli binary
+default = ["html" , "cli"]
+html = [] # html renderer
+cli = ["html"] # cli binary
 deterministic = [] # for stable fuzzing

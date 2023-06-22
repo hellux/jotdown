@@ -7,7 +7,8 @@
 //!
 //! # Feature flags
 //!
-//! - `html` (default): build the html module and a binary that converts djot to HTML.
+//! - `html` (default): build the html module that converts djot to HTML.
+//! - `cli` (default): build a binary that converts djot to HTML.
 //!
 //! # Examples
 //!
