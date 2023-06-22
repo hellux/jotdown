@@ -39,7 +39,8 @@ required-features = ["cli"]
 doc = false
 
 [features]
-default = ["html" , "cli"]
+default = ["std", "html" , "cli"]
+std = []
 html = [] # html renderer
-cli = ["html"] # cli binary
+cli = ["std", "html"] # cli binary
 deterministic = [] # for stable fuzzing

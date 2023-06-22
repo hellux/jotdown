@@ -9,6 +9,9 @@
 //!
 //! - `html` (default): build the html module that converts djot to HTML.
 //! - `cli` (default): build a binary that converts djot to HTML.
+//! - `std` (default): link against the [`std`] library instead of the [`core`] library. This adds
+//! the [`Render::write`] method and uses [`std::collections::HashMap`] instead of
+//! [`collections::BTreeMap`].
 //!
 //! # Examples
 //!
@@ -47,14 +50,14 @@
 //! # }
 //! ```
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::blocks_in_if_conditions)]
-
-extern crate alloc;
 
 use core::fmt;
 use core::fmt::Write as FmtWrite;
 use core::ops::Range;
-use std::io;
+
+extern crate alloc;
 
 use alloc::format;
 use alloc::string::String;
@@ -118,10 +121,11 @@ pub trait Render {
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write<'s, I, W>(&self, events: I, out: W) -> io::Result<()>
+    #[cfg(feature = "std")]
+    fn write<'s, I, W>(&self, events: I, out: W) -> std::io::Result<()>
     where
         I: Iterator<Item = Event<'s>>,
-        W: io::Write,
+        W: std::io::Write,
     {
         let mut out = WriteAdapter {
             inner: out,
@@ -130,7 +134,7 @@ pub trait Render {
 
         self.push(events, &mut out).map_err(|_| match out.error {
             Err(e) => e,
-            _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
+            _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
         })
     }
 
@@ -159,11 +163,12 @@ pub trait Render {
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write_borrowed<'s, E, I, W>(&self, events: I, out: W) -> io::Result<()>
+    #[cfg(feature = "std")]
+    fn write_borrowed<'s, E, I, W>(&self, events: I, out: W) -> std::io::Result<()>
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
-        W: io::Write,
+        W: std::io::Write,
     {
         let mut out = WriteAdapter {
             inner: out,
@@ -173,17 +178,19 @@ pub trait Render {
         self.push_borrowed(events, &mut out)
             .map_err(|_| match out.error {
                 Err(e) => e,
-                _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
+                _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
             })
     }
 }
 
-struct WriteAdapter<T: io::Write> {
+#[cfg(feature = "std")]
+struct WriteAdapter<T: std::io::Write> {
     inner: T,
-    error: io::Result<()>,
+    error: std::io::Result<()>,
 }
 
-impl<T: io::Write> fmt::Write for WriteAdapter<T> {
+#[cfg(feature = "std")]
+impl<T: std::io::Write> fmt::Write for WriteAdapter<T> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.inner.write_all(s.as_bytes()).map_err(|e| {
             self.error = Err(e);
@@ -537,14 +544,14 @@ impl OrderedListStyle {
     }
 }
 
-#[cfg(not(feature = "deterministic"))]
+#[cfg(all(not(feature = "deterministic"), feature = "std"))]
 type Map<K, V> = std::collections::HashMap<K, V>;
-#[cfg(feature = "deterministic")]
+#[cfg(any(feature = "deterministic", not(feature = "std")))]
 type Map<K, V> = alloc::collections::BTreeMap<K, V>;
 
-#[cfg(not(feature = "deterministic"))]
+#[cfg(all(not(feature = "deterministic"), feature = "std"))]
 type Set<T> = std::collections::HashSet<T>;
-#[cfg(feature = "deterministic")]
+#[cfg(any(feature = "deterministic", not(feature = "std")))]
 type Set<T> = alloc::collections::BTreeSet<T>;
 
 /// A parser that generates [`Event`]s from a Djot document.
