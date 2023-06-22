@@ -1,5 +1,11 @@
-use crate::CowStr;
 use core::fmt;
+
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use crate::CowStr;
 
 /// Parse attributes, assumed to be valid.
 pub(crate) fn parse(src: &str) -> Attributes {
@@ -405,6 +411,9 @@ pub fn is_name(c: u8) -> bool {
 
 #[cfg(test)]
 mod test {
+    use alloc::format;
+    use alloc::vec::Vec;
+
     macro_rules! test_attr {
         ($src:expr $(,$($av:expr),* $(,)?)?) => {
             #[allow(unused)]

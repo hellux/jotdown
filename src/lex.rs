@@ -315,6 +315,9 @@ fn is_special(c: u8) -> bool {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec;
+    use alloc::vec::Vec;
+
     use super::Delimiter::*;
     use super::Kind::*;
     use super::Sequence::*;

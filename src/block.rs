@@ -1,5 +1,7 @@
 use core::ops::Range;
 
+use alloc::vec::Vec;
+
 use crate::Alignment;
 use crate::OrderedListNumbering::*;
 use crate::OrderedListStyle::*;
@@ -1187,6 +1189,10 @@ fn lines(src: &str) -> impl Iterator<Item = Range<usize>> + '_ {
 
 #[cfg(test)]
 mod test {
+    use alloc::format;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
     use crate::Alignment;
     use crate::OrderedListNumbering::*;
     use crate::OrderedListStyle::*;

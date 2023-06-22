@@ -49,10 +49,17 @@
 
 #![allow(clippy::blocks_in_if_conditions)]
 
+extern crate alloc;
+
 use core::fmt;
 use core::fmt::Write as FmtWrite;
 use core::ops::Range;
 use std::io;
+
+use alloc::format;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 
 #[cfg(feature = "html")]
 pub mod html;
@@ -64,7 +71,7 @@ mod lex;
 
 pub use attr::{AttributeValue, AttributeValueParts, Attributes};
 
-type CowStr<'s> = std::borrow::Cow<'s, str>;
+type CowStr<'s> = alloc::borrow::Cow<'s, str>;
 
 /// A trait for rendering [`Event`]s to an output format.
 ///
@@ -533,12 +540,12 @@ impl OrderedListStyle {
 #[cfg(not(feature = "deterministic"))]
 type Map<K, V> = std::collections::HashMap<K, V>;
 #[cfg(feature = "deterministic")]
-type Map<K, V> = std::collections::BTreeMap<K, V>;
+type Map<K, V> = alloc::collections::BTreeMap<K, V>;
 
 #[cfg(not(feature = "deterministic"))]
 type Set<T> = std::collections::HashSet<T>;
 #[cfg(feature = "deterministic")]
-type Set<T> = std::collections::BTreeSet<T>;
+type Set<T> = alloc::collections::BTreeSet<T>;
 
 /// A parser that generates [`Event`]s from a Djot document.
 ///
@@ -553,7 +560,7 @@ pub struct Parser<'s> {
     src: &'s str,
 
     /// Block tree parsed at first.
-    blocks: core::iter::Peekable<std::vec::IntoIter<block::Event<'s>>>,
+    blocks: core::iter::Peekable<alloc::vec::IntoIter<block::Event<'s>>>,
 
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
@@ -1192,6 +1199,10 @@ impl<'s> Iterator for OffsetIter<'s> {
 
 #[cfg(test)]
 mod test {
+    use alloc::format;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
     use super::Attributes;
     use super::Container::*;
     use super::Event::*;

@@ -1,5 +1,7 @@
 //! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
 
+use alloc::vec::Vec;
+
 use crate::Alignment;
 use crate::Container;
 use crate::Event;

@@ -1,5 +1,8 @@
 use core::ops::Range;
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use crate::attr;
 use crate::lex;
 use crate::CowStr;
@@ -86,7 +89,7 @@ struct Input<'s> {
     /// Span of current line.
     span_line: Range<usize>,
     /// Upcoming lines within the current block.
-    ahead: std::collections::VecDeque<Range<usize>>,
+    ahead: alloc::collections::VecDeque<Range<usize>>,
     /// Span of current event.
     span: Range<usize>,
 }
@@ -98,7 +101,7 @@ impl<'s> Input<'s> {
             lexer: lex::Lexer::new(b""),
             complete: false,
             span_line: 0..0,
-            ahead: std::collections::VecDeque::new(),
+            ahead: alloc::collections::VecDeque::new(),
             span: 0..0,
         }
     }
@@ -218,7 +221,7 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event<'s>>,
+    events: alloc::collections::VecDeque<Event<'s>>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
@@ -246,7 +249,7 @@ impl<'s> Parser<'s> {
         Self {
             input: Input::new(src),
             openers: Vec::new(),
-            events: std::collections::VecDeque::new(),
+            events: alloc::collections::VecDeque::new(),
             verbatim: None,
             attributes: None,
             store_cowstrs: Vec::new(),
@@ -1192,6 +1195,8 @@ impl<'s> Iterator for Parser<'s> {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
+
     use super::Atom::*;
     use super::Container::*;
     use super::EventKind::*;
