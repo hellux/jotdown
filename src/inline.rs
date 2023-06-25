@@ -732,41 +732,36 @@ impl<'s> Parser<'s> {
                         image,
                     } => {
                         let span_spec = self.events[e_opener].span.end..self.input.span.start;
-                        let multiline =
+                        let multiline_spec =
                             self.events[e_opener].span.start < self.input.span_line.start;
 
                         let spec: CowStr = if span_spec.is_empty() && !inline {
-                            let span_spec = self.events[event_span].span.end
-                                ..self.events[e_opener - 1].span.start;
                             let events_text = self
                                 .events
                                 .iter()
                                 .skip(event_span + 1)
                                 .take(e_opener - event_span - 2);
 
-                            if multiline
-                                || events_text.clone().any(|ev| {
-                                    !matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
-                                })
-                            {
-                                let mut spec = String::new();
-                                let mut span = 0..0;
-                                for ev in events_text.filter(|ev| {
-                                    matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
-                                }) {
-                                    if span.end == ev.span.start {
-                                        span.end = ev.span.end;
-                                    } else {
-                                        spec.push_str(&self.input.src[span.clone()]);
-                                        span = ev.span.clone();
-                                    }
+                            let mut spec = String::new();
+                            let mut span = 0..0;
+                            for ev in events_text.filter(|ev| {
+                                matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
+                                    && !matches!(ev.kind, EventKind::Atom(Escape))
+                            }) {
+                                if matches!(ev.kind, EventKind::Atom(Softbreak | Hardbreak)) {
+                                    spec.push_str(&self.input.src[span.clone()]);
+                                    spec.push(' ');
+                                    span = ev.span.end..ev.span.end;
+                                } else if span.end == ev.span.start {
+                                    span.end = ev.span.end;
+                                } else {
+                                    spec.push_str(&self.input.src[span.clone()]);
+                                    span = ev.span.clone();
                                 }
-                                spec.push_str(&self.input.src[span]);
-                                spec.into()
-                            } else {
-                                self.input.src[span_spec].into()
                             }
-                        } else if multiline {
+                            spec.push_str(&self.input.src[span]);
+                            spec.into()
+                        } else if multiline_spec {
                             let mut spec = String::new();
                             let mut first_part = true;
                             let mut span =

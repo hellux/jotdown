@@ -1698,6 +1698,46 @@ mod test {
     }
 
     #[test]
+    fn link_reference_multiline_empty() {
+        test_parse!(
+            concat!(
+                "> [a\n",       //
+                "> b][]\n",     //
+                "> [a\\\n",     //
+                "> b][]\n",     //
+                "\n",           //
+                "[a b]: url\n", //
+            ),
+            Start(Blockquote, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("a".into()),
+            Softbreak,
+            Str("b".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            Softbreak,
+            Start(
+                Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
+                Attributes::new()
+            ),
+            Str("a".into()),
+            Escape,
+            Hardbreak,
+            Str("b".into()),
+            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
+            End(Paragraph),
+            End(Blockquote),
+            Blankline,
+            Start(LinkDefinition { label: "a b" }, Attributes::new()),
+            Str("url".into()),
+            End(LinkDefinition { label: "a b" }),
+        );
+    }
+
+    #[test]
     fn link_definition_multiline() {
         test_parse!(
             concat!(
