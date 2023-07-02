@@ -1,7 +1,15 @@
+#![no_std]
+
+extern crate alloc;
+
+use crate::alloc::string::ToString;
+use alloc::string::String;
+
+use core::fmt::Write;
+
 use wasm_bindgen::prelude::*;
 
 use jotdown::Render;
-use std::fmt::Write;
 
 #[must_use]
 #[wasm_bindgen]
