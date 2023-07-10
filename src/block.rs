@@ -816,6 +816,7 @@ enum Kind<'s> {
         indent: usize,
         footnote: bool,
         label: &'s str,
+        last_blankline: bool,
     },
     Blockquote,
     ListItem {
@@ -888,6 +889,7 @@ impl<'s> IdentifiedBlock<'s> {
                         indent,
                         footnote,
                         label: &label[usize::from(footnote)..],
+                        last_blankline: false,
                     },
                     0..(indent + 3 + l),
                 )
@@ -1104,12 +1106,17 @@ impl<'s> Kind<'s> {
                 *last_blankline || whitespace > *indent || para
             }
             Self::Definition {
-                indent, footnote, ..
+                indent,
+                footnote,
+                last_blankline,
+                ..
             } => {
                 if *footnote {
                     let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
                     let whitespace = line.len() - line_t.len();
-                    matches!(next, Self::Atom(Blankline)) || whitespace > *indent
+                    let cont_para = !*last_blankline && matches!(next, Self::Paragraph);
+                    *last_blankline = matches!(next, Self::Atom(Blankline));
+                    whitespace > *indent || *last_blankline || cont_para
                 } else {
                     line.starts_with(' ') && !matches!(next, Self::Atom(Blankline))
                 }
@@ -2898,6 +2905,7 @@ mod test {
                 indent: 0,
                 footnote: false,
                 label: "tag",
+                last_blankline: false,
             },
             "[tag]:",
             1
@@ -2915,6 +2923,7 @@ mod test {
                 indent: 0,
                 footnote: false,
                 label: "tag",
+                last_blankline: false,
             },
             "[tag]:",
             2,
@@ -2928,6 +2937,7 @@ mod test {
                 indent: 0,
                 footnote: false,
                 label: "tag",
+                last_blankline: false,
             },
             "[tag]:",
             1,
@@ -2942,6 +2952,7 @@ mod test {
                 indent: 0,
                 footnote: true,
                 label: "tag",
+                last_blankline: false,
             },
             "[^tag]:",
             1
@@ -2956,6 +2967,7 @@ mod test {
                 indent: 0,
                 footnote: true,
                 label: "tag",
+                last_blankline: false,
             },
             "[^tag]:",
             1
@@ -2973,6 +2985,7 @@ mod test {
                 indent: 0,
                 footnote: true,
                 label: "tag",
+                last_blankline: false,
             },
             "[^tag]:",
             2,
@@ -2992,6 +3005,7 @@ mod test {
                 indent: 0,
                 footnote: true,
                 label: "tag",
+                last_blankline: false,
             },
             "[^tag]:",
             3,

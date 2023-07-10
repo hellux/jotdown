@@ -1867,7 +1867,32 @@ mod test {
                 "[^a]\n",
                 "\n",
                 "[^a]: note\n",
+                "cont\n",
+                "\n",
                 "para\n", //
+            ),
+            Start(Paragraph, Attributes::new()),
+            FootnoteReference("a"),
+            End(Paragraph),
+            Blankline,
+            Start(Footnote { label: "a" }, Attributes::new()),
+            Start(Paragraph, Attributes::new()),
+            Str("note".into()),
+            Softbreak,
+            Str("cont".into()),
+            End(Paragraph),
+            Blankline,
+            End(Footnote { label: "a" }),
+            Start(Paragraph, Attributes::new()),
+            Str("para".into()),
+            End(Paragraph),
+        );
+        test_parse!(
+            concat!(
+                "[^a]\n",       //
+                "\n",           //
+                "[^a]: note\n", //
+                ":::\n",        //
             ),
             Start(Paragraph, Attributes::new()),
             FootnoteReference("a"),
@@ -1878,9 +1903,8 @@ mod test {
             Str("note".into()),
             End(Paragraph),
             End(Footnote { label: "a" }),
-            Start(Paragraph, Attributes::new()),
-            Str("para".into()),
-            End(Paragraph),
+            Start(Div { class: "" }, Attributes::new()),
+            End(Div { class: "" }),
         );
     }
 
