@@ -353,13 +353,21 @@ impl<'s> TreeParser<'s> {
         span_end: Range<usize>,
         mut lines: &mut [Range<usize>],
     ) {
-        if let Kind::Fenced { indent, .. } = k {
+        if let Kind::Fenced { indent, spec, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = self.src.as_bytes()[line.clone()]
                     .iter()
                     .take_while(|c| *c != &b'\n' && c.is_ascii_whitespace())
                     .count();
                 line.start += (*indent).min(indent_line);
+            }
+
+            // trim ending whitespace of raw block
+            if spec.starts_with('=') {
+                let l = lines.len();
+                if l > 0 {
+                    lines[l - 1] = self.trim_end(lines[l - 1].clone());
+                }
             }
         } else {
             // trim starting whitespace of each inline

@@ -1534,7 +1534,39 @@ mod test {
         test_parse!(
             "``` =html\n<table>\n```",
             Start(RawBlock { format: "html" }, Attributes::new()),
-            Str("<table>\n".into()),
+            Str("<table>".into()),
+            End(RawBlock { format: "html" }),
+        );
+    }
+
+    #[test]
+    fn raw_block_whitespace() {
+        test_parse!(
+            concat!(
+                "```=html\n",  //
+                "<tag1>\n",    //
+                "<tag2>\n",    //
+                "```\n",       //
+                "\n",          //
+                "paragraph\n", //
+                "\n",          //
+                "```=html\n",  //
+                "</tag2>\n",   //
+                "</tag1>\n",   //
+                "```\n",       //
+            ),
+            Start(RawBlock { format: "html" }, Attributes::new()),
+            Str("<tag1>\n".into()),
+            Str("<tag2>".into()),
+            End(RawBlock { format: "html" }),
+            Blankline,
+            Start(Paragraph, Attributes::new()),
+            Str("paragraph".into()),
+            End(Paragraph),
+            Blankline,
+            Start(RawBlock { format: "html" }, Attributes::new()),
+            Str("</tag2>\n".into()),
+            Str("</tag1>".into()),
             End(RawBlock { format: "html" }),
         );
     }
