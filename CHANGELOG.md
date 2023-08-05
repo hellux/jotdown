@@ -1,3 +1,18 @@
+## [0.3.1](https://github.com/hellux/jotdown/releases/tag/0.3.1) - 2023-08-05
+
+### Changed
+
+- Block parser performance improved, up to 15% faster.
+- Last `unsafe` block removed (#5).
+
+### Fixed
+
+- Do not require indent for continuing footnotes.
+- Transfer classes from reference definitions to links.
+- Allow line breaks in reference links (still match reference label).
+- Remove excess newline after raw blocks.
+- HTML renderer: fix missing `<p>` tags after ordered lists (#44).
+
 ## [0.3.0](https://github.com/hellux/jotdown/releases/tag/0.3.0) - 2023-05-16
 
 ### Added
