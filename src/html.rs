@@ -295,17 +295,13 @@ impl<'s> Writer<'s> {
                 }
                 match c {
                     Container::Blockquote => out.write_str("</blockquote>")?,
-                    Container::List {
-                        kind: ListKind::Unordered | ListKind::Task,
-                        ..
-                    } => {
+                    Container::List { kind, .. } => {
                         self.list_tightness.pop();
-                        out.write_str("</ul>")?;
+                        match kind {
+                            ListKind::Unordered | ListKind::Task => out.write_str("</ul>")?,
+                            ListKind::Ordered { .. } => out.write_str("</ol>")?,
+                        }
                     }
-                    Container::List {
-                        kind: ListKind::Ordered { .. },
-                        ..
-                    } => out.write_str("</ol>")?,
                     Container::ListItem | Container::TaskListItem { .. } => {
                         out.write_str("</li>")?;
                     }
