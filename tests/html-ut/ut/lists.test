@@ -10,3 +10,11 @@ item
 </ol>
 <p>para</p>
 ```
+
+Only single letter alphabetic list markers.
+
+```
+word. Continuing paragraph.
+.
+<p>word. Continuing paragraph.</p>
+```

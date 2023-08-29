@@ -1019,21 +1019,22 @@ impl<'s> IdentifiedBlock<'s> {
 
         let numbering = if first.is_ascii_digit() {
             Decimal
-        } else if first.is_ascii_lowercase() {
-            AlphaLower
-        } else if first.is_ascii_uppercase() {
-            AlphaUpper
         } else if is_roman_lower_digit(first) {
             RomanLower
         } else if is_roman_upper_digit(first) {
             RomanUpper
+        } else if first.is_ascii_lowercase() {
+            AlphaLower
+        } else if first.is_ascii_uppercase() {
+            AlphaUpper
         } else {
             return None;
         };
 
         let max_len = match numbering {
+            AlphaLower | AlphaUpper => 1,
             Decimal => 19,
-            AlphaLower | AlphaUpper | RomanLower | RomanUpper => 13,
+            RomanLower | RomanUpper => 13,
         };
 
         let chars_num = chars.clone();
@@ -1064,17 +1065,6 @@ impl<'s> IdentifiedBlock<'s> {
             return None;
         };
         let len_style = usize::from(start_paren) + 1;
-
-        let chars_num = std::iter::once(first).chain(chars_num.take(len_num - 1));
-        let numbering = if matches!(numbering, AlphaLower)
-            && chars_num.clone().all(is_roman_lower_digit)
-        {
-            RomanLower
-        } else if matches!(numbering, AlphaUpper) && chars_num.clone().all(is_roman_upper_digit) {
-            RomanUpper
-        } else {
-            numbering
-        };
 
         if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
             Some((numbering, style, len_num + len_style))
@@ -3127,16 +3117,6 @@ mod test {
                 last_blankline: false,
             },
             "I.",
-            1
-        );
-        test_block!(
-            "IJ. abc\n",
-            Kind::ListItem {
-                indent: 0,
-                ty: Ordered(AlphaUpper, Period),
-                last_blankline: false,
-            },
-            "IJ.",
             1
         );
         test_block!(
