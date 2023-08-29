@@ -81,7 +81,7 @@ jobs:
         run: |
           rustup update nightly
           rustup default nightly
-          cargo install afl
+          cargo install cargo-afl
       - name: "Fuzz"
         run: |
           echo core | sudo tee /proc/sys/kernel/core_pattern
