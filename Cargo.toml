@@ -2,7 +2,7 @@
 name = "jotdown"
 description = "A parser for the Djot markup language"
 authors = ["Noah Hellman <noah@hllmn.net>"]
-version = "0.3.1"
+version = "0.3.2"
 license = "MIT"
 edition = "2021"
 keywords = ["djot", "markup"]

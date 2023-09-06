@@ -263,11 +263,11 @@ dependencies = [
 
 [[package]]
 name = "jotdown"
-version = "0.3.1"
+version = "0.3.2"
 
 [[package]]
 name = "jotdown_wasm"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "git2",
  "jotdown",

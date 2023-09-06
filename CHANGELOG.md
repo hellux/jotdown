@@ -1,3 +1,9 @@
+## [0.3.2](https://github.com/hellux/jotdown/releases/tag/0.3.2) - 2023-09-06
+
+### Changed
+
+- Alphabetic list markers can only be one character long.
+
 ## [0.3.1](https://github.com/hellux/jotdown/releases/tag/0.3.1) - 2023-08-05
 
 ### Changed
