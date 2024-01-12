@@ -96,6 +96,7 @@ jobs:
         run: |
           rustup update stable
           rustup default stable
+          sudo apt-get update
           sudo apt-get install valgrind
       - name: "Fetch benchmark inputs"
         run: make bench
