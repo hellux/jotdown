@@ -1,0 +1,104 @@
+name: release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: write
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  create:
+    name: create release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: verify version matches
+        shell: bash
+        run: grep -q 'version = "${{ github.ref_name }}"' Cargo.toml || { echo version mismatch >&2 && exit 1; }
+      - name: create release
+        run: gh release create ${{ github.ref_name }} --draft --verify-tag --title "Release ${{ github.ref_name }}"
+
+  build:
+    name: build
+    needs: ['create']
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+        - os: ubuntu-latest
+          target: i686-unknown-linux-musl
+        - os: macos-latest
+          target: x86_64-apple-darwin
+        - os: macos-latest
+          target: aarch64-apple-darwin
+        - os: windows-latest
+          target: x86_64-pc-windows-msvc
+        - os: windows-latest
+          target: i686-pc-windows-msvc
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref_name }}
+
+    - name: install rust
+      shell: bash
+      run: |
+        rustup update stable
+        rustup target add ${{ matrix.target }}
+
+    - name: build
+      shell: bash
+      run: |
+        if [ -n "${{ matrix.linker }}" ]; then
+          export RUSTFLAGS="-Clinker=${{ matrix.linker }}"
+        fi
+        cargo build --verbose --release --target ${{ matrix.target }}
+        find .
+        bin="target/${{ matrix.target }}/release/jotdown"
+        [ "${{ matrix.os }}" = "windows-latest" ] && bin="$bin.exe"
+        echo "BIN=$bin" >> $GITHUB_ENV
+
+    - name: strip
+      if: ${{ startsWith(matrix.os, 'ubuntu') }}
+      run: strip $BIN
+
+    - name: set archive name
+      shell: bash
+      run: echo "ARCHIVE=jotdown-${{ github.ref_name }}-${{ matrix.target }}" >> $GITHUB_ENV
+
+    - name: init archive dir
+      shell: bash
+      run: |
+        mkdir "$ARCHIVE"/
+        cp "$BIN" "$ARCHIVE"/
+        cp {COPYING,CHANGELOG.md,README.md} "$ARCHIVE"/
+
+    - name: archive (win)
+      if: ${{ startsWith(matrix.os, 'windows') }}
+      shell: bash
+      run: |
+        7z a "$ARCHIVE.zip" "$ARCHIVE"
+        echo "ASSET=$ARCHIVE.zip" >> $GITHUB_ENV
+
+    - name: archive (unix)
+      if: ${{ ! startsWith(matrix.os, 'windows') }}
+      shell: bash
+      run: |
+        tar czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+        echo "ASSET=$ARCHIVE.tar.gz" >> $GITHUB_ENV
+
+    - name: Upload release archive
+      shell: bash
+      run: |
+        gh release upload ${{ github.ref_name }} ${{ env.ASSET }}
