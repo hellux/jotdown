@@ -42,3 +42,6 @@ doc = false
 default = ["html"]
 html = [] # html renderer and minimal cli binary
 deterministic = [] # for stable fuzzing
+
+[profile.release]
+lto = true
