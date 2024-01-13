@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: grep -q 'version = "${{ github.ref_name }}"' Cargo.toml || { echo version mismatch >&2 && exit 1; }
       - name: create release
-        run: gh release create ${{ github.ref_name }} --draft --verify-tag --title "Release ${{ github.ref_name }}"
+        run: gh release create ${{ github.ref_name }} --draft --verify-tag --title ${{ github.ref_name }}
 
   build:
     name: build
