@@ -61,7 +61,9 @@ mod block;
 mod inline;
 mod lex;
 
-pub use attr::{AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter};
+pub use attr::{
+    AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter, AttributesIter,
+};
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 

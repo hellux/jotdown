@@ -195,15 +195,20 @@ impl<'s> Attributes<'s> {
         self.0.as_ref().map_or(true, |v| v.is_empty())
     }
 
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.as_ref().map_or(0, |v| v.len())
+    }
+
     /// Returns a reference to the value corresponding to the attribute key.
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<&AttributeValue<'s>> {
+    pub fn get(&self, key: &str) -> Option<&AttributeValue> {
         self.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
     }
 
-    /// Returns an iterator over the attributes in undefined order.
-    pub fn iter(&self) -> impl Iterator<Item = (&'s str, &AttributeValue<'s>)> + '_ {
-        self.0.iter().flat_map(|v| v.iter().map(|(a, b)| (*a, b)))
+    /// Returns an iterator over references to the attribute keys and values in undefined order.
+    pub fn iter(&self) -> AttributesIter {
+        self.into_iter()
     }
 }
 
@@ -226,7 +231,7 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         let mut first = true;
-        for (k, v) in self.iter() {
+        for (k, v) in self {
             if !first {
                 write!(f, ", ")?;
             }
@@ -259,6 +264,32 @@ impl<'s> IntoIterator for Attributes<'s> {
 
     fn into_iter(self) -> Self::IntoIter {
         AttributesIntoIter(self.0.map_or(vec![].into_iter(), |b| (*b).into_iter()))
+    }
+}
+
+/// Iterator over references to [Attributes] key-value pairs, in arbitrary order.
+pub struct AttributesIter<'i, 's>(std::slice::Iter<'i, (&'s str, AttributeValue<'s>)>);
+
+impl<'i, 's> Iterator for AttributesIter<'i, 's> {
+    type Item = (&'s str, &'i AttributeValue<'s>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(move |(k, v)| (*k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'i, 's> IntoIterator for &'i Attributes<'s> {
+    type Item = (&'s str, &'i AttributeValue<'s>);
+
+    type IntoIter = AttributesIter<'i, 's>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let sl = self.0.as_ref().map_or(&[][..], |a| a.as_slice());
+        AttributesIter(sl.iter())
     }
 }
 
@@ -583,5 +614,18 @@ mod test {
 
     fn make_attrs<'a>(v: Vec<(&'a str, &'a str)>) -> Attributes<'a> {
         v.into_iter().collect()
+    }
+
+    #[test]
+    fn can_iter() {
+        let attrs = make_attrs(vec![("key1", "val1"), ("key2", "val2")]);
+        let as_vec = attrs.iter().collect::<Vec<_>>();
+        assert_eq!(
+            as_vec,
+            vec![
+                ("key1", &AttributeValue::from("val1")),
+                ("key2", &AttributeValue::from("val2")),
+            ]
+        );
     }
 }
