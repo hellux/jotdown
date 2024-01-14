@@ -237,6 +237,31 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     }
 }
 
+/// Iterator over [Attributes] key-value pairs, in arbitrary order.
+pub struct AttributesIntoIter<'s>(std::vec::IntoIter<(&'s str, AttributeValue<'s>)>);
+
+impl<'s> Iterator for AttributesIntoIter<'s> {
+    type Item = (&'s str, AttributeValue<'s>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'s> IntoIterator for Attributes<'s> {
+    type Item = (&'s str, AttributeValue<'s>);
+
+    type IntoIter = AttributesIntoIter<'s>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        AttributesIntoIter(self.0.map_or(vec![].into_iter(), |b| (*b).into_iter()))
+    }
+}
+
 #[derive(Clone)]
 pub struct Validator {
     state: State,
@@ -405,10 +430,12 @@ pub fn is_name(c: u8) -> bool {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     macro_rules! test_attr {
         ($src:expr $(,$($av:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut attr = super::Attributes::new();
+            let mut attr = Attributes::new();
             attr.parse($src);
             let actual = attr.iter().collect::<Vec<_>>();
             let expected = &[$($($av),*,)?];
@@ -552,5 +579,9 @@ mod test {
         assert_eq!(super::valid("{.class invalid}"), 0);
         assert_eq!(super::valid("abc"), 0);
         assert_eq!(super::valid("{.abc.}"), 0);
+    }
+
+    fn make_attrs<'a>(v: Vec<(&'a str, &'a str)>) -> Attributes<'a> {
+        v.into_iter().collect()
     }
 }
