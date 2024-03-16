@@ -81,18 +81,12 @@ pub enum Leaf<'s> {
 pub enum Container<'s> {
     Blockquote,
     Div { class: &'s str },
-    List { kind: ListKind, marker: &'s str },
+    List { ty: ListType, tight: bool },
     ListItem(ListItemKind),
     Footnote { label: &'s str },
     Table,
     TableRow { head: bool },
     Section { pos: u32 },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ListKind {
-    pub ty: ListType,
-    pub tight: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,9 +99,28 @@ pub enum ListItemKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListType {
     Unordered(u8),
-    Ordered(crate::OrderedListNumbering, crate::OrderedListStyle),
+    Ordered(ListNumber, crate::OrderedListStyle),
     Task,
     Description,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListNumber {
+    pub numbering: crate::OrderedListNumbering,
+    pub value: u64,
+}
+
+impl ListType {
+    /// Whether this list item can be continued by the other list item.
+    fn continues(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Ordered(ListNumber { numbering: n0, .. }, s0),
+                Ordered(ListNumber { numbering: n1, .. }, s1),
+            ) if n0 == n1 && s0 == s1 => true,
+            _ => self == other,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -251,7 +264,7 @@ impl<'s> TreeParser<'s> {
             if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
                 debug_assert!(usize::from(*depth) <= self.open.len());
                 if self.open.len() == (*depth).into()
-                    && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if *ty == ty_new)
+                    && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if ty.continues(&ty_new))
                 {
                     let l = self.open_lists.pop().unwrap();
                     self.close_list(l, span_start.start);
@@ -268,12 +281,12 @@ impl<'s> TreeParser<'s> {
                         if usize::from(*depth) >= self.open.len()
                             || !matches!(kind, Kind::ListItem { .. })
                         {
-                            if let EventKind::Enter(Node::Container(List { kind, .. })) =
+                            if let EventKind::Enter(Node::Container(List { tight, .. })) =
                                 &mut self.events[*event].kind
                             {
-                                if kind.tight {
+                                if *tight {
                                     self.prev_loose = true;
-                                    kind.tight = false;
+                                    *tight = false;
                                 }
                             }
                         }
@@ -499,10 +512,7 @@ impl<'s> TreeParser<'s> {
             if same_depth {
                 let tight = true;
                 let event = self.enter(
-                    Node::Container(Container::List {
-                        kind: ListKind { ty: *ty, tight },
-                        marker: &self.src[span_start.clone()],
-                    }),
+                    Node::Container(Container::List { ty: *ty, tight }),
                     span_start.start..span_start.start,
                 );
                 self.open_lists.push(OpenList {
@@ -747,11 +757,11 @@ impl<'s> TreeParser<'s> {
 
     fn close_list(&mut self, list: OpenList, pos: usize) {
         if self.prev_loose {
-            if let EventKind::Enter(Node::Container(List { kind, .. })) =
+            if let EventKind::Enter(Node::Container(List { tight, .. })) =
                 &mut self.events[list.event].kind
             {
                 // ignore blankline at end
-                kind.tight = true;
+                *tight = true;
             } else {
                 panic!()
             }
@@ -970,7 +980,7 @@ impl<'s> IdentifiedBlock<'s> {
                     )
                 })
             }
-            c => Self::maybe_ordered_list_item(c, chars).map(|(num, style, len)| {
+            _ => Self::maybe_ordered_list_item(line).map(|(num, style, len)| {
                 (
                     Kind::ListItem {
                         indent,
@@ -1000,10 +1010,7 @@ impl<'s> IdentifiedBlock<'s> {
         n >= 3
     }
 
-    fn maybe_ordered_list_item(
-        mut first: char,
-        mut chars: std::str::Chars,
-    ) -> Option<(crate::OrderedListNumbering, crate::OrderedListStyle, usize)> {
+    fn maybe_ordered_list_item(line: &str) -> Option<(ListNumber, crate::OrderedListStyle, usize)> {
         fn is_roman_lower_digit(c: char) -> bool {
             matches!(c, 'i' | 'v' | 'x' | 'l' | 'c' | 'd' | 'm')
         }
@@ -1011,6 +1018,9 @@ impl<'s> IdentifiedBlock<'s> {
         fn is_roman_upper_digit(c: char) -> bool {
             matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M')
         }
+
+        let mut chars = line.chars();
+        let mut first = chars.next().unwrap();
 
         let start_paren = first == '(';
         if start_paren {
@@ -1067,7 +1077,15 @@ impl<'s> IdentifiedBlock<'s> {
         let len_style = usize::from(start_paren) + 1;
 
         if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
-            Some((numbering, style, len_num + len_style))
+            let len = len_num + len_style;
+            Some((
+                ListNumber {
+                    numbering,
+                    value: numbering.parse_number(style.number(&line[..len])),
+                },
+                style,
+                len,
+            ))
         } else {
             None
         }
@@ -1198,7 +1216,7 @@ mod test {
     use super::Kind;
     use super::Leaf::*;
     use super::ListItemKind;
-    use super::ListKind;
+    use super::ListNumber;
     use super::ListType::*;
     use super::Node::*;
 
@@ -1799,11 +1817,8 @@ mod test {
             "- abc",
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
@@ -1814,11 +1829,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
@@ -1834,11 +1846,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -1854,11 +1863,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -1876,11 +1882,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: false,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: false,
                 })),
                 ""
             ),
@@ -1902,11 +1905,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: false,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: false,
                 })),
                 ""
             ),
@@ -1926,11 +1926,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -1946,11 +1943,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: false,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: false,
                 })),
                 ""
             ),
@@ -1965,22 +1959,16 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: false,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: false,
                 })),
                 ""
             ),
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2000,11 +1988,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2015,11 +2000,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true,
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2036,11 +2018,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true,
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2052,11 +2031,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2071,11 +2047,14 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Ordered(Decimal, Period),
-                        tight: true,
-                    },
-                    marker: "1.",
+                    ty: Ordered(
+                        ListNumber {
+                            numbering: Decimal,
+                            value: 1,
+                        },
+                        Period,
+                    ),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2086,11 +2065,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2102,11 +2078,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2116,11 +2089,14 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Ordered(Decimal, Period),
-                        tight: true,
-                    },
-                    marker: "1.",
+                    ty: Ordered(
+                        ListNumber {
+                            numbering: Decimal,
+                            value: 1,
+                        },
+                        Period,
+                    ),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2139,11 +2115,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2154,11 +2127,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true,
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2169,11 +2139,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'*'),
-                        tight: true,
-                    },
-                    marker: "*",
+                    ty: Unordered(b'*'),
+                    tight: true,
                 })),
                 "",
             ),
@@ -2184,33 +2151,24 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'*'),
-                        tight: true,
-                    },
-                    marker: "*",
+                    ty: Unordered(b'*'),
+                    tight: true,
                 })),
                 "",
             ),
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true,
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true,
                 })),
                 "",
             ),
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2229,11 +2187,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2244,11 +2199,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'*'),
-                        tight: true
-                    },
-                    marker: "*",
+                    ty: Unordered(b'*'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2260,22 +2212,16 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'*'),
-                        tight: true
-                    },
-                    marker: "*",
+                    ty: Unordered(b'*'),
+                    tight: true
                 })),
                 ""
             ),
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2295,11 +2241,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2310,21 +2253,15 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 ""
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2340,11 +2277,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'+'),
-                        tight: true
-                    },
-                    marker: "+",
+                    ty: Unordered(b'+'),
+                    tight: true
                 })),
                 ""
             ),
@@ -2361,11 +2295,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: true,
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: true,
                 })),
                 ""
             ),
@@ -2382,11 +2313,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: true,
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: true,
                 })),
                 ""
             ),
@@ -2407,11 +2335,8 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: false
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: false
                 })),
                 "",
             ),
@@ -2433,11 +2358,8 @@ mod test {
             (Atom(Blankline), "\n"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 "",
             ),
@@ -2454,11 +2376,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true
                 })),
                 "",
             ),
@@ -2472,11 +2391,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: false
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: false
                 })),
                 "",
             ),
@@ -2489,11 +2405,8 @@ mod test {
             ":\n",
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: true,
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: true,
                 })),
                 ""
             ),
@@ -2504,11 +2417,8 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::Description))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Description,
-                        tight: true,
-                    },
-                    marker: ":",
+                    ty: Description,
+                    tight: true,
                 })),
                 ""
             ),
@@ -2740,22 +2650,16 @@ mod test {
             ),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
             (Enter(Container(ListItem(ListItemKind::List))), "-"),
             (
                 Enter(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -2771,22 +2675,16 @@ mod test {
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
             (Exit(Container(ListItem(ListItemKind::List))), ""),
             (
                 Exit(Container(List {
-                    kind: ListKind {
-                        ty: Unordered(b'-'),
-                        tight: true,
-                    },
-                    marker: "-",
+                    ty: Unordered(b'-'),
+                    tight: true,
                 })),
                 ""
             ),
@@ -3093,7 +2991,13 @@ mod test {
             "123. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(Decimal, Period),
+                ty: Ordered(
+                    ListNumber {
+                        numbering: Decimal,
+                        value: 123,
+                    },
+                    Period,
+                ),
                 last_blankline: false,
             },
             "123.",
@@ -3103,7 +3007,13 @@ mod test {
             "i. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(RomanLower, Period),
+                ty: Ordered(
+                    ListNumber {
+                        numbering: RomanLower,
+                        value: 1
+                    },
+                    Period,
+                ),
                 last_blankline: false,
             },
             "i.",
@@ -3113,7 +3023,13 @@ mod test {
             "I. abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(RomanUpper, Period),
+                ty: Ordered(
+                    ListNumber {
+                        numbering: RomanUpper,
+                        value: 1,
+                    },
+                    Period,
+                ),
                 last_blankline: false,
             },
             "I.",
@@ -3123,7 +3039,13 @@ mod test {
             "(a) abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(AlphaLower, ParenParen),
+                ty: Ordered(
+                    ListNumber {
+                        numbering: AlphaLower,
+                        value: 1,
+                    },
+                    ParenParen,
+                ),
                 last_blankline: false,
             },
             "(a)",
@@ -3133,7 +3055,13 @@ mod test {
             "a) abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Ordered(AlphaLower, Paren),
+                ty: Ordered(
+                    ListNumber {
+                        numbering: AlphaLower,
+                        value: 1,
+                    },
+                    Paren,
+                ),
                 last_blankline: false,
             },
             "a)",

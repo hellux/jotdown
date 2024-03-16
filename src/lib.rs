@@ -1083,25 +1083,21 @@ impl<'s> Parser<'s> {
                             block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div { class } => Container::Div { class },
                             block::Container::Footnote { label } => Container::Footnote { label },
-                            block::Container::List {
-                                kind: block::ListKind { ty, tight },
-                                marker,
-                            } => {
+                            block::Container::List { ty, tight } => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
                                 } else {
                                     let kind = match ty {
                                         block::ListType::Unordered(..) => ListKind::Unordered,
                                         block::ListType::Task => ListKind::Task,
-                                        block::ListType::Ordered(numbering, style) => {
-                                            let start =
-                                                numbering.parse_number(style.number(marker)).max(1);
-                                            ListKind::Ordered {
-                                                numbering,
-                                                style,
-                                                start,
-                                            }
-                                        }
+                                        block::ListType::Ordered(
+                                            block::ListNumber { numbering, value },
+                                            style,
+                                        ) => ListKind::Ordered {
+                                            numbering,
+                                            style,
+                                            start: value,
+                                        },
                                         block::ListType::Description => unreachable!(),
                                     };
                                     Container::List { kind, tight }
