@@ -376,7 +376,7 @@ impl<'s> TreeParser<'s> {
             }
 
             // skip first inline if empty
-            if lines.get(0).map_or(false, |l| l.is_empty()) {
+            if lines.first().map_or(false, |l| l.is_empty()) {
                 lines = &mut lines[1..];
             };
 

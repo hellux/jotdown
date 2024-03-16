@@ -387,10 +387,8 @@ impl<'s> Parser<'s> {
     pub fn parse(&mut self, input: &'s str) {
         use State::*;
 
-        let mut pos = 0;
         let mut pos_prev = 0;
-
-        for c in input.bytes() {
+        for (pos, c) in input.bytes().enumerate() {
             let state_next = self.state.step(c);
             let st = std::mem::replace(&mut self.state, state_next);
 
@@ -411,12 +409,10 @@ impl<'s> Parser<'s> {
                 }
             };
 
-            pos += 1;
-
             debug_assert!(!matches!(self.state, Invalid));
 
             if matches!(self.state, Done) {
-                if input[pos..].starts_with('{') {
+                if input[pos + 1..].starts_with('{') {
                     self.state = Start;
                 } else {
                     return;
