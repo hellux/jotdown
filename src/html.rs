@@ -434,7 +434,7 @@ impl<'s> Writer<'s> {
                 }
                 write!(
                     out,
-                    r##"<a href="#fnref{}" role="doc-backlink">↩︎︎</a></p>"##,
+                    "<a href=\"#fnref{}\" role=\"doc-backlink\">\u{21A9}\u{FE0E}</a></p>",
                     number,
                 )?;
 
