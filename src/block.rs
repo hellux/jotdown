@@ -110,28 +110,80 @@ pub struct ListNumber {
     pub value: u64,
 }
 
+impl ListNumber {
+    /// Return additional value that this number could represent, if any.
+    fn ambiguity(self) -> Option<Self> {
+        // assume roman if ambiguous (prioritized during parsing)
+        match self.numbering {
+            RomanLower | RomanUpper => match self.value {
+                1 => Some("i"),
+                5 => Some("v"),
+                10 => Some("x"),
+                50 => Some("l"),
+                100 => Some("c"),
+                500 => Some("d"),
+                1000 => Some("m"),
+                _ => None,
+            }
+            .map(|single_digit| ListNumber {
+                numbering: if self.numbering == RomanLower {
+                    AlphaLower
+                } else {
+                    AlphaUpper
+                },
+                value: AlphaLower.parse_number(single_digit),
+            }),
+            _ => None,
+        }
+    }
+}
+
 impl ListType {
     /// Whether this list item can be continued by the other list item.
-    fn continues(&self, other: &Self) -> bool {
+    ///
+    /// If so, return the two new resolved ListType objects. They only differ from the input in
+    /// case of ambiguous types.
+    fn continues(&self, other: &Self) -> Option<(Self, Self)> {
         match (self, other) {
+            _ if self == other => Some((*self, *other)),
             (
                 Ordered(ListNumber { numbering: n0, .. }, s0),
                 Ordered(ListNumber { numbering: n1, .. }, s1),
-            ) if n0 == n1 && s0 == s1 => true,
-            _ => self == other,
+            ) if n0 == n1 && s0 == s1 => Some((*self, *other)),
+            (Ordered(n0, s0), Ordered(n1, s1)) if s0 == s1 => {
+                if let Some(na0) = n0.ambiguity() {
+                    if na0.numbering == n1.numbering && na0.value + 1 == n1.value {
+                        Some((ListType::Ordered(na0, *s0), *other))
+                    } else {
+                        None
+                    }
+                } else if let Some(na1) = n1.ambiguity() {
+                    if n0.numbering == na1.numbering && n0.value + 1 == na1.value {
+                        Some((*self, ListType::Ordered(na1, *s1)))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 }
 
 #[derive(Debug)]
 struct OpenList {
-    /// Type of the list, used to determine whether this list should be continued or a new one
-    /// should be created.
-    ty: ListType,
+    /// Type of the list, an initial guess is made but may change if ambiguous. Also used to
+    /// determine whether this list should be continued or a new one should be created.
+    ty_start: ListType,
+    /// Type of the previous item, generally the same as ty_start but value may differ in ordered
+    /// lists.
+    ty_prev: ListType,
     /// Depth in the tree where the direct list items of the list are. Needed to determine when to
     /// close the list.
     depth: u16,
-    /// Index to event in tree, required to update tightness.
+    /// Index to event in tree, required to update list type and tightness.
     event: usize,
 }
 
@@ -261,13 +313,32 @@ impl<'s> TreeParser<'s> {
             };
 
             // close list if a non list item or a list item of new type appeared
-            if let Some(OpenList { ty, depth, .. }) = self.open_lists.last() {
+            if let Some(OpenList {
+                ty_start,
+                ty_prev,
+                depth,
+                ..
+            }) = self.open_lists.last_mut()
+            {
                 debug_assert!(usize::from(*depth) <= self.open.len());
-                if self.open.len() == (*depth).into()
-                    && !matches!(kind, Kind::ListItem { ty: ty_new, .. } if ty.continues(&ty_new))
-                {
-                    let l = self.open_lists.pop().unwrap();
-                    self.close_list(l, span_start.start);
+                if self.open.len() == (*depth).into() {
+                    let continues = if let Kind::ListItem { ty: ty_new, .. } = kind {
+                        if let Some((ty_prev_res, ty_new_res)) = ty_prev.continues(&ty_new) {
+                            if ty_start == ty_prev {
+                                *ty_start = ty_prev_res;
+                            }
+                            *ty_prev = ty_new_res;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    if !continues {
+                        let l = self.open_lists.pop().unwrap();
+                        self.close_list(l, span_start.start);
+                    }
                 }
             }
 
@@ -516,7 +587,8 @@ impl<'s> TreeParser<'s> {
                     span_start.start..span_start.start,
                 );
                 self.open_lists.push(OpenList {
-                    ty: *ty,
+                    ty_start: *ty,
+                    ty_prev: *ty,
                     depth: self.open.len().try_into().unwrap(),
                     event,
                 });
@@ -756,15 +828,16 @@ impl<'s> TreeParser<'s> {
     }
 
     fn close_list(&mut self, list: OpenList, pos: usize) {
-        if self.prev_loose {
-            if let EventKind::Enter(Node::Container(List { tight, .. })) =
-                &mut self.events[list.event].kind
-            {
+        if let EventKind::Enter(Node::Container(List { ty, tight })) =
+            &mut self.events[list.event].kind
+        {
+            if self.prev_loose {
                 // ignore blankline at end
                 *tight = true;
-            } else {
-                panic!()
             }
+            *ty = list.ty_start;
+        } else {
+            panic!()
         }
 
         self.exit(pos..pos); // list
@@ -1030,6 +1103,7 @@ impl<'s> IdentifiedBlock<'s> {
         let numbering = if first.is_ascii_digit() {
             Decimal
         } else if is_roman_lower_digit(first) {
+            // prioritize roman for now if ambiguous
             RomanLower
         } else if is_roman_upper_digit(first) {
             RomanUpper
