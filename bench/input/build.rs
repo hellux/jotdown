@@ -1,8 +1,7 @@
 use std::io::Write;
 
-fn main() {
-    let inputs = std::fs::read_dir(".")
-        .unwrap()
+fn main() -> std::io::Result<()> {
+    let inputs = std::fs::read_dir(".")?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             if let Some(name) = entry.file_name().to_str() {
@@ -21,36 +20,37 @@ fn main() {
         .collect::<Vec<_>>();
 
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
-    let mut out = std::fs::File::create(std::path::Path::new(&out_dir).join("lib.rs")).unwrap();
+    let mut out = std::fs::File::create(std::path::Path::new(&out_dir).join("lib.rs"))?;
 
-    inputs.iter().for_each(|(name, input)| {
+    inputs.iter().try_for_each(|(name, input)| {
         write!(
             out,
             "#[allow(dead_code)]\nconst {}: &str = r###\"{}\"###;",
             name.to_uppercase(),
             input,
         )
-        .unwrap()
-    });
+    })?;
 
     write!(
         out,
         "#[allow(dead_code)]\npub const ALL: &str = r###\"{}\"###;",
         inputs.iter().map(|(_, s)| s.as_str()).collect::<String>(),
-    )
-    .unwrap();
+    )?;
 
     write!(
         out,
-        "#[allow(dead_code)]\npub const INPUTS: &[(&str, &str)] = &[{}];",
-        inputs
-            .iter()
-            .map(|(n, _)| n.as_ref())
-            .chain(std::iter::once("all"))
-            .map(|n| format!("(\"{}\", {}),", n, n.to_uppercase()))
-            .collect::<String>(),
-    )
-    .unwrap();
+        "#[allow(dead_code)]\npub const INPUTS: &[(&str, &str)] = &[",
+    )?;
+    for n in inputs
+        .iter()
+        .map(|(n, _)| n.as_ref())
+        .chain(std::iter::once("all"))
+    {
+        write!(out, "(\"{}\", {}),", n, n.to_uppercase())?
+    }
+    write!(out, "];")?;
 
     println!("cargo:rerun-if-change=always_rerun");
+
+    Ok(())
 }

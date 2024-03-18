@@ -12,6 +12,6 @@ fn main() {
             .expect("failed to execute make");
         assert!(status.success());
     } else {
-        std::fs::write("ref.rs", &[b'\n']).unwrap();
+        std::fs::write("ref.rs", [b'\n']).unwrap();
     }
 }

@@ -13,5 +13,5 @@ fn get_version() -> String {
 fn main() {
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
     let dest_path = std::path::Path::new(&out_dir).join("version");
-    std::fs::write(&dest_path, get_version()).unwrap();
+    std::fs::write(dest_path, get_version()).unwrap();
 }
