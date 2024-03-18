@@ -11,13 +11,13 @@ Footnote references may appear within a footnote.
 <hr>
 <ol>
 <li id="fn1">
-<p>a<a id="fnref2" href="#fn2" role="doc-noteref"><sup>2</sup></a><a id="fnref3" href="#fn3" role="doc-noteref"><sup>3</sup></a><a href="#fnref1" role="doc-backlink">↩︎︎</a></p>
+<p>a<a id="fnref2" href="#fn2" role="doc-noteref"><sup>2</sup></a><a id="fnref3" href="#fn3" role="doc-noteref"><sup>3</sup></a><a href="#fnref1" role="doc-backlink">↩︎</a></p>
 </li>
 <li id="fn2">
-<p>b<a href="#fnref2" role="doc-backlink">↩︎︎</a></p>
+<p>b<a href="#fnref2" role="doc-backlink">↩︎</a></p>
 </li>
 <li id="fn3">
-<p><a href="#fnref3" role="doc-backlink">↩︎︎</a></p>
+<p><a href="#fnref3" role="doc-backlink">↩︎</a></p>
 </li>
 </ol>
 </section>
@@ -48,10 +48,10 @@ Footnotes may appear within footnotes.
 <hr>
 <ol>
 <li id="fn1">
-<p>inner<a href="#fnref1" role="doc-backlink">↩︎︎</a></p>
+<p>inner<a href="#fnref1" role="doc-backlink">↩︎</a></p>
 </li>
 <li id="fn2">
-<p><a href="#fnref2" role="doc-backlink">↩︎︎</a></p>
+<p><a href="#fnref2" role="doc-backlink">↩︎</a></p>
 </li>
 </ol>
 </section>

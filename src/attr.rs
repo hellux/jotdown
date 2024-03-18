@@ -463,6 +463,7 @@ impl State {
                 _ => Invalid,
             },
             Comment if c == b'%' => Whitespace,
+            Comment if c == b'}' => Done,
             Comment => Comment,
             ClassFirst if is_name(c) => Class,
             ClassFirst => Invalid,
@@ -557,8 +558,10 @@ mod test {
 
     #[test]
     fn comment() {
+        test_attr!("{%}");
         test_attr!("{%%}");
         test_attr!("{ % abc % }");
+        test_attr!("{ .some_class % #some_id }", ("class", "some_class"));
         test_attr!(
             "{ .some_class % abc % #some_id}",
             ("class", "some_class"),
