@@ -16,7 +16,7 @@ jobs:
           - stable
     steps:
       - name: "Checkout repo"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
           rustup update ${{ matrix.toolchain }}
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
           rustup update 1.56
@@ -43,7 +43,7 @@ jobs:
       - name: "Run HTML unit tests"
         run: make test_html_ut
       - name: "Setup node"
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
       - name: "Compare HTML with reference implementation"
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
           rustup update 1.56
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
           rustup update nightly
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
           rustup update stable
@@ -101,7 +101,7 @@ jobs:
           cargo bench -p bench-crit all > crit
           cargo bench -p bench-iai > iai
       - name: "Artifact results"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark
           path: |
