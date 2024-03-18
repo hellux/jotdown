@@ -46,7 +46,7 @@
 //! # }
 //! ```
 
-#![allow(clippy::blocks_in_if_conditions)]
+#![allow(clippy::blocks_in_conditions)]
 
 use std::fmt;
 use std::fmt::Write as FmtWrite;
