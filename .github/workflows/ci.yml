@@ -6,21 +6,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Build and run tests
+  test_unit:
+    name: Unit test main crate (1.56)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - "1.56"
-          - stable
     steps:
       - name: "Checkout repo"
         uses: actions/checkout@v4
       - name: "Setup toolchain"
         run: |
-          rustup update ${{ matrix.toolchain }}
-          rustup default ${{ matrix.toolchain }}
+          rustup update 1.56
+          rustup default 1.56
+      - name: "Build"
+        run: |
+          cargo build -p jotdown
+      - name: "Run tests"
+        env:
+            RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo test -p jotdown
+  test_unit_all:
+    name: Unit test all crates (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repo"
+        uses: actions/checkout@v4
+      - name: "Setup toolchain"
+        run: |
+          rustup update stable
+          rustup default stable
       - name: "Build"
         run: |
           make all
