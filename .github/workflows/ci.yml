@@ -44,7 +44,7 @@ jobs:
         run: |
           make check
   test_html:
-    name: Build and run HTML tests
+    name: Build and run HTML tests (1.56)
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
@@ -62,7 +62,7 @@ jobs:
       - name: "Compare HTML with reference implementation"
         run: make test_html_ref
   lint:
-    name: Lint
+    name: Lint (1.56)
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout"
@@ -76,7 +76,7 @@ jobs:
       - name: "Check linting"
         run: make lint
   fuzz:
-    name: Fuzz
+    name: Fuzz (nightly)
     strategy:
       matrix:
         target:
@@ -96,7 +96,7 @@ jobs:
           echo core | sudo tee /proc/sys/kernel/core_pattern
           AFL_TARGET=${{ matrix.target }} make afl_quick
   bench:
-    name: Benchmark
+    name: Benchmark (stable)
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
