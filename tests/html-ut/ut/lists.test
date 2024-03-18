@@ -18,3 +18,31 @@ word. Continuing paragraph.
 .
 <p>word. Continuing paragraph.</p>
 ```
+
+Prioritize current type when ambigiuous.
+
+```
+A) first
+B) second
+C) third
+D) fourth
+E) fifth
+.
+<ol type="A">
+<li>
+first
+</li>
+<li>
+second
+</li>
+<li>
+third
+</li>
+<li>
+fourth
+</li>
+<li>
+fifth
+</li>
+</ol>
+```

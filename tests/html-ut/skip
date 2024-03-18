@@ -7,6 +7,4 @@ e1f5b5e:untrimmed whitespace before linebreak
 07888f3:div close within raw block
 8423412:heading id conflict with existing id
 c0a3dec:escape in url
-61876cf:roman alpha ambiguity
-f31b357:roman alpha ambiguity
 642d380:table end in verbatim inline
