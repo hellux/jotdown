@@ -46,3 +46,6 @@ deterministic = [] # for stable fuzzing
 
 [profile.release]
 lto = true
+
+[profile.release.package.jotdown_wasm]
+opt-level = 's'
