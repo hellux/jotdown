@@ -24,8 +24,8 @@ jobs:
       - name: create release
         run: gh release create ${{ github.ref_name }} --draft --verify-tag --title ${{ github.ref_name }}
 
-  build:
-    name: build
+  build_bin:
+    name: build binary
     needs: ['create']
     runs-on: ${{ matrix.os }}
     strategy:
@@ -102,3 +102,31 @@ jobs:
       shell: bash
       run: |
         gh release upload ${{ github.ref_name }} ${{ env.ASSET }}
+
+  build_wasm:
+    name: build wasm lib
+    needs: ['create']
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref_name }}
+
+    - name: install toolchain
+      shell: bash
+      run: |
+        rustup update stable
+        rustup target add wasm32-wasi
+        cargo install wasm-pack
+
+    - name: build
+      shell: bash
+      run: |
+        cd examples/jotdown_wasm && make wasm
+
+    - name: upload
+      shell: bash
+      run: |
+        gh release upload ${{ github.ref_name }} examples/jotdown_wasm/pkg/jotdown_wasm_bg.wasm
+        gh release upload ${{ github.ref_name }} examples/jotdown_wasm/pkg/jotdown_wasm.js
