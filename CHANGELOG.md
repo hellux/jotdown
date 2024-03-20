@@ -29,7 +29,7 @@
 
 - (breaking) `Render::render_event` has been removed (#36),
   `Render::{push,write}{,_borrowed}` take non-mutable reference of self.
-- (breaking) Link definitions events are emmited (#36).
+- (breaking) Link definitions events are emitted (#36).
 - (breaking) Footnote events are emitted as they are encountered (#36), instead
   of at the end of the document.
 - Empty spans are parsed as spans when followed by URL, label or attributes.
