@@ -1,3 +1,20 @@
+## [0.4.0](https://github.com/hellux/jotdown/releases/tag/0.4.0) - 2024-03-06
+
+### Added
+
+- IntoIterator for Attributes (#33, #45)
+
+### Changed
+
+- Match djot.js how to resolve ordered list item type (#47).
+- HTML renderer: use Unicode punctuation instead of HTML entities (#48).
+- Allow omitting closing % in attribute comments (#48).
+
+### Fixed
+
+- Alphabetical list unexpectedly turning into roman numeral list (#46)
+- HTML renderer: remove accidental extra variation selector in backarrow (#48).
+
 ## [0.3.2](https://github.com/hellux/jotdown/releases/tag/0.3.2) - 2023-09-06
 
 ### Changed
