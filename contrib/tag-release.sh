@@ -10,4 +10,3 @@ git -c core.commentchar='%' tag --edit \
     -m "Release $tag" \
     -m "$changes" \
     "$tag"
-git push github master "$tag"
