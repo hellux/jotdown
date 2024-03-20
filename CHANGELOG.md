@@ -1,4 +1,4 @@
-## [0.4.0](https://github.com/hellux/jotdown/releases/tag/0.4.0) - 2024-03-06
+## [0.4.0](https://github.com/hellux/jotdown/releases/tag/0.4.0) - 2024-03-20
 
 ### Added
 
