@@ -11,11 +11,7 @@ fn block_inline() -> Option<jotdown::Event<'static>> {
 }
 
 fn full() -> String {
-    let mut s = String::new();
-    jotdown::html::Renderer::default()
-        .push(jotdown::Parser::new(bench_input::ALL), &mut s)
-        .unwrap();
-    s
+    jotdown::html::render_to_string(jotdown::Parser::new(bench_input::ALL))
 }
 
 iai::main!(block, block_inline, full);

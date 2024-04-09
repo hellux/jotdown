@@ -1,6 +1,5 @@
 use wasm_bindgen::prelude::*;
 
-use jotdown::Render;
 use std::fmt::Write;
 
 #[must_use]
@@ -12,12 +11,7 @@ pub fn jotdown_version() -> String {
 #[must_use]
 #[wasm_bindgen]
 pub fn jotdown_render(djot: &str) -> String {
-    let events = jotdown::Parser::new(djot);
-    let mut html = String::new();
-    jotdown::html::Renderer::default()
-        .push(events, &mut html)
-        .unwrap();
-    html
+    jotdown::html::render_to_string(jotdown::Parser::new(djot))
 }
 
 #[must_use]

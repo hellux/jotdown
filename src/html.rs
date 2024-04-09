@@ -10,6 +10,26 @@ use crate::OrderedListNumbering::*;
 use crate::Render;
 use crate::SpanLinkType;
 
+/// Render events into a string.
+///
+/// This is a convenience function for using [`Renderer::push`] with fewer imports and without an
+/// intermediate variable.
+///
+/// # Examples
+///
+/// ```
+/// let events = jotdown::Parser::new("hello");
+/// assert_eq!(jotdown::html::render_to_string(events), "<p>hello</p>\n");
+/// ```
+pub fn render_to_string<'s, I>(events: I) -> String
+where
+    I: Iterator<Item = Event<'s>>,
+{
+    let mut s = String::new();
+    Renderer::default().push(events, &mut s).unwrap();
+    s
+}
+
 /// [`Render`] implementor that writes HTML output.
 #[derive(Default)]
 pub struct Renderer {}

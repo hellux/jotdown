@@ -49,13 +49,7 @@ fn gen_html(c: &mut criterion::Criterion) {
             |b, &input| {
                 b.iter_batched(
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| {
-                        let mut s = String::new();
-                        jotdown::html::Renderer::default()
-                            .push(p.into_iter(), &mut s)
-                            .unwrap();
-                        s
-                    },
+                    |p| jotdown::html::render_to_string(p.into_iter()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -103,13 +97,7 @@ fn gen_html_clone(c: &mut criterion::Criterion) {
             |b, &input| {
                 b.iter_batched(
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| {
-                        let mut s = String::new();
-                        jotdown::html::Renderer::default()
-                            .push(p.iter().cloned(), &mut s)
-                            .unwrap();
-                        s
-                    },
+                    |p| jotdown::html::render_to_string(p.iter().cloned()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -127,11 +115,7 @@ fn gen_full(c: &mut criterion::Criterion) {
             input,
             |b, &input| {
                 b.iter_with_large_drop(|| {
-                    let mut s = String::new();
-                    jotdown::html::Renderer::default()
-                        .push(jotdown::Parser::new(input), &mut s)
-                        .unwrap();
-                    s
+                    jotdown::html::render_to_string(jotdown::Parser::new(input))
                 });
             },
         );
