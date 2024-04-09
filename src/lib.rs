@@ -1,9 +1,8 @@
 //! A pull parser for [Djot](https://djot.net).
 //!
-//! The main entry is through [`Parser`] which implements an [`Iterator`] of [`Event`]s. The events
-//! can then be used to traverse the document structure in order to e.g. construct an AST or
-//! directly generate to some output format. This crate provides an [`html`] module that can be
-//! used to render the events to HTML.
+//! The main entry is through [`Parser`] which constructs an [`Iterator`] of [`Event`]s. The events
+//! can then be processed before rendering them via the [`Render`] trait. This crate provides an
+//! [`html`] module that implements an HTML renderer.
 //!
 //! # Feature flags
 //!
