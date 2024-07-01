@@ -330,6 +330,7 @@ impl<'s> Parser<'s> {
                     self.events.drain(*event_skip..);
                 }
                 self.push(EventKind::Exit(ty_opener));
+                self.input.lexer.verbatim = false;
                 self.verbatim = None;
                 if raw_format.is_none()
                     && self.input.peek().map_or(false, |t| {
@@ -404,6 +405,7 @@ impl<'s> Parser<'s> {
                 EventKind::Placeholder,
                 self.input.span.start..self.input.span.start,
             );
+            self.input.lexer.verbatim = true;
             self.verbatim = Some(VerbatimState {
                 event_opener: self.events.len(),
                 len_opener,
@@ -1166,6 +1168,7 @@ impl<'s> Iterator for Parser<'s> {
 
         // automatically close unclosed verbatim
         if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
+            self.input.lexer.verbatim = false;
             let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                 debug_assert!(matches!(
                     ty,
