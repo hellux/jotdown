@@ -711,15 +711,16 @@ impl<'s> TreeParser<'s> {
                 row.start..(row.start + 1),
             );
             let rem = (row.start + 1)..row.end; // |
-            let lex = lex::Lexer::new(&self.src.as_bytes()[rem.clone()]);
+            let mut lex = lex::Lexer::new(&self.src.as_bytes()[rem.clone()]);
             let mut pos = rem.start;
             let mut cell_start = pos;
             let mut separator_row = true;
             let mut verbatim = None;
             let mut column_index = 0;
-            for lex::Token { kind, len } in lex {
+            while let Some(lex::Token { kind, len }) = lex.next() {
                 if let Some(l) = verbatim {
                     if matches!(kind, lex::Kind::Seq(lex::Sequence::Backtick)) && len == l {
+                        lex.verbatim = false;
                         verbatim = None;
                     }
                 } else {
@@ -753,6 +754,7 @@ impl<'s> TreeParser<'s> {
                             column_index += 1;
                         }
                         lex::Kind::Seq(lex::Sequence::Backtick) => {
+                            lex.verbatim = true;
                             verbatim = Some(len);
                         }
                         _ => {}

@@ -1,0 +1,36 @@
+Backslash cannot escape the final backtick
+
+```
+`verbatim\`
+.
+<p><code>verbatim\</code></p>
+```
+
+Should work with longer sequences of backticks
+
+```
+``verbatim\``
+.
+<p><code>verbatim\</code></p>
+```
+
+
+Should not be escaped in tables either
+
+```
+| `\` |
+.
+<table>
+<tr>
+<td><code>\</code></td>
+</tr>
+</table>
+```
+
+Backslash should not escape when using extra space
+
+```
+`` `verbatim\` ``
+.
+<p><code>`verbatim\`</code></p>
+```

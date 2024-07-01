@@ -78,6 +78,8 @@ pub(crate) struct Lexer<'s> {
     escape: bool,
     /// Token to be peeked or next'ed.
     next: Option<Token>,
+    /// Ignore escapes.
+    pub verbatim: bool,
 }
 
 impl<'s> Lexer<'s> {
@@ -87,6 +89,7 @@ impl<'s> Lexer<'s> {
             pos: 0,
             escape: false,
             next: None,
+            verbatim: false,
         }
     }
 
@@ -181,7 +184,7 @@ impl<'s> Lexer<'s> {
                         if self.peek_byte().map_or(false, |c| {
                             c.is_ascii_whitespace() || c.is_ascii_punctuation()
                         }) {
-                            self.escape = true;
+                            self.escape = !self.verbatim;
                             Escape
                         } else {
                             Text
