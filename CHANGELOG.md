@@ -1,3 +1,13 @@
+## [0.4.1](https://github.com/hellux/jotdown/releases/tag/0.4.1) - 2024-07-02
+
+### Added
+
+- Convenience function `html::render_to_string` (#49)
+
+### Fixed
+
+- Allow backslash at end of verbatim (#54)
+
 ## [0.4.0](https://github.com/hellux/jotdown/releases/tag/0.4.0) - 2024-03-20
 
 ### Added
