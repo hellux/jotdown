@@ -48,7 +48,7 @@ impl Render for Renderer {
 }
 
 impl RenderRef for Renderer {
-    fn push_borrowed<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+    fn push_ref<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,

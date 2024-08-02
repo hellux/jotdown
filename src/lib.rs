@@ -144,10 +144,10 @@ pub trait RenderRef {
     /// # let events: &[jotdown::Event] = &[];
     /// let mut output = String::new();
     /// let renderer = jotdown::html::Renderer::default();
-    /// renderer.push_borrowed(events.iter(), &mut output);
+    /// renderer.push_ref(events.iter(), &mut output);
     /// # }
     /// ```
-    fn push_borrowed<'s, E, I, W>(&self, events: I, out: W) -> fmt::Result
+    fn push_ref<'s, E, I, W>(&self, events: I, out: W) -> fmt::Result
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
@@ -157,7 +157,7 @@ pub trait RenderRef {
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write_borrowed<'s, E, I, W>(&self, events: I, out: W) -> io::Result<()>
+    fn write_ref<'s, E, I, W>(&self, events: I, out: W) -> io::Result<()>
     where
         E: AsRef<Event<'s>>,
         I: Iterator<Item = E>,
@@ -168,7 +168,7 @@ pub trait RenderRef {
             error: Ok(()),
         };
 
-        self.push_borrowed(events, &mut out)
+        self.push_ref(events, &mut out)
             .map_err(|_| match out.error {
                 Err(e) => e,
                 _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
