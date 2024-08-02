@@ -808,9 +808,9 @@ impl<'s> Parser<'s> {
     /// However, there are some exceptions to this rule:
     ///
     /// - Blank lines inbetween block attributes and the block causes the blankline events to
-    /// overlap with the block start event.
+    ///   overlap with the block start event.
     /// - Caption events are emitted before the table rows while the input for the caption content
-    /// is located after the table rows, causing the ranges to be out of order.
+    ///   is located after the table rows, causing the ranges to be out of order.
     ///
     /// Characters between events, that are not part of any event range, are typically whitespace
     /// but may also consist of unattached attributes or `>` characters from blockquotes.
