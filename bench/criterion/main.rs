@@ -1,8 +1,6 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
 
-use jotdown::Render;
-
 fn gen_block(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("block");
     for (name, input) in bench_input::INPUTS {
@@ -71,6 +69,7 @@ fn gen_html_borrow(c: &mut criterion::Criterion) {
                 b.iter_batched(
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
                     |p| {
+                        use jotdown::RenderRef;
                         let mut s = String::new();
                         jotdown::html::Renderer::default()
                             .push_borrowed(p.as_slice().iter(), &mut s)
