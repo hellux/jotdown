@@ -67,8 +67,8 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 ///
 /// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
 ///
-/// If ownership of the [`Event`]s cannot be given to the renderer, use [`Render::push_borrowed`]
-/// or [`Render::write_borrowed`].
+/// If ownership of the [`Event`]s cannot be given to the renderer, refer to the [`RenderRef`]
+/// trait instead.
 ///
 /// # Examples
 ///
@@ -123,7 +123,15 @@ pub trait Render {
             _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
         })
     }
+}
 
+/// A trait for rendering borrowed [`Event`]s to an output format.
+///
+/// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
+///
+/// If ownership of the [`Event`]s can be given to the renderer, refer to the [`Render`] trait
+/// instead.
+pub trait RenderRef {
     /// Push borrowed [`Event`]s to a unicode-accepting buffer or stream.
     ///
     /// # Examples
@@ -132,7 +140,7 @@ pub trait Render {
     /// ```
     /// # #[cfg(feature = "html")]
     /// # {
-    /// # use jotdown::Render;
+    /// # use jotdown::RenderRef;
     /// # let events: &[jotdown::Event] = &[];
     /// let mut output = String::new();
     /// let renderer = jotdown::html::Renderer::default();
