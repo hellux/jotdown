@@ -56,8 +56,8 @@ fn gen_html(c: &mut criterion::Criterion) {
 }
 criterion_group!(html, gen_html);
 
-fn gen_html_borrow(c: &mut criterion::Criterion) {
-    let mut group = c.benchmark_group("html_borrow");
+fn gen_html_ref(c: &mut criterion::Criterion) {
+    let mut group = c.benchmark_group("html_ref");
     for (name, input) in bench_input::INPUTS {
         group.throughput(criterion::Throughput::Elements(
             jotdown::Parser::new(input).count() as u64,
@@ -72,7 +72,7 @@ fn gen_html_borrow(c: &mut criterion::Criterion) {
                         use jotdown::RenderRef;
                         let mut s = String::new();
                         jotdown::html::Renderer::default()
-                            .push_borrowed(p.as_slice().iter(), &mut s)
+                            .push_ref(p.as_slice().iter(), &mut s)
                             .unwrap();
                         s
                     },
@@ -82,7 +82,7 @@ fn gen_html_borrow(c: &mut criterion::Criterion) {
         );
     }
 }
-criterion_group!(html_borrow, gen_html_borrow);
+criterion_group!(html_ref, gen_html_ref);
 
 fn gen_html_clone(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("html_clone");
@@ -122,4 +122,4 @@ fn gen_full(c: &mut criterion::Criterion) {
 }
 criterion_group!(full, gen_full);
 
-criterion_main!(block, inline, html, html_borrow, html_clone, full);
+criterion_main!(block, inline, html, html_ref, html_clone, full);
