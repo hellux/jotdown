@@ -86,6 +86,22 @@ WebAssembly backend.
 
 [wasm-pack]: https://rustwasm.github.io/wasm-pack/
 
+### Nix flake
+
+There is a Nix flake available in the `contrib` directory. With it, you can get
+a reproducible build of Jotdown by cloning the repo and running
+
+```
+$ nix build ./contrib
+```
+
+If you want to the run Jotdown CLI on any system that has Nix installed, you can
+do it like this:
+
+```
+$ nix run github:hellux/jotdown?dir=contrib -- <arguments..>
+```
+
 ## Status
 
 ### Correctness
