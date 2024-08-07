@@ -121,11 +121,8 @@ impl<'s> Iterator for AttributeValueParts<'s> {
 }
 
 /// A collection of attributes, i.e. a key-value map.
-// Attributes are relatively rare, we choose to pay 8 bytes always and sometimes an extra
-// indirection instead of always 24 bytes.
-#[allow(clippy::box_collection)]
 #[derive(Clone, PartialEq, Eq, Default)]
-pub struct Attributes<'s>(Option<Box<Vec<(&'s str, AttributeValue<'s>)>>>);
+pub struct Attributes<'s>(Vec<(&'s str, AttributeValue<'s>)>);
 
 impl<'s> Attributes<'s> {
     /// Create an empty collection.
@@ -136,7 +133,7 @@ impl<'s> Attributes<'s> {
 
     #[must_use]
     pub(crate) fn take(&mut self) -> Self {
-        Self(self.0.take())
+        std::mem::take(self)
     }
 
     /// Parse and append attributes.
@@ -149,16 +146,10 @@ impl<'s> Attributes<'s> {
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
     pub(crate) fn union(&mut self, other: Self) {
-        if let Some(attrs0) = &mut self.0 {
-            if let Some(mut attrs1) = other.0 {
-                for (key, val) in attrs1.drain(..) {
-                    if key == "class" || !attrs0.iter().any(|(k, _)| *k == key) {
-                        attrs0.push((key, val));
-                    }
-                }
+        for (key, val) in other.0 {
+            if key == "class" || !self.0.iter().any(|(k, _)| *k == key) {
+                self.0.push((key, val));
             }
-        } else {
-            self.0 = other.0;
         }
     }
 
@@ -171,13 +162,8 @@ impl<'s> Attributes<'s> {
 
     // duplicate of insert but returns position of inserted value
     fn insert_pos(&mut self, key: &'s str, val: AttributeValue<'s>) -> usize {
-        if self.0.is_none() {
-            self.0 = Some(Vec::new().into());
-        };
-
-        let attrs = self.0.as_mut().unwrap();
-        if let Some(i) = attrs.iter().position(|(k, _)| *k == key) {
-            let prev = &mut attrs[i].1;
+        if let Some(i) = self.0.iter().position(|(k, _)| *k == key) {
+            let prev = &mut self.0[i].1;
             if key == "class" {
                 match val.raw {
                     CowStr::Borrowed(s) => prev.extend(s),
@@ -190,8 +176,8 @@ impl<'s> Attributes<'s> {
             }
             i
         } else {
-            let i = attrs.len();
-            attrs.push((key, val));
+            let i = self.0.len();
+            self.0.push((key, val));
             i
         }
     }
@@ -199,12 +185,12 @@ impl<'s> Attributes<'s> {
     /// Returns true if the collection contains no attributes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.as_ref().map_or(true, |v| v.is_empty())
+        self.0.is_empty()
     }
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.as_ref().map_or(0, |v| v.len())
+        self.0.len()
     }
 
     /// Returns a reference to the value corresponding to the attribute key.
@@ -285,11 +271,7 @@ impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
             .into_iter()
             .map(|(a, v)| (a, v.into()))
             .collect::<Vec<_>>();
-        if attrs.is_empty() {
-            Attributes::new()
-        } else {
-            Attributes(Some(attrs.into()))
-        }
+        Attributes(attrs)
     }
 }
 
@@ -339,7 +321,7 @@ impl<'s> IntoIterator for Attributes<'s> {
     type IntoIter = AttributesIntoIter<'s>;
 
     fn into_iter(self) -> Self::IntoIter {
-        AttributesIntoIter(self.0.map_or(vec![].into_iter(), |b| (*b).into_iter()))
+        AttributesIntoIter(self.0.into_iter())
     }
 }
 
@@ -364,8 +346,7 @@ impl<'i, 's> IntoIterator for &'i Attributes<'s> {
     type IntoIter = AttributesIter<'i, 's>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let sl = self.0.as_ref().map_or(&[][..], |a| a.as_slice());
-        AttributesIter(sl.iter())
+        AttributesIter(self.0.iter())
     }
 }
 
@@ -391,8 +372,7 @@ impl<'i, 's> IntoIterator for &'i mut Attributes<'s> {
     type IntoIter = AttributesIterMut<'i, 's>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let sl = self.0.as_mut().map_or(&mut [][..], |a| a.as_mut());
-        AttributesIterMut(sl.iter_mut())
+        AttributesIterMut(self.0.iter_mut())
     }
 }
 
@@ -469,7 +449,7 @@ impl<'s> Parser<'s> {
                     Identifier => self.attrs.insert("id", content.into()),
                     Key => self.i_prev = self.attrs.insert_pos(content, "".into()),
                     Value | ValueQuoted | ValueContinued => {
-                        self.attrs.0.as_mut().unwrap()[self.i_prev]
+                        self.attrs.0[self.i_prev]
                             .1
                             .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
                     }
