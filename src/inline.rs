@@ -61,6 +61,7 @@ pub enum EventKind<'s> {
     Exit(Container<'s>),
     Atom(Atom<'s>),
     Str,
+    Empty, // dummy to hold attributes
     Attributes {
         container: bool,
         attrs: AttributesIndex,
@@ -557,6 +558,8 @@ impl<'s> Parser<'s> {
                 }
                 AttributesElementType::Word => {
                     self.events.push_back(attr_event);
+                    // push for now, pop later if attrs attached to word
+                    self.push(EventKind::Empty);
                 }
             }
         }
@@ -988,18 +991,22 @@ impl<'s> Parser<'s> {
             }
         } else {
             let attr = self.events.pop_front().unwrap();
-            self.events.push_front(Event {
-                kind: EventKind::Exit(Span),
-                span: attr.span.clone(),
-            });
-            self.events.push_front(Event {
-                kind: EventKind::Str,
-                span: span_str.clone(),
-            });
-            self.events.push_front(Event {
-                kind: EventKind::Enter(Span),
-                span: span_str.start..span_str.start,
-            });
+            if !span_str.is_empty() {
+                let empty = self.events.pop_front();
+                debug_assert_eq!(empty.unwrap().kind, EventKind::Empty);
+                self.events.push_front(Event {
+                    kind: EventKind::Exit(Span),
+                    span: attr.span.clone(),
+                });
+                self.events.push_front(Event {
+                    kind: EventKind::Str,
+                    span: span_str.clone(),
+                });
+                self.events.push_front(Event {
+                    kind: EventKind::Enter(Span),
+                    span: span_str.start..span_str.start,
+                });
+            }
             attr
         }
     }
@@ -1187,12 +1194,20 @@ impl<'s> Iterator for Parser<'s> {
         }
 
         self.events.pop_front().and_then(|e| match e.kind {
-            EventKind::Str if e.span.is_empty() => self.next(),
+            EventKind::Str
+                if e.span.is_empty()
+                    && !matches!(
+                        self.events.front().map(|ev| &ev.kind),
+                        Some(EventKind::Attributes {
+                            container: false,
+                            ..
+                        })
+                    ) =>
+            {
+                self.next()
+            }
             EventKind::Str => Some(self.merge_str_events(e.span)),
-            EventKind::Placeholder
-            | EventKind::Attributes {
-                container: false, ..
-            } => self.next(),
+            EventKind::Placeholder => self.next(),
             _ => Some(e),
         })
     }
@@ -1574,7 +1589,19 @@ mod test {
             (Str, "abc"),
             (Exit(Span), "]{.def}"),
         );
-        test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
+        test_parse!(
+            "not a [span] {#id}.",
+            (Str, "not a [span] "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{#id}",
+            ),
+            (Empty, "{#id}"),
+            (Str, "."),
+        );
     }
 
     #[test]
@@ -1765,6 +1792,14 @@ mod test {
             (Str, "abc def"),
             (Exit(Emphasis), "_{.a}{.b}{.c}"),
             (Str, " "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 1,
+                },
+                "{.d}",
+            ),
+            (Empty, "{.d}"),
         );
     }
 
@@ -1819,10 +1854,71 @@ mod test {
 
     #[test]
     fn attr_whitespace() {
-        test_parse!("word {%comment%}", (Str, "word "));
-        test_parse!("word {%comment%} word", (Str, "word "), (Str, " word"));
-        test_parse!("word {a=b}", (Str, "word "));
-        test_parse!("word {.d}", (Str, "word "));
+        test_parse!(
+            "word {%comment%}",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{%comment%}",
+            ),
+            (Empty, "{%comment%}"),
+        );
+        test_parse!(
+            "word {%comment%} word",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0
+                },
+                "{%comment%}",
+            ),
+            (Empty, "{%comment%}"),
+            (Str, " word"),
+        );
+        test_parse!(
+            "word {a=b}",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+        );
+        test_parse!(
+            " {a=b}",
+            (Str, " "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+        );
+    }
+
+    #[test]
+    fn attr_start() {
+        test_parse!(
+            "{a=b} word",
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+            (Str, " word"),
+        );
     }
 
     #[test]
@@ -1904,7 +2000,15 @@ mod test {
                     left: false
                 }),
                 "'"
-            )
+            ),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{.b}",
+            ),
+            (Empty, "{.b}"),
         );
     }
 }

@@ -2416,6 +2416,11 @@ impl<'s> Parser<'s> {
                     inline::Atom::Hardbreak => Event::Hardbreak,
                     inline::Atom::Escape => Event::Escape,
                 },
+                inline::EventKind::Empty => {
+                    debug_assert!(!attributes.is_empty());
+                    attributes.clear();
+                    Event::Escape // TODO replace dummy
+                }
                 inline::EventKind::Str => Event::Str(self.src[inline.span.clone()].into()),
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
                     panic!("{:?}", inline)
