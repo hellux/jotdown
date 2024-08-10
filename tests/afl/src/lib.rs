@@ -15,17 +15,6 @@ pub fn parse(data: &[u8]) {
             // no overlap, out of order
             assert!(
                 last.1.end <= range.start
-                // block attributes may overlap with start event
-                || (
-                    matches!(last.0, jotdown::Event::Blankline)
-                    && (
-                        matches!(
-                            event,
-                            jotdown::Event::Start(ref cont, ..) if cont.is_block()
-                        )
-                        || matches!(event, jotdown::Event::ThematicBreak(..))
-                    )
-                )
                 // caption event is before table rows but src is after
                 || (
                     matches!(

@@ -2217,10 +2217,8 @@ impl<'s> Parser<'s> {
     /// Generally, the range of each event does not overlap with any other event and the ranges are
     /// in same order as the events are emitted, i.e. the start offset of an event must be greater
     /// or equal to the (exclusive) end offset of all events that were emitted before that event.
-    /// However, there are some exceptions to this rule:
+    /// However, there is an exception to this rule:
     ///
-    /// - Blank lines inbetween block attributes and the block causes the blankline events to
-    ///   overlap with the block start event.
     /// - Caption events are emitted before the table rows while the input for the caption content
     ///   is located after the table rows, causing the ranges to be out of order.
     ///
@@ -2441,7 +2439,11 @@ impl<'s> Parser<'s> {
         while let Some(mut ev) = self.blocks.next() {
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
-                    block::Atom::Blankline => Event::Blankline,
+                    block::Atom::Blankline => {
+                        self.block_attributes_pos = None;
+                        self.block_attributes.clear();
+                        Event::Blankline
+                    }
                     block::Atom::ThematicBreak => {
                         if let Some(pos) = self.block_attributes_pos.take() {
                             ev.span.start = pos;
@@ -3678,6 +3680,24 @@ mod test {
                         .collect(),
                 ),
                 "{.a}\n{#b}\n",
+            ),
+            (Str("para".into()), "para"),
+            (End(Paragraph), ""),
+        );
+    }
+
+    #[test]
+    fn attr_block_blankline() {
+        test_parse!(
+            "{.a}\n\n{.b}\n\n{.c}\npara",
+            (Blankline, "\n"),
+            (Blankline, "\n"),
+            (
+                Start(
+                    Paragraph,
+                    [(AttributeKind::Class, "c")].into_iter().collect(),
+                ),
+                "{.c}\n",
             ),
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
