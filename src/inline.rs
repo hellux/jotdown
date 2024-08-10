@@ -819,13 +819,16 @@ impl<'s> Parser<'s> {
                 if self.input.peek().map_or(false, |t| {
                     matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
                 }) {
-                    self.ahead_attributes(
+                    let elem_ty = if matches!(opener, Opener::DoubleQuoted | Opener::SingleQuoted) {
+                        // quote delimiters will turn into atoms instead of containers, so cannot
+                        // place attributes on the container start
+                        AttributesElementType::Word
+                    } else {
                         AttributesElementType::Container {
                             e_placeholder: e_attr,
-                        },
-                        false,
-                    )
-                    .or(Some(Continue))
+                        }
+                    };
+                    self.ahead_attributes(elem_ty, false).or(Some(Continue))
                 } else {
                     closed
                 }
@@ -1860,6 +1863,28 @@ mod test {
                 "'",
             ),
             (Str, " "),
+        );
+    }
+
+    #[test]
+    fn quote_attr() {
+        test_parse!(
+            "'a'{.b}",
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true
+                }),
+                "'"
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false
+                }),
+                "'"
+            )
         );
     }
 }
