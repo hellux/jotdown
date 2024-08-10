@@ -933,7 +933,7 @@ impl<'s> Parser<'s> {
             inline => (Some(inline), Attributes::new()),
         };
 
-        inline.map(|inline| {
+        let event = inline.map(|inline| {
             let enter = matches!(inline.kind, inline::EventKind::Enter(_));
             let event = match inline.kind {
                 inline::EventKind::Enter(c) | inline::EventKind::Exit(c) => {
@@ -968,7 +968,9 @@ impl<'s> Parser<'s> {
                                 .cloned();
 
                             let (url_or_tag, ty) = if let Some((url, attrs_def)) = link_def {
-                                attributes.union(attrs_def);
+                                if enter {
+                                    attributes.union(attrs_def);
+                                }
                                 (url, SpanLinkType::Reference)
                             } else {
                                 self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
@@ -993,7 +995,7 @@ impl<'s> Parser<'s> {
                         }
                     };
                     if enter {
-                        Event::Start(t, attributes)
+                        Event::Start(t, attributes.take())
                     } else {
                         Event::End(t)
                     }
@@ -1021,7 +1023,15 @@ impl<'s> Parser<'s> {
                 }
             };
             (event, inline.span)
-        })
+        });
+
+        debug_assert!(
+            attributes.is_empty(),
+            "unhandled attributes: {:?}",
+            attributes
+        );
+
+        event
     }
 
     fn block(&mut self) -> Option<(Event<'s>, Range<usize>)> {
