@@ -1736,6 +1736,13 @@ mod test {
         );
         test_parse!(
             "_abc def_{ % comment % } ghi",
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0
+                },
+                "{ % comment % }"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_{ % comment % }"),
@@ -1821,7 +1828,20 @@ mod test {
     #[test]
     fn attr_empty() {
         test_parse!("word{}", (Str, "word"));
-        test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
+        test_parse!(
+            "word{ % comment % } trail",
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0
+                },
+                "{ % comment % }"
+            ),
+            (Enter(Span), ""),
+            (Str, "word"),
+            (Exit(Span), "{ % comment % }"),
+            (Str, " trail")
+        );
     }
 
     #[test]

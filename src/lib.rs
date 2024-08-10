@@ -2330,6 +2330,7 @@ mod test {
                     Emphasis,
                     [
                         (AttributeKind::Class, "a"),
+                        (AttributeKind::Comment, ""),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
                     ]
@@ -2377,6 +2378,7 @@ mod test {
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
+                        (AttributeKind::Comment, ""),
                     ]
                     .into_iter()
                     .collect(),
@@ -2398,6 +2400,7 @@ mod test {
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
+                        (AttributeKind::Comment, ""),
                     ]
                     .into_iter()
                     .collect(),
@@ -2450,9 +2453,12 @@ mod test {
             (
                 Start(
                     Span,
-                    [(AttributeKind::Pair { key: "a" }, "a")]
-                        .into_iter()
-                        .collect(),
+                    [
+                        (AttributeKind::Comment, ""),
+                        (AttributeKind::Pair { key: "a" }, "a"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "",
             ),

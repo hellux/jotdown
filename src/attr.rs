@@ -169,16 +169,29 @@ pub enum AttributeKind<'s> {
     /// assert_eq!(a.next(), None);
     /// ```
     Pair { key: &'s str },
+    /// A comment element, e.g. `%cmt%`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let mut a = Attributes::try_from("{%cmt0% %cmt1}").unwrap().into_iter();
+    /// assert_eq!(a.next(), Some((AttributeKind::Comment, "cmt0".into())));
+    /// assert_eq!(a.next(), Some((AttributeKind::Comment, "cmt1".into())));
+    /// assert_eq!(a.next(), None);
+    /// ```
+    Comment,
 }
 
 impl<'s> AttributeKind<'s> {
-    /// Returns the element's key.
+    /// Returns the element's key, if applicable.
     #[must_use]
-    pub fn key(&self) -> &'s str {
+    pub fn key(&self) -> Option<&'s str> {
         match self {
-            AttributeKind::Class => "class",
-            AttributeKind::Id => "id",
-            AttributeKind::Pair { key: k } => k,
+            AttributeKind::Class => Some("class"),
+            AttributeKind::Id => Some("id"),
+            AttributeKind::Pair { key } => Some(key),
+            AttributeKind::Comment => None,
         }
     }
 }
@@ -223,7 +236,9 @@ impl<'s> Attributes<'s> {
     /// ```
     #[must_use]
     pub fn contains_key(&self, key: &str) -> bool {
-        self.0.iter().any(|(k, _)| k.key() == key)
+        self.0
+            .iter()
+            .any(|(k, _)| matches!(k.key(), Some(k) if k == key))
     }
 
     /// Returns the value corresponding to the provided attribute key.
@@ -254,10 +269,17 @@ impl<'s> Attributes<'s> {
     /// ```
     #[must_use]
     pub fn get_value(&self, key: &str) -> Option<AttributeValue> {
-        if key == "class" && self.0.iter().filter(|(k, _)| k.key() == "class").count() > 1 {
+        if key == "class"
+            && self
+                .0
+                .iter()
+                .filter(|(k, _)| k.key() == Some("class"))
+                .count()
+                > 1
+        {
             let mut value = AttributeValue::new();
             for (k, v) in &self.0 {
-                if k.key() == "class" {
+                if k.key() == Some("class") {
                     value.extend(&v.raw);
                 }
             }
@@ -265,7 +287,7 @@ impl<'s> Attributes<'s> {
         } else {
             self.0
                 .iter()
-                .rfind(|(k, _)| k.key() == key)
+                .rfind(|(k, _)| k.key() == Some(key))
                 .map(|(_, v)| v.clone())
         }
     }
@@ -408,7 +430,7 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     /// ```
     /// # use jotdown::*;
     /// let a = r#"{#a .b id=c class=d key="val" %comment%}"#;
-    /// let b = r#"{#a .b id="c" class="d" key="val"}"#;
+    /// let b = r#"{#a .b id="c" class="d" key="val" %comment%}"#;
     /// assert_eq!(format!("{:?}", Attributes::try_from(a).unwrap()), b);
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -423,6 +445,7 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
                 AttributeKind::Class => write!(f, ".{}", v.raw)?,
                 AttributeKind::Id => write!(f, "#{}", v.raw)?,
                 AttributeKind::Pair { key } => write!(f, "{}=\"{}\"", key, v.raw)?,
+                AttributeKind::Comment => write!(f, "%{}%", v.raw)?,
             }
         }
         write!(f, "}}")
@@ -544,11 +567,15 @@ impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((key, value)) = self.attrs[self.pos..].first() {
             self.pos += 1;
-            let key = key.key();
+            let key = if let Some(k) = key.key() {
+                k
+            } else {
+                continue; // ignore comments
+            };
 
             if self.attrs[..self.pos - 1]
                 .iter()
-                .any(|(k, _)| k.key() == key)
+                .any(|(k, _)| k.key() == Some(key))
             {
                 continue; // already emitted when this key first encountered
             }
@@ -556,14 +583,17 @@ impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
             if key == "class" {
                 let mut value = value.clone();
                 for (k, v) in &self.attrs[self.pos..] {
-                    if k.key() == "class" {
+                    if k.key() == Some("class") {
                         value.extend(&v.raw);
                     }
                 }
                 return Some((key, value));
             }
 
-            if let Some((_, v)) = self.attrs[self.pos..].iter().rfind(|(k, _)| k.key() == key) {
+            if let Some((_, v)) = self.attrs[self.pos..]
+                .iter()
+                .rfind(|(k, _)| k.key() == Some(key))
+            {
                 return Some((key, v.clone())); // emit last value when key first encountered
             }
 
@@ -645,12 +675,13 @@ impl<'s> Parser<'s> {
                     Key => self
                         .attrs
                         .push((AttributeKind::Pair { key: content }, "".into())),
-                    Value | ValueQuoted | ValueContinued => {
+                    Value | ValueQuoted | ValueContinued | Comment => {
                         let last = self.attrs.len() - 1;
                         self.attrs.0[last]
                             .1
                             .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
                     }
+                    CommentFirst => self.attrs.push((AttributeKind::Comment, "".into())),
                     _ => {}
                 }
             };
@@ -678,6 +709,7 @@ impl<'s> Parser<'s> {
 enum State {
     Start,
     Whitespace,
+    CommentFirst,
     Comment,
     ClassFirst,
     Class,
@@ -705,14 +737,14 @@ impl State {
                 b'}' => Done,
                 b'.' => ClassFirst,
                 b'#' => IdentifierFirst,
-                b'%' => Comment,
+                b'%' => CommentFirst,
                 c if is_name(c) => Key,
                 c if c.is_ascii_whitespace() => Whitespace,
                 _ => Invalid,
             },
-            Comment if c == b'%' => Whitespace,
-            Comment if c == b'}' => Done,
-            Comment => Comment,
+            CommentFirst | Comment if c == b'%' => Whitespace,
+            CommentFirst | Comment if c == b'}' => Done,
+            CommentFirst | Comment => Comment,
             ClassFirst if is_name(c) => Class,
             ClassFirst => Invalid,
             IdentifierFirst if is_name(c) => Identifier,
@@ -821,17 +853,17 @@ mod test {
 
     #[test]
     fn comment() {
-        test_attr!("{%}", [], []);
-        test_attr!("{%%}", [], []);
-        test_attr!("{ % abc % }", [], []);
+        test_attr!("{%}", [(Comment, "")], []);
+        test_attr!("{%%}", [(Comment, "")], []);
+        test_attr!("{ % abc % }", [(Comment, " abc ")], []);
         test_attr!(
             "{ .some_class % #some_id }",
-            [(Class, "some_class")],
+            [(Class, "some_class"), (Comment, " #some_id ")],
             [("class", "some_class")]
         );
         test_attr!(
             "{ .some_class % abc % #some_id}",
-            [(Class, "some_class"), (Id, "some_id")],
+            [(Class, "some_class"), (Comment, " abc "), (Id, "some_id")],
             [("class", "some_class"), ("id", "some_id")],
         );
     }
@@ -998,7 +1030,7 @@ mod test {
         let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
 
         for (attr, value) in &mut attrs {
-            if attr.key() == "key2" {
+            if attr.key() == Some("key2") {
                 *value = "new_val".into();
             }
         }
