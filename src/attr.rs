@@ -209,27 +209,6 @@ impl<'s> Attributes<'s> {
         Ok(())
     }
 
-    /// Combine all attributes from both objects, prioritizing self on conflicts.
-    pub(crate) fn concat(&mut self, mut other: Self) {
-        other.0.append(&mut self.0);
-        self.0 = other.0;
-    }
-
-    pub fn push(&mut self, key: AttributeKind<'s>, val: AttributeValue<'s>) {
-        self.0.push((key, val));
-    }
-
-    /// Returns true if the collection contains no attributes.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
     /// Returns whether the specified key exists in the set.
     ///
     ///
@@ -289,16 +268,6 @@ impl<'s> Attributes<'s> {
                 .rfind(|(k, _)| k.key() == key)
                 .map(|(_, v)| v.clone())
         }
-    }
-
-    /// Returns an iterator over references to the attribute keys and values in undefined order.
-    pub fn iter(&self) -> AttributesIter {
-        self.into_iter()
-    }
-
-    /// Returns an iterator over mutable references to the attribute keys and values in undefined order.
-    pub fn iter_mut<'i>(&'i mut self) -> AttributesIterMut<'i, 's> {
-        self.into_iter()
     }
 
     /// Returns an iterator that only emits a single key-value pair per unique key, i.e. like they
@@ -394,6 +363,20 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     }
 }
 
+impl<'s> std::ops::Deref for Attributes<'s> {
+    type Target = Vec<AttributeElem<'s>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'s> std::ops::DerefMut for Attributes<'s> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 #[cfg(test)]
 impl<'s> FromIterator<(AttributeKind<'s>, &'s str)> for Attributes<'s> {
     fn from_iter<I: IntoIterator<Item = (AttributeKind<'s>, &'s str)>>(iter: I) -> Self {
@@ -434,79 +417,105 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     }
 }
 
-/// Iterator over [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIntoIter<'s>(std::vec::IntoIter<AttributeElem<'s>>);
-
-impl<'s> Iterator for AttributesIntoIter<'s> {
-    type Item = AttributeElem<'s>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
-    }
-}
-
 impl<'s> IntoIterator for Attributes<'s> {
     type Item = AttributeElem<'s>;
 
-    type IntoIter = AttributesIntoIter<'s>;
+    type IntoIter = std::vec::IntoIter<AttributeElem<'s>>;
 
+    /// Turn into an iterator of attribute elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
+    /// let mut elems = a.into_iter();
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some((
+    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeValue::from("val1"),
+    ///     )),
+    /// );
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some((
+    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeValue::from("val2"),
+    ///     )),
+    /// );
+    /// assert_eq!(elems.next(), None);
+    /// ```
     fn into_iter(self) -> Self::IntoIter {
-        AttributesIntoIter(self.0.into_iter())
-    }
-}
-
-/// Iterator over references to [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIter<'i, 's>(std::slice::Iter<'i, AttributeElem<'s>>);
-
-impl<'i, 's> Iterator for AttributesIter<'i, 's> {
-    type Item = (AttributeKind<'s>, &'i AttributeValue<'s>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(move |(k, v)| (*k, v))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        self.0.into_iter()
     }
 }
 
 impl<'i, 's> IntoIterator for &'i Attributes<'s> {
-    type Item = (AttributeKind<'s>, &'i AttributeValue<'s>);
+    type Item = &'i AttributeElem<'s>;
 
-    type IntoIter = AttributesIter<'i, 's>;
+    type IntoIter = std::slice::Iter<'i, AttributeElem<'s>>;
 
+    /// Create an iterator of borrowed attribute elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
+    /// let mut elems = a.iter();
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some(&(
+    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeValue::from("val1"),
+    ///     )),
+    /// );
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some(&(
+    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeValue::from("val2"),
+    ///     )),
+    /// );
+    /// assert_eq!(elems.next(), None);
+    /// ```
     fn into_iter(self) -> Self::IntoIter {
-        AttributesIter(self.0.iter())
-    }
-}
-
-/// Iterator over mutable references to [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIterMut<'i, 's>(std::slice::IterMut<'i, AttributeElem<'s>>);
-
-impl<'i, 's> Iterator for AttributesIterMut<'i, 's> {
-    type Item = (AttributeKind<'s>, &'i mut AttributeValue<'s>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // this map splits &(&k, v) into (&&k, &v)
-        self.0.next().map(|(k, v)| (*k, v))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        self.0.iter()
     }
 }
 
 impl<'i, 's> IntoIterator for &'i mut Attributes<'s> {
-    type Item = (AttributeKind<'s>, &'i mut AttributeValue<'s>);
+    type Item = &'i mut AttributeElem<'s>;
 
-    type IntoIter = AttributesIterMut<'i, 's>;
+    type IntoIter = std::slice::IterMut<'i, AttributeElem<'s>>;
 
+    /// Create an iterator of mutably borrowed attribute elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let mut a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
+    /// let mut elems = a.iter_mut();
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some(&mut (
+    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeValue::from("val1"),
+    ///     )),
+    /// );
+    /// assert_eq!(
+    ///     elems.next(),
+    ///     Some(&mut (
+    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeValue::from("val2"),
+    ///     )),
+    /// );
+    /// assert_eq!(elems.next(), None);
+    /// ```
     fn into_iter(self) -> Self::IntoIter {
-        AttributesIterMut(self.0.iter_mut())
+        self.0.iter_mut()
     }
 }
 
@@ -619,11 +628,11 @@ impl<'s> Parser<'s> {
                 let content = &input[pos_prev..pos];
                 pos_prev = pos;
                 match st {
-                    Class => self.attrs.push(AttributeKind::Class, content.into()),
-                    Identifier => self.attrs.push(AttributeKind::Id, content.into()),
+                    Class => self.attrs.push((AttributeKind::Class, content.into())),
+                    Identifier => self.attrs.push((AttributeKind::Id, content.into())),
                     Key => self
                         .attrs
-                        .push(AttributeKind::Pair { key: content }, "".into()),
+                        .push((AttributeKind::Pair { key: content }, "".into())),
                     Value | ValueQuoted | ValueContinued => {
                         let last = self.attrs.len() - 1;
                         self.attrs.0[last]
@@ -730,7 +739,7 @@ mod test {
             #[allow(unused)]
             let mut attr = Attributes::try_from($src).unwrap();
 
-            let actual = attr.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>();
+            let actual = attr.iter().map(|(k, v)| (k.clone(), v.to_string())).collect::<Vec<_>>();
             let expected = &[$($exp),*].map(|(k, v): (_, &str)| (k, v.to_string()));
             assert_eq!(actual, expected, "\n\n{}\n\n", $src);
 
@@ -964,34 +973,6 @@ mod test {
     }
 
     #[test]
-    fn can_iter() {
-        assert_eq!(
-            Attributes::try_from("{key1=val1 key2=val2}")
-                .unwrap()
-                .iter()
-                .collect::<Vec<_>>(),
-            vec![
-                (Pair { key: "key1" }, &AttributeValue::from("val1")),
-                (Pair { key: "key2" }, &AttributeValue::from("val2")),
-            ]
-        );
-    }
-
-    #[test]
-    fn can_iter_mut() {
-        assert_eq!(
-            Attributes::try_from("{key1=val1 key2=val2}")
-                .unwrap()
-                .iter_mut()
-                .collect::<Vec<_>>(),
-            vec![
-                (Pair { key: "key1" }, &mut AttributeValue::from("val1")),
-                (Pair { key: "key2" }, &mut AttributeValue::from("val2")),
-            ]
-        );
-    }
-
-    #[test]
     fn iter_after_iter_mut() {
         let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
 
@@ -1004,8 +985,8 @@ mod test {
         assert_eq!(
             attrs.iter().collect::<Vec<_>>(),
             vec![
-                (Pair { key: "key1" }, &AttributeValue::from("val1")),
-                (Pair { key: "key2" }, &AttributeValue::from("new_val")),
+                &(Pair { key: "key1" }, AttributeValue::from("val1")),
+                &(Pair { key: "key2" }, AttributeValue::from("new_val")),
             ]
         );
     }

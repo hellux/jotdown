@@ -57,8 +57,7 @@ mod inline;
 mod lex;
 
 pub use attr::{
-    AttributeKind, AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter,
-    AttributesIter, AttributesIterMut, ParseAttributesError,
+    AttributeKind, AttributeValue, AttributeValueParts, Attributes, ParseAttributesError,
 };
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
@@ -967,9 +966,10 @@ impl<'s> Parser<'s> {
                                 .get::<str>(tag.as_ref())
                                 .cloned();
 
-                            let (url_or_tag, ty) = if let Some((url, attrs_def)) = link_def {
+                            let (url_or_tag, ty) = if let Some((url, mut attrs_def)) = link_def {
                                 if enter {
-                                    attributes.concat(attrs_def);
+                                    attrs_def.append(&mut attributes);
+                                    attributes = attrs_def;
                                 }
                                 (url, SpanLinkType::Reference)
                             } else {
