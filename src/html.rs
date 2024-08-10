@@ -409,7 +409,7 @@ impl<'s> Writer<'s> {
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
             Event::Hardbreak => out.write_str("<br>\n")?,
             Event::Softbreak => out.write_char('\n')?,
-            Event::Escape | Event::Blankline => {}
+            Event::Escape | Event::Blankline | Event::Attributes(..) => {}
             Event::ThematicBreak(attrs) => {
                 if self.not_first_line {
                     out.write_char('\n')?;

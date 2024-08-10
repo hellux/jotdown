@@ -629,6 +629,52 @@ pub enum Event<'s> {
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
     ThematicBreak(Attributes<'s>),
+    /// Dangling attributes not attached to anything.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "{#a}\n",
+    ///     "\n",
+    ///     "inline {#b}\n",
+    ///     "\n",
+    ///     "{#c}\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Attributes(
+    ///             [(AttributeKind::Id, "a".into())]
+    ///                 .into_iter()
+    ///                 .collect(),
+    ///         ),
+    ///         Event::Blankline,
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("inline ".into()),
+    ///         Event::Attributes(
+    ///             [(AttributeKind::Id, "b".into())]
+    ///                 .into_iter()
+    ///                 .collect(),
+    ///         ),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::Attributes(
+    ///             [(AttributeKind::Id, "c".into())]
+    ///                 .into_iter()
+    ///                 .collect(),
+    ///         ),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "\n",
+    ///     "<p>inline </p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
+    Attributes(Attributes<'s>),
 }
 
 /// A container that may contain other elements.
@@ -1965,8 +2011,8 @@ pub struct Parser<'s> {
     /// Contents obtained by the prepass.
     pre_pass: PrePass<'s>,
 
-    /// Last parsed block attributes, and its starting offset.
-    block_attributes: Option<(Attributes<'s>, usize)>,
+    /// Last parsed block attributes, and its span.
+    block_attributes: Option<(Attributes<'s>, Range<usize>)>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -2418,8 +2464,7 @@ impl<'s> Parser<'s> {
                 },
                 inline::EventKind::Empty => {
                     debug_assert!(!attributes.is_empty());
-                    attributes.clear();
-                    Event::Escape // TODO replace dummy
+                    Event::Attributes(attributes.take())
                 }
                 inline::EventKind::Str => Event::Str(self.src[inline.span.clone()].into()),
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
@@ -2443,12 +2488,12 @@ impl<'s> Parser<'s> {
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => {
-                        self.block_attributes = None;
+                        debug_assert_eq!(self.block_attributes, None);
                         Event::Blankline
                     }
                     block::Atom::ThematicBreak => {
-                        let attrs = if let Some((attrs, pos)) = self.block_attributes.take() {
-                            ev.span.start = pos;
+                        let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
+                            ev.span.start = span.start;
                             attrs
                         } else {
                             Attributes::new()
@@ -2456,14 +2501,20 @@ impl<'s> Parser<'s> {
                         Event::ThematicBreak(attrs)
                     }
                     block::Atom::Attributes => {
-                        let (mut attrs, pos) = self
+                        let (mut attrs, span) = self
                             .block_attributes
                             .take()
-                            .unwrap_or_else(|| (Attributes::new(), ev.span.start));
+                            .unwrap_or_else(|| (Attributes::new(), ev.span.clone()));
                         attrs
                             .parse(&self.src[ev.span.clone()])
                             .expect("should be valid");
-                        self.block_attributes = Some((attrs, pos));
+                        if matches!(
+                            self.blocks.peek().map(|e| &e.kind),
+                            Some(block::EventKind::Atom(block::Atom::Blankline))
+                        ) {
+                            return Some((Event::Attributes(attrs), span));
+                        }
+                        self.block_attributes = Some((attrs, span));
                         continue;
                     }
                 },
@@ -2557,8 +2608,8 @@ impl<'s> Parser<'s> {
                         },
                     };
                     if enter {
-                        let attrs = if let Some((attrs, pos)) = self.block_attributes.take() {
-                            ev.span.start = pos;
+                        let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
+                            ev.span.start = span.start;
                             attrs
                         } else {
                             Attributes::new()
@@ -2591,7 +2642,11 @@ impl<'s> Parser<'s> {
     }
 
     fn next_span(&mut self) -> Option<(Event<'s>, Range<usize>)> {
-        self.inline().or_else(|| self.block())
+        self.inline().or_else(|| self.block()).or_else(|| {
+            self.block_attributes
+                .take()
+                .map(|(attrs, span)| (Event::Attributes(attrs), span))
+        })
     }
 }
 
@@ -3696,10 +3751,40 @@ mod test {
     }
 
     #[test]
+    fn attr_block_dangling() {
+        test_parse!(
+            "{.a}",
+            (
+                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
+                "{.a}",
+            ),
+        );
+        test_parse!(
+            "para\n\n{.a}",
+            (Start(Paragraph, Attributes::new()), ""),
+            (Str("para".into()), "para"),
+            (End(Paragraph), ""),
+            (Blankline, "\n"),
+            (
+                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
+                "{.a}",
+            ),
+        );
+    }
+
+    #[test]
     fn attr_block_blankline() {
         test_parse!(
             "{.a}\n\n{.b}\n\n{.c}\npara",
+            (
+                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
+                "{.a}\n",
+            ),
             (Blankline, "\n"),
+            (
+                Attributes([(AttributeKind::Class, "b")].into_iter().collect()),
+                "{.b}\n",
+            ),
             (Blankline, "\n"),
             (
                 Start(
@@ -3973,6 +4058,63 @@ mod test {
             (Str("b".into()), "b"),
             (Softbreak, "\n"),
             (Str("}".into()), "}"),
+            (End(Paragraph), ""),
+        );
+    }
+
+    #[test]
+    fn attr_inline_dangling() {
+        test_parse!(
+            "*a\n{%}",
+            (Start(Paragraph, Attributes::new()), ""),
+            (Str("*a".into()), "*a"),
+            (Softbreak, "\n"),
+            (
+                Attributes([(AttributeKind::Comment, "")].into_iter().collect()),
+                "{%}",
+            ),
+            (End(Paragraph), ""),
+        );
+        test_parse!(
+            "a {.b} c",
+            (Start(Paragraph, Attributes::new()), ""),
+            (Str("a ".into()), "a "),
+            (
+                Attributes([(AttributeKind::Class, "b")].into_iter().collect()),
+                "{.b}",
+            ),
+            (Str(" c".into()), " c"),
+            (End(Paragraph), ""),
+        );
+        test_parse!(
+            "a {%cmt} c",
+            (Start(Paragraph, Attributes::new()), ""),
+            (Str("a ".into()), "a "),
+            (
+                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                "{%cmt}",
+            ),
+            (Str(" c".into()), " c"),
+            (End(Paragraph), ""),
+        );
+        test_parse!(
+            "a {%cmt}",
+            (Start(Paragraph, Attributes::new()), ""),
+            (Str("a ".into()), "a "),
+            (
+                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                "{%cmt}",
+            ),
+            (End(Paragraph), ""),
+        );
+        test_parse!(
+            "{%cmt} a",
+            (Start(Paragraph, Attributes::new()), ""),
+            (
+                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                "{%cmt}",
+            ),
+            (Str(" a".into()), " a"),
             (End(Paragraph), ""),
         );
     }
