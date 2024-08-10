@@ -208,7 +208,7 @@ impl<'s> Writer<'s> {
                     Container::LinkDefinition { .. } => return Ok(()),
                 }
 
-                for (a, v) in attrs.into_iter().filter(|(a, _)| *a != "class") {
+                for (a, v) in attrs.unique_pairs().filter(|(a, _)| *a != "class") {
                     write!(out, r#" {}=""#, a)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
                     out.write_char('"')?;
@@ -221,14 +221,14 @@ impl<'s> Writer<'s> {
                 }
                 | Container::Section { id } = &c
                 {
-                    if !attrs.into_iter().any(|(a, _)| a == "id") {
+                    if !attrs.unique_pairs().any(|(a, _)| a == "id") {
                         out.write_str(r#" id=""#)?;
                         write_attr(id, &mut out)?;
                         out.write_char('"')?;
                     }
                 }
 
-                if attrs.into_iter().any(|(a, _)| a == "class")
+                if attrs.unique_pairs().any(|(a, _)| a == "class")
                     || matches!(
                         c,
                         Container::Div { class } if !class.is_empty())
@@ -254,7 +254,7 @@ impl<'s> Writer<'s> {
                         out.write_str(cls)?;
                     }
                     for cls in attrs
-                        .into_iter()
+                        .unique_pairs()
                         .filter(|(a, _)| a == &"class")
                         .map(|(_, cls)| cls)
                     {
@@ -415,7 +415,7 @@ impl<'s> Writer<'s> {
                     out.write_char('\n')?;
                 }
                 out.write_str("<hr")?;
-                for (a, v) in attrs {
+                for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
                     out.write_char('"')?;

@@ -24,6 +24,8 @@ pub(crate) fn valid(src: &str) -> usize {
 
 /// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,
 /// without allocating.
+///
+/// Each value is paired together with an [`AttributeKind`] in order to form an element.
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct AttributeValue<'s> {
     raw: CowStr<'s>,
@@ -120,9 +122,72 @@ impl<'s> Iterator for AttributeValueParts<'s> {
     }
 }
 
-/// A collection of attributes, i.e. a key-value map.
+/// The kind of an element within an attribute set.
+///
+/// Each kind is paired together with an [`AttributeValue`] to form an element.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AttributeKind<'s> {
+    /// A class element, e.g. `.a`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let mut a = Attributes::try_from("{.a}").unwrap().into_iter();
+    /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
+    /// assert_eq!(a.next(), None);
+    /// ```
+    Class,
+    /// An id element, e.g. `#a`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let mut a = Attributes::try_from("{#a}").unwrap().into_iter();
+    /// assert_eq!(a.next(), Some((AttributeKind::Id, "a".into())));
+    /// assert_eq!(a.next(), None);
+    /// ```
+    Id,
+    /// A key-value pair element, e.g. `key=value`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let mut a = Attributes::try_from(r#"{key=value id="a"}"#)
+    ///     .unwrap()
+    ///     .into_iter();
+    /// assert_eq!(
+    ///     a.next(),
+    ///     Some((AttributeKind::Pair { key: "key" }, "value".into())),
+    /// );
+    /// assert_eq!(
+    ///     a.next(),
+    ///     Some((AttributeKind::Pair { key: "id" }, "a".into())),
+    /// );
+    /// assert_eq!(a.next(), None);
+    /// ```
+    Pair { key: &'s str },
+}
+
+impl<'s> AttributeKind<'s> {
+    /// Returns the element's key.
+    #[must_use]
+    pub fn key(&self) -> &'s str {
+        match self {
+            AttributeKind::Class => "class",
+            AttributeKind::Id => "id",
+            AttributeKind::Pair { key: k } => k,
+        }
+    }
+}
+
+/// A set of attributes, with order, duplicates and comments preserved.
 #[derive(Clone, PartialEq, Eq, Default)]
-pub struct Attributes<'s>(Vec<(&'s str, AttributeValue<'s>)>);
+pub struct Attributes<'s>(Vec<AttributeElem<'s>>);
+
+type AttributeElem<'s> = (AttributeKind<'s>, AttributeValue<'s>);
 
 impl<'s> Attributes<'s> {
     /// Create an empty collection.
@@ -145,41 +210,13 @@ impl<'s> Attributes<'s> {
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
-    pub(crate) fn union(&mut self, other: Self) {
-        for (key, val) in other.0 {
-            if key == "class" || !self.0.iter().any(|(k, _)| *k == key) {
-                self.0.push((key, val));
-            }
-        }
+    pub(crate) fn concat(&mut self, mut other: Self) {
+        other.0.append(&mut self.0);
+        self.0 = other.0;
     }
 
-    /// Insert an attribute. If the attribute already exists, the previous value will be
-    /// overwritten, unless it is a "class" attribute. In that case the provided value will be
-    /// appended to the existing value.
-    pub fn insert(&mut self, key: &'s str, val: AttributeValue<'s>) {
-        self.insert_pos(key, val);
-    }
-
-    // duplicate of insert but returns position of inserted value
-    fn insert_pos(&mut self, key: &'s str, val: AttributeValue<'s>) -> usize {
-        if let Some(i) = self.0.iter().position(|(k, _)| *k == key) {
-            let prev = &mut self.0[i].1;
-            if key == "class" {
-                match val.raw {
-                    CowStr::Borrowed(s) => prev.extend(s),
-                    CowStr::Owned(s) => {
-                        *prev = format!("{} {}", prev, s).into();
-                    }
-                }
-            } else {
-                *prev = val;
-            }
-            i
-        } else {
-            let i = self.0.len();
-            self.0.push((key, val));
-            i
-        }
+    pub fn push(&mut self, key: AttributeKind<'s>, val: AttributeValue<'s>) {
+        self.0.push((key, val));
     }
 
     /// Returns true if the collection contains no attributes.
@@ -193,15 +230,65 @@ impl<'s> Attributes<'s> {
         self.0.len()
     }
 
-    /// Returns a reference to the value corresponding to the attribute key.
+    /// Returns whether the specified key exists in the set.
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from("{x=y .a}").unwrap();
+    /// assert!(a.contains_key("x"));
+    /// assert!(!a.contains_key("y"));
+    /// assert!(a.contains_key("class"));
+    /// ```
     #[must_use]
-    pub fn get(&self, key: &str) -> Option<&AttributeValue> {
-        self.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.0.iter().any(|(k, _)| k.key() == key)
     }
 
-    /// Returns a mutable reference to the value corresponding to the attribute key.
-    pub fn get_mut(&'s mut self, key: &str) -> Option<&mut AttributeValue> {
-        self.iter_mut().find(|(k, _)| *k == key).map(|(_, v)| v)
+    /// Returns the value corresponding to the provided attribute key.
+    ///
+    /// Note: A copy of the value is returned rather than a reference, due to class values
+    /// differing from its internal representation.
+    ///
+    /// # Examples
+    ///
+    /// For the "class" key, concatenate all class values:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// assert_eq!(
+    ///     Attributes::try_from("{.a class=b}").unwrap().get_value("class"),
+    ///     Some("a b".into()),
+    /// );
+    /// ```
+    ///
+    /// For other keys, return the last set value:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// assert_eq!(
+    ///     Attributes::try_from("{x=a x=b}").unwrap().get_value("x"),
+    ///     Some("b".into()),
+    /// );
+    /// ```
+    #[must_use]
+    pub fn get_value(&self, key: &str) -> Option<AttributeValue> {
+        if key == "class" && self.0.iter().filter(|(k, _)| k.key() == "class").count() > 1 {
+            let mut value = AttributeValue::new();
+            for (k, v) in &self.0 {
+                if k.key() == "class" {
+                    value.extend(&v.raw);
+                }
+            }
+            Some(value)
+        } else {
+            self.0
+                .iter()
+                .rfind(|(k, _)| k.key() == key)
+                .map(|(_, v)| v.clone())
+        }
     }
 
     /// Returns an iterator over references to the attribute keys and values in undefined order.
@@ -212,6 +299,48 @@ impl<'s> Attributes<'s> {
     /// Returns an iterator over mutable references to the attribute keys and values in undefined order.
     pub fn iter_mut<'i>(&'i mut self) -> AttributesIterMut<'i, 's> {
         self.into_iter()
+    }
+
+    /// Returns an iterator that only emits a single key-value pair per unique key, i.e. like they
+    /// appear in the rendered output.
+    ///
+    /// # Examples
+    ///
+    /// For "class" elements, values are concatenated:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a: Attributes = "{class=a .b}".try_into().unwrap();
+    /// let mut pairs = a.unique_pairs();
+    /// assert_eq!(pairs.next(), Some(("class", "a b".into())));
+    /// assert_eq!(pairs.next(), None);
+    /// ```
+    ///
+    /// For other keys, the last set value is used:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a: Attributes = "{id=a key=b #c key=d}".try_into().unwrap();
+    /// let mut pairs = a.unique_pairs();
+    /// assert_eq!(pairs.next(), Some(("id", "c".into())));
+    /// assert_eq!(pairs.next(), Some(("key", "d".into())));
+    /// assert_eq!(pairs.next(), None);
+    /// ```
+    ///
+    /// Comments are ignored:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a: Attributes = "{%cmt% #a}".try_into().unwrap();
+    /// let mut pairs = a.unique_pairs();
+    /// assert_eq!(pairs.next(), Some(("id", "a".into())));
+    /// ```
+    #[must_use]
+    pub fn unique_pairs<'a>(&'a self) -> AttributePairsIter<'a, 's> {
+        AttributePairsIter {
+            attrs: &self.0,
+            pos: 0,
+        }
     }
 }
 
@@ -234,18 +363,19 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     /// A single set of attributes can be parsed:
     ///
     /// ```
-    /// # use jotdown::Attributes;
+    /// # use jotdown::*;
     /// let mut a = Attributes::try_from("{.a}").unwrap().into_iter();
-    /// assert_eq!(a.next(), Some(("class", "a".into())));
+    /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
     /// assert_eq!(a.next(), None);
     /// ```
     ///
     /// Multiple sets can be parsed if they immediately follow the each other:
     ///
     /// ```
-    /// # use jotdown::Attributes;
+    /// # use jotdown::*;
     /// let mut a = Attributes::try_from("{.a}{.b}").unwrap().into_iter();
-    /// assert_eq!(a.next(), Some(("class", "a b".into())));
+    /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
+    /// assert_eq!(a.next(), Some((AttributeKind::Class, "b".into())));
     /// assert_eq!(a.next(), None);
     /// ```
     ///
@@ -265,8 +395,8 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
 }
 
 #[cfg(test)]
-impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
-    fn from_iter<I: IntoIterator<Item = (&'s str, &'s str)>>(iter: I) -> Self {
+impl<'s> FromIterator<(AttributeKind<'s>, &'s str)> for Attributes<'s> {
+    fn from_iter<I: IntoIterator<Item = (AttributeKind<'s>, &'s str)>>(iter: I) -> Self {
         let attrs = iter
             .into_iter()
             .map(|(a, v)| (a, v.into()))
@@ -283,7 +413,7 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
     /// ```
     /// # use jotdown::*;
     /// let a = r#"{#a .b id=c class=d key="val" %comment%}"#;
-    /// let b = r#"{id="c", class="b d", key="val"}"#;
+    /// let b = r#"{#a .b id="c" class="d" key="val"}"#;
     /// assert_eq!(format!("{:?}", Attributes::try_from(a).unwrap()), b);
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -291,20 +421,24 @@ impl<'s> std::fmt::Debug for Attributes<'s> {
         let mut first = true;
         for (k, v) in self {
             if !first {
-                write!(f, ", ")?;
+                write!(f, " ")?;
             }
             first = false;
-            write!(f, "{}=\"{}\"", k, v.raw)?;
+            match k {
+                AttributeKind::Class => write!(f, ".{}", v.raw)?,
+                AttributeKind::Id => write!(f, "#{}", v.raw)?,
+                AttributeKind::Pair { key } => write!(f, "{}=\"{}\"", key, v.raw)?,
+            }
         }
         write!(f, "}}")
     }
 }
 
 /// Iterator over [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIntoIter<'s>(std::vec::IntoIter<(&'s str, AttributeValue<'s>)>);
+pub struct AttributesIntoIter<'s>(std::vec::IntoIter<AttributeElem<'s>>);
 
 impl<'s> Iterator for AttributesIntoIter<'s> {
-    type Item = (&'s str, AttributeValue<'s>);
+    type Item = AttributeElem<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
@@ -316,7 +450,7 @@ impl<'s> Iterator for AttributesIntoIter<'s> {
 }
 
 impl<'s> IntoIterator for Attributes<'s> {
-    type Item = (&'s str, AttributeValue<'s>);
+    type Item = AttributeElem<'s>;
 
     type IntoIter = AttributesIntoIter<'s>;
 
@@ -326,10 +460,10 @@ impl<'s> IntoIterator for Attributes<'s> {
 }
 
 /// Iterator over references to [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIter<'i, 's>(std::slice::Iter<'i, (&'s str, AttributeValue<'s>)>);
+pub struct AttributesIter<'i, 's>(std::slice::Iter<'i, AttributeElem<'s>>);
 
 impl<'i, 's> Iterator for AttributesIter<'i, 's> {
-    type Item = (&'s str, &'i AttributeValue<'s>);
+    type Item = (AttributeKind<'s>, &'i AttributeValue<'s>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(move |(k, v)| (*k, v))
@@ -341,7 +475,7 @@ impl<'i, 's> Iterator for AttributesIter<'i, 's> {
 }
 
 impl<'i, 's> IntoIterator for &'i Attributes<'s> {
-    type Item = (&'s str, &'i AttributeValue<'s>);
+    type Item = (AttributeKind<'s>, &'i AttributeValue<'s>);
 
     type IntoIter = AttributesIter<'i, 's>;
 
@@ -351,10 +485,10 @@ impl<'i, 's> IntoIterator for &'i Attributes<'s> {
 }
 
 /// Iterator over mutable references to [Attributes] key-value pairs, in arbitrary order.
-pub struct AttributesIterMut<'i, 's>(std::slice::IterMut<'i, (&'s str, AttributeValue<'s>)>);
+pub struct AttributesIterMut<'i, 's>(std::slice::IterMut<'i, AttributeElem<'s>>);
 
 impl<'i, 's> Iterator for AttributesIterMut<'i, 's> {
-    type Item = (&'s str, &'i mut AttributeValue<'s>);
+    type Item = (AttributeKind<'s>, &'i mut AttributeValue<'s>);
 
     fn next(&mut self) -> Option<Self::Item> {
         // this map splits &(&k, v) into (&&k, &v)
@@ -367,12 +501,54 @@ impl<'i, 's> Iterator for AttributesIterMut<'i, 's> {
 }
 
 impl<'i, 's> IntoIterator for &'i mut Attributes<'s> {
-    type Item = (&'s str, &'i mut AttributeValue<'s>);
+    type Item = (AttributeKind<'s>, &'i mut AttributeValue<'s>);
 
     type IntoIter = AttributesIterMut<'i, 's>;
 
     fn into_iter(self) -> Self::IntoIter {
         AttributesIterMut(self.0.iter_mut())
+    }
+}
+
+/// Iterator of unique attribute pairs.
+///
+/// See [`Attributes::unique_pairs`] for more information.
+pub struct AttributePairsIter<'a, 's> {
+    attrs: &'a [AttributeElem<'s>],
+    pos: usize,
+}
+
+impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
+    type Item = (&'s str, AttributeValue<'s>);
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((key, value)) = self.attrs[self.pos..].first() {
+            self.pos += 1;
+            let key = key.key();
+
+            if self.attrs[..self.pos - 1]
+                .iter()
+                .any(|(k, _)| k.key() == key)
+            {
+                continue; // already emitted when this key first encountered
+            }
+
+            if key == "class" {
+                let mut value = value.clone();
+                for (k, v) in &self.attrs[self.pos..] {
+                    if k.key() == "class" {
+                        value.extend(&v.raw);
+                    }
+                }
+                return Some((key, value));
+            }
+
+            if let Some((_, v)) = self.attrs[self.pos..].iter().rfind(|(k, _)| k.key() == key) {
+                return Some((key, v.clone())); // emit last value when key first encountered
+            }
+
+            return Some((key, value.clone()));
+        }
+        None
     }
 }
 
@@ -412,7 +588,6 @@ impl Validator {
 /// object.
 pub struct Parser<'s> {
     attrs: Attributes<'s>,
-    i_prev: usize,
     state: State,
 }
 
@@ -420,7 +595,6 @@ impl<'s> Parser<'s> {
     pub fn new(attrs: Attributes<'s>) -> Self {
         Self {
             attrs,
-            i_prev: usize::MAX,
             state: State::Start,
         }
     }
@@ -445,11 +619,14 @@ impl<'s> Parser<'s> {
                 let content = &input[pos_prev..pos];
                 pos_prev = pos;
                 match st {
-                    Class => self.attrs.insert("class", content.into()),
-                    Identifier => self.attrs.insert("id", content.into()),
-                    Key => self.i_prev = self.attrs.insert_pos(content, "".into()),
+                    Class => self.attrs.push(AttributeKind::Class, content.into()),
+                    Identifier => self.attrs.push(AttributeKind::Id, content.into()),
+                    Key => self
+                        .attrs
+                        .push(AttributeKind::Pair { key: content }, "".into()),
                     Value | ValueQuoted | ValueContinued => {
-                        self.attrs.0[self.i_prev]
+                        let last = self.attrs.len() - 1;
+                        self.attrs.0[last]
                             .1
                             .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
                     }
@@ -545,43 +722,49 @@ pub fn is_name(c: u8) -> bool {
 
 #[cfg(test)]
 mod test {
+    use super::AttributeKind::*;
     use super::*;
 
     macro_rules! test_attr {
-        ($src:expr $(,$($av:expr),* $(,)?)?) => {
+        ($src:expr, [$($exp:expr),* $(,)?], [$($exp_uniq:expr),* $(,)?] $(,)?) => {
             #[allow(unused)]
             let mut attr = Attributes::try_from($src).unwrap();
-            let actual = attr.iter().collect::<Vec<_>>();
-            let expected = &[$($($av),*,)?];
-            for i in 0..actual.len() {
-                let actual_val = format!("{}", actual[i].1);
-                assert_eq!((actual[i].0, actual_val.as_str()), expected[i], "\n\n{}\n\n", $src);
-            }
+
+            let actual = attr.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>();
+            let expected = &[$($exp),*].map(|(k, v): (_, &str)| (k, v.to_string()));
+            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
+
+            let actual = attr.unique_pairs().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>();
+            let expected = &[$($exp_uniq),*].map(|(k, v): (_, &str)| (k, v.to_string()));
+            assert_eq!(actual, expected, "\n\n{}\n\n", $src);
         };
     }
 
     #[test]
     fn empty() {
-        test_attr!("{}");
+        test_attr!("{}", [], []);
     }
 
     #[test]
     fn class_id() {
         test_attr!(
             "{.some_class #some_id}",
-            ("class", "some_class"),
-            ("id", "some_id"),
+            [(Class, "some_class"), (Id, "some_id")],
+            [("class", "some_class"), ("id", "some_id")],
         );
-        test_attr!("{.a .b}", ("class", "a b"));
-        test_attr!("{#a #b}", ("id", "b"));
+        test_attr!("{.a .b}", [(Class, "a"), (Class, "b")], [("class", "a b")]);
+        test_attr!("{#a #b}", [(Id, "a"), (Id, "b")], [("id", "b")]);
     }
 
     #[test]
     fn value_unquoted() {
         test_attr!(
             "{attr0=val0 attr1=val1}",
-            ("attr0", "val0"),
-            ("attr1", "val1"),
+            [
+                (Pair { key: "attr0" }, "val0"),
+                (Pair { key: "attr1" }, "val1"),
+            ],
+            [("attr0", "val0"), ("attr1", "val1")],
         );
     }
 
@@ -589,32 +772,46 @@ mod test {
     fn value_quoted() {
         test_attr!(
             r#"{attr0="val0" attr1="val1"}"#,
-            ("attr0", "val0"),
-            ("attr1", "val1"),
+            [
+                (Pair { key: "attr0" }, "val0"),
+                (Pair { key: "attr1" }, "val1"),
+            ],
+            [("attr0", "val0"), ("attr1", "val1")],
         );
         test_attr!(
             r#"{#id .class style="color:red"}"#,
-            ("id", "id"),
-            ("class", "class"),
-            ("style", "color:red")
+            [
+                (Id, "id"),
+                (Class, "class"),
+                (Pair { key: "style" }, "color:red"),
+            ],
+            [("id", "id"), ("class", "class"), ("style", "color:red")]
         );
     }
 
     #[test]
     fn value_newline() {
-        test_attr!("{attr0=\"abc\ndef\"}", ("attr0", "abc def"));
+        test_attr!(
+            "{attr0=\"abc\ndef\"}",
+            [(Pair { key: "attr0" }, "abc def")],
+            [("attr0", "abc def")]
+        );
     }
 
     #[test]
     fn comment() {
-        test_attr!("{%}");
-        test_attr!("{%%}");
-        test_attr!("{ % abc % }");
-        test_attr!("{ .some_class % #some_id }", ("class", "some_class"));
+        test_attr!("{%}", [], []);
+        test_attr!("{%%}", [], []);
+        test_attr!("{ % abc % }", [], []);
+        test_attr!(
+            "{ .some_class % #some_id }",
+            [(Class, "some_class")],
+            [("class", "some_class")]
+        );
         test_attr!(
             "{ .some_class % abc % #some_id}",
-            ("class", "some_class"),
-            ("id", "some_id"),
+            [(Class, "some_class"), (Id, "some_id")],
+            [("class", "some_class"), ("id", "some_id")],
         );
     }
 
@@ -622,33 +819,46 @@ mod test {
     fn escape() {
         test_attr!(
             r#"{attr="with escaped \~ char"}"#,
-            ("attr", "with escaped ~ char")
+            [(Pair { key: "attr" }, "with escaped ~ char")],
+            [("attr", "with escaped ~ char")]
         );
         test_attr!(
             r#"{key="quotes \" should be escaped"}"#,
-            ("key", r#"quotes " should be escaped"#)
+            [(Pair { key: "key" }, r#"quotes " should be escaped"#)],
+            [("key", r#"quotes " should be escaped"#)]
         );
     }
 
     #[test]
     fn escape_backslash() {
-        test_attr!(r#"{attr="with\\backslash"}"#, ("attr", r"with\backslash"));
+        test_attr!(
+            r#"{attr="with\\backslash"}"#,
+            [(Pair { key: "attr" }, r"with\backslash")],
+            [("attr", r"with\backslash")]
+        );
         test_attr!(
             r#"{attr="with many backslashes\\\\"}"#,
-            ("attr", r"with many backslashes\\")
+            [(Pair { key: "attr" }, r"with many backslashes\\")],
+            [("attr", r"with many backslashes\\")]
         );
         test_attr!(
             r#"{attr="\\escaped backslash at start"}"#,
-            ("attr", r"\escaped backslash at start")
+            [(Pair { key: "attr" }, r"\escaped backslash at start")],
+            [("attr", r"\escaped backslash at start")]
         );
     }
 
     #[test]
     fn only_escape_punctuation() {
-        test_attr!(r#"{attr="do not \escape"}"#, ("attr", r"do not \escape"));
+        test_attr!(
+            r#"{attr="do not \escape"}"#,
+            [(Pair { key: "attr" }, r"do not \escape")],
+            [("attr", r"do not \escape")]
+        );
         test_attr!(
             r#"{attr="\backslash at the beginning"}"#,
-            ("attr", r"\backslash at the beginning")
+            [(Pair { key: "attr" }, r"\backslash at the beginning")],
+            [("attr", r"\backslash at the beginning")]
         );
     }
 
@@ -700,32 +910,32 @@ mod test {
     #[test]
     fn get_value_named() {
         assert_eq!(
-            Attributes::try_from("{x=a}").unwrap().get("x"),
-            Some(&"a".into()),
+            Attributes::try_from("{x=a}").unwrap().get_value("x"),
+            Some("a".into()),
         );
         assert_eq!(
-            Attributes::try_from("{x=a x=b}").unwrap().get("x"),
-            Some(&"b".into()),
+            Attributes::try_from("{x=a x=b}").unwrap().get_value("x"),
+            Some("b".into()),
         );
     }
 
     #[test]
     fn get_value_id() {
         assert_eq!(
-            Attributes::try_from("{#a}").unwrap().get("id"),
-            Some(&"a".into()),
+            Attributes::try_from("{#a}").unwrap().get_value("id"),
+            Some("a".into()),
         );
         assert_eq!(
-            Attributes::try_from("{#a #b}").unwrap().get("id"),
-            Some(&"b".into()),
+            Attributes::try_from("{#a #b}").unwrap().get_value("id"),
+            Some("b".into()),
         );
         assert_eq!(
-            Attributes::try_from("{#a id=b}").unwrap().get("id"),
-            Some(&"b".into()),
+            Attributes::try_from("{#a id=b}").unwrap().get_value("id"),
+            Some("b".into()),
         );
         assert_eq!(
-            Attributes::try_from("{id=a #b}").unwrap().get("id"),
-            Some(&"b".into()),
+            Attributes::try_from("{id=a #b}").unwrap().get_value("id"),
+            Some("b".into()),
         );
     }
 
@@ -734,58 +944,59 @@ mod test {
         assert_eq!(
             Attributes::try_from("{.a #a .b #b .c}")
                 .unwrap()
-                .get("class"),
-            Some(&"a b c".into()),
+                .get_value("class"),
+            Some("a b c".into()),
         );
-        assert_eq!(Attributes::try_from("{#a}").unwrap().get("class"), None,);
         assert_eq!(
-            Attributes::try_from("{.a}").unwrap().get("class"),
-            Some(&"a".into()),
+            Attributes::try_from("{#a}").unwrap().get_value("class"),
+            None,
+        );
+        assert_eq!(
+            Attributes::try_from("{.a}").unwrap().get_value("class"),
+            Some("a".into()),
         );
         assert_eq!(
             Attributes::try_from("{.a #a class=b #b .c}")
                 .unwrap()
-                .get("class"),
-            Some(&"a b c".into()),
+                .get_value("class"),
+            Some("a b c".into()),
         );
-    }
-
-    fn make_attrs<'a>(v: Vec<(&'a str, &'a str)>) -> Attributes<'a> {
-        v.into_iter().collect()
     }
 
     #[test]
     fn can_iter() {
-        let attrs = make_attrs(vec![("key1", "val1"), ("key2", "val2")]);
-        let as_vec = attrs.iter().collect::<Vec<_>>();
         assert_eq!(
-            as_vec,
+            Attributes::try_from("{key1=val1 key2=val2}")
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>(),
             vec![
-                ("key1", &AttributeValue::from("val1")),
-                ("key2", &AttributeValue::from("val2")),
+                (Pair { key: "key1" }, &AttributeValue::from("val1")),
+                (Pair { key: "key2" }, &AttributeValue::from("val2")),
             ]
         );
     }
 
     #[test]
     fn can_iter_mut() {
-        let mut attrs = make_attrs(vec![("key1", "val1"), ("key2", "val2")]);
-        let as_vec = attrs.iter_mut().collect::<Vec<_>>();
         assert_eq!(
-            as_vec,
+            Attributes::try_from("{key1=val1 key2=val2}")
+                .unwrap()
+                .iter_mut()
+                .collect::<Vec<_>>(),
             vec![
-                ("key1", &mut AttributeValue::from("val1")),
-                ("key2", &mut AttributeValue::from("val2")),
+                (Pair { key: "key1" }, &mut AttributeValue::from("val1")),
+                (Pair { key: "key2" }, &mut AttributeValue::from("val2")),
             ]
         );
     }
 
     #[test]
     fn iter_after_iter_mut() {
-        let mut attrs: Attributes = make_attrs(vec![("key1", "val1"), ("key2", "val2")]);
+        let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
 
         for (attr, value) in &mut attrs {
-            if attr == "key2" {
+            if attr.key() == "key2" {
                 *value = "new_val".into();
             }
         }
@@ -793,8 +1004,8 @@ mod test {
         assert_eq!(
             attrs.iter().collect::<Vec<_>>(),
             vec![
-                ("key1", &AttributeValue::from("val1")),
-                ("key2", &AttributeValue::from("new_val")),
+                (Pair { key: "key1" }, &AttributeValue::from("val1")),
+                (Pair { key: "key2" }, &AttributeValue::from("new_val")),
             ]
         );
     }

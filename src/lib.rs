@@ -57,8 +57,8 @@ mod inline;
 mod lex;
 
 pub use attr::{
-    AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter, AttributesIter,
-    AttributesIterMut, ParseAttributesError,
+    AttributeKind, AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter,
+    AttributesIter, AttributesIterMut, ParseAttributesError,
 };
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
@@ -668,8 +668,8 @@ impl<'s> PrePass<'s> {
                         .map(|sp| Attributes::try_from(&src[sp.clone()]).expect("should be valid"));
                     let id_override = attrs
                         .as_ref()
-                        .and_then(|attrs| attrs.get("id"))
-                        .map(ToString::to_string);
+                        .and_then(|attrs| attrs.get_value("id"))
+                        .map(|s| s.to_string());
 
                     let mut id_auto = String::new();
                     let mut text = String::new();
@@ -969,7 +969,7 @@ impl<'s> Parser<'s> {
 
                             let (url_or_tag, ty) = if let Some((url, attrs_def)) = link_def {
                                 if enter {
-                                    attributes.union(attrs_def);
+                                    attributes.concat(attrs_def);
                                 }
                                 (url, SpanLinkType::Reference)
                             } else {
@@ -1207,6 +1207,7 @@ impl<'s> Iterator for OffsetIter<'s> {
 
 #[cfg(test)]
 mod test {
+    use super::AttributeKind;
     use super::Attributes;
     use super::Container::*;
     use super::Event::*;
@@ -1374,7 +1375,9 @@ mod test {
             (
                 Start(
                     Section { id: "def".into() },
-                    [("a", "b")].into_iter().collect(),
+                    [(AttributeKind::Pair { key: "a" }, "b")]
+                        .into_iter()
+                        .collect(),
                 ),
                 "{a=b}\n",
             ),
@@ -2028,7 +2031,12 @@ mod test {
             (
                 Start(
                     Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
-                    [("b", "c"), ("a", "b")].into_iter().collect(),
+                    [
+                        (AttributeKind::Pair { key: "a" }, "b"),
+                        (AttributeKind::Pair { key: "b" }, "c"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "[",
             ),
@@ -2042,7 +2050,9 @@ mod test {
             (
                 Start(
                     LinkDefinition { label: "tag" },
-                    [("a", "b")].into_iter().collect(),
+                    [(AttributeKind::Pair { key: "a" }, "b")]
+                        .into_iter()
+                        .collect(),
                 ),
                 "{a=b}\n[tag]:",
             ),
@@ -2068,7 +2078,12 @@ mod test {
             (
                 Start(
                     Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
-                    [("class", "link"), ("class", "def")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "def"),
+                        (AttributeKind::Class, "link"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "[",
             ),
@@ -2082,7 +2097,7 @@ mod test {
             (
                 Start(
                     LinkDefinition { label: "tag" },
-                    [("class", "def")].into_iter().collect(),
+                    [(AttributeKind::Class, "def")].into_iter().collect(),
                 ),
                 "{.def}\n[tag]:",
             ),
@@ -2237,7 +2252,10 @@ mod test {
         test_parse!(
             "{.some_class}\npara\n",
             (
-                Start(Paragraph, [("class", "some_class")].into_iter().collect()),
+                Start(
+                    Paragraph,
+                    [(AttributeKind::Class, "some_class")].into_iter().collect(),
+                ),
                 "{.some_class}\n",
             ),
             (Str("para".into()), "para"),
@@ -2252,7 +2270,9 @@ mod test {
             (
                 Start(
                     Paragraph,
-                    [("class", "a"), ("id", "b")].into_iter().collect(),
+                    [(AttributeKind::Class, "a"), (AttributeKind::Id, "b")]
+                        .into_iter()
+                        .collect(),
                 ),
                 "{.a}\n{#b}\n",
             ),
@@ -2268,7 +2288,10 @@ mod test {
             (Start(Paragraph, Attributes::new()), ""),
             (Str("abc ".into()), "abc "),
             (
-                Start(Emphasis, [("class", "ghi")].into_iter().collect()),
+                Start(
+                    Emphasis,
+                    [(AttributeKind::Class, "ghi")].into_iter().collect(),
+                ),
                 "_",
             ),
             (Str("def".into()), "def"),
@@ -2285,7 +2308,13 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [("class", "a b"), ("id", "i")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "a"),
+                        (AttributeKind::Class, "b"),
+                        (AttributeKind::Id, "i"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "_",
             ),
@@ -2299,7 +2328,13 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [("class", "a b"), ("id", "i")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "a"),
+                        (AttributeKind::Class, "b"),
+                        (AttributeKind::Id, "i"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "_",
             ),
@@ -2317,7 +2352,13 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [("class", "a b"), ("id", "i")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "a"),
+                        (AttributeKind::Class, "b"),
+                        (AttributeKind::Id, "i"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "_",
             ),
@@ -2332,7 +2373,13 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [("class", "a b"), ("id", "i")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "a"),
+                        (AttributeKind::Class, "b"),
+                        (AttributeKind::Id, "i"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "_",
             ),
@@ -2347,7 +2394,13 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [("class", "a b"), ("id", "i")].into_iter().collect(),
+                    [
+                        (AttributeKind::Class, "a"),
+                        (AttributeKind::Class, "b"),
+                        (AttributeKind::Id, "i"),
+                    ]
+                    .into_iter()
+                    .collect(),
                 ),
                 "_",
             ),
@@ -2370,7 +2423,15 @@ mod test {
             (Start(Blockquote, Attributes::new()), ">"),
             (Start(Paragraph, Attributes::new()), ""),
             (
-                Start(Emphasis, [("a", "b"), ("c", "d")].into_iter().collect()),
+                Start(
+                    Emphasis,
+                    [
+                        (AttributeKind::Pair { key: "a" }, "b"),
+                        (AttributeKind::Pair { key: "c" }, "d"),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
                 "_",
             ),
             (Str("abc".into()), "abc"),
@@ -2386,7 +2447,15 @@ mod test {
             ),
             (Start(Blockquote, Attributes::new()), ">"),
             (Start(Paragraph, Attributes::new()), ""),
-            (Start(Span, [("a", "a")].into_iter().collect()), ""),
+            (
+                Start(
+                    Span,
+                    [(AttributeKind::Pair { key: "a" }, "a")]
+                        .into_iter()
+                        .collect(),
+                ),
+                "",
+            ),
             (Str("a".into()), "a"),
             (End(Span), "{\n> %%\n> a=a}"),
             (End(Paragraph), ""),
@@ -2400,7 +2469,15 @@ mod test {
             ),
             (Start(Blockquote, Attributes::new()), ">"),
             (Start(Paragraph, Attributes::new()), ""),
-            (Start(Span, [("a", "a b c")].into_iter().collect()), ""),
+            (
+                Start(
+                    Span,
+                    [(AttributeKind::Pair { key: "a" }, "a b c")]
+                        .into_iter()
+                        .collect(),
+                ),
+                "",
+            ),
             (Str("a".into()), "a"),
             (End(Span), "{a=\"a\n> b\n> c\"}"),
             (End(Paragraph), ""),
@@ -2413,7 +2490,15 @@ mod test {
             ),
             (Start(Blockquote, Attributes::new()), ">"),
             (Start(Paragraph, Attributes::new()), ""),
-            (Start(Span, [("a", "b")].into_iter().collect()), ""),
+            (
+                Start(
+                    Span,
+                    [(AttributeKind::Pair { key: "a" }, "b")]
+                        .into_iter()
+                        .collect(),
+                ),
+                "",
+            ),
             (Str("a".into()), "a"),
             (End(Span), "{a=\"\n> b\"}"),
             (End(Paragraph), ""),
