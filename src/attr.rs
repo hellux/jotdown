@@ -24,12 +24,18 @@ pub(crate) fn valid(src: &str) -> usize {
 
 /// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,
 /// without allocating.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct AttributeValue<'s> {
     raw: CowStr<'s>,
 }
 
 impl<'s> AttributeValue<'s> {
+    /// Create an empty attribute value.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Processes the attribute value escapes and returns an iterator of the parts of the value
     /// that should be displayed.
     pub fn parts(&'s self) -> AttributeValueParts<'s> {
