@@ -1220,12 +1220,17 @@ mod test {
                 concat!(
                     "\n",
                     "\x1b[0;1m====================== INPUT =========================\x1b[0m\n",
-                    "\x1b[2m{}",
+                    "\x1b[2m{}{}",
                     "\x1b[0;1m================ ACTUAL vs EXPECTED ==================\x1b[0m\n",
                     "{}",
                     "\x1b[0;1m======================================================\x1b[0m\n",
                 ),
                 $src,
+                if $src.ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                },
                 {
                     let a = actual.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>();
                     let b = expected.iter().map(|n| format!("{:?}", n)).collect::<Vec<_>>();
