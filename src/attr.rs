@@ -694,6 +694,59 @@ mod test {
         assert_eq!(super::valid("{.abc.}"), 0);
     }
 
+    #[test]
+    fn get_value_named() {
+        assert_eq!(
+            Attributes::try_from("{x=a}").unwrap().get("x"),
+            Some(&"a".into()),
+        );
+        assert_eq!(
+            Attributes::try_from("{x=a x=b}").unwrap().get("x"),
+            Some(&"b".into()),
+        );
+    }
+
+    #[test]
+    fn get_value_id() {
+        assert_eq!(
+            Attributes::try_from("{#a}").unwrap().get("id"),
+            Some(&"a".into()),
+        );
+        assert_eq!(
+            Attributes::try_from("{#a #b}").unwrap().get("id"),
+            Some(&"b".into()),
+        );
+        assert_eq!(
+            Attributes::try_from("{#a id=b}").unwrap().get("id"),
+            Some(&"b".into()),
+        );
+        assert_eq!(
+            Attributes::try_from("{id=a #b}").unwrap().get("id"),
+            Some(&"b".into()),
+        );
+    }
+
+    #[test]
+    fn get_value_class() {
+        assert_eq!(
+            Attributes::try_from("{.a #a .b #b .c}")
+                .unwrap()
+                .get("class"),
+            Some(&"a b c".into()),
+        );
+        assert_eq!(Attributes::try_from("{#a}").unwrap().get("class"), None,);
+        assert_eq!(
+            Attributes::try_from("{.a}").unwrap().get("class"),
+            Some(&"a".into()),
+        );
+        assert_eq!(
+            Attributes::try_from("{.a #a class=b #b .c}")
+                .unwrap()
+                .get("class"),
+            Some(&"a  b c".into()), // bug: extra space?
+        );
+    }
+
     fn make_attrs<'a>(v: Vec<(&'a str, &'a str)>) -> Attributes<'a> {
         v.into_iter().collect()
     }
