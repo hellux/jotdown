@@ -38,6 +38,9 @@ impl<'s> AttributeValue<'s> {
 
     // lifetime is 's to avoid allocation if empty value is concatenated with single value
     fn extend(&mut self, s: &'s str) {
+        if s.is_empty() {
+            return;
+        }
         match &mut self.raw {
             CowStr::Borrowed(prev) => {
                 if prev.is_empty() {
@@ -47,8 +50,12 @@ impl<'s> AttributeValue<'s> {
                 }
             }
             CowStr::Owned(ref mut prev) => {
-                prev.push(' ');
-                prev.push_str(s);
+                if prev.is_empty() {
+                    self.raw = s.into();
+                } else {
+                    prev.push(' ');
+                    prev.push_str(s);
+                }
             }
         }
     }
@@ -743,7 +750,7 @@ mod test {
             Attributes::try_from("{.a #a class=b #b .c}")
                 .unwrap()
                 .get("class"),
-            Some(&"a  b c".into()), // bug: extra space?
+            Some(&"a b c".into()),
         );
     }
 
