@@ -1,0 +1,7 @@
+Classes should be concatenated
+
+```
+word{.a #a class=b #b .c}
+.
+<p><span id="b" class="a  b c">word</span></p>
+```
