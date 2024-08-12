@@ -288,6 +288,16 @@ impl<'s> FromIterator<(&'s str, &'s str)> for Attributes<'s> {
 }
 
 impl<'s> std::fmt::Debug for Attributes<'s> {
+    /// Formats the attributes using the given formatter.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = r#"{#a .b id=c class=d key="val" %comment%}"#;
+    /// let b = r#"{id="c", class="b d", key="val"}"#;
+    /// assert_eq!(format!("{:?}", Attributes::try_from(a).unwrap()), b);
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         let mut first = true;
