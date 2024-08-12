@@ -422,6 +422,26 @@ impl<'s> FromIterator<(AttributeKind<'s>, &'s str)> for Attributes<'s> {
     }
 }
 
+impl<'s> FromIterator<AttributeElem<'s>> for Attributes<'s> {
+    /// Create `Attributes` from an iterator of elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let e0 = (AttributeKind::Class, AttributeValue::from("a"));
+    /// let e1 = (AttributeKind::Id, AttributeValue::from("b"));
+    /// let a: Attributes = [e0.clone(), e1.clone()].into_iter().collect();
+    /// assert_eq!(format!("{:?}", a), "{.a #b}");
+    /// let mut elems = a.into_iter();
+    /// assert_eq!(elems.next(), Some(e0));
+    /// assert_eq!(elems.next(), Some(e1));
+    /// ```
+    fn from_iter<I: IntoIterator<Item = AttributeElem<'s>>>(iter: I) -> Self {
+        Attributes(iter.into_iter().collect())
+    }
+}
+
 impl<'s> std::fmt::Debug for Attributes<'s> {
     /// Formats the attributes using the given formatter.
     ///
