@@ -363,6 +363,18 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     }
 }
 
+impl<'s> From<Vec<AttributeElem<'s>>> for Attributes<'s> {
+    fn from(v: Vec<AttributeElem<'s>>) -> Self {
+        Self(v)
+    }
+}
+
+impl<'s> From<Attributes<'s>> for Vec<AttributeElem<'s>> {
+    fn from(a: Attributes<'s>) -> Self {
+        a.0
+    }
+}
+
 impl<'s> std::ops::Deref for Attributes<'s> {
     type Target = Vec<AttributeElem<'s>>;
 
@@ -970,6 +982,15 @@ mod test {
                 .get_value("class"),
             Some("a b c".into()),
         );
+    }
+
+    #[test]
+    fn from_to_vec() {
+        let v0: Vec<(AttributeKind, AttributeValue)> = vec![(Class, "a".into()), (Id, "b".into())];
+        let a: Attributes = v0.clone().into();
+        assert_eq!(format!("{:?}", a), "{.a #b}");
+        let v1: Vec<(AttributeKind, AttributeValue)> = a.into();
+        assert_eq!(v0, v1);
     }
 
     #[test]
