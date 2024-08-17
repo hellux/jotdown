@@ -516,7 +516,9 @@ impl<'s> Parser<'s> {
                 .chain(self.input.ahead.iter().take(state.valid_lines).cloned())
             {
                 let line = line.start..usize::min(state.end_attr, line.end);
-                parser.parse(&self.input.src[line]);
+                parser
+                    .parse(&self.input.src[line])
+                    .expect("should be valid");
             }
             parser.finish()
         };

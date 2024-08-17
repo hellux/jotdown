@@ -58,7 +58,7 @@ mod lex;
 
 pub use attr::{
     AttributeValue, AttributeValueParts, Attributes, AttributesIntoIter, AttributesIter,
-    AttributesIterMut,
+    AttributesIterMut, ParseAttributesError,
 };
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
@@ -619,9 +619,9 @@ impl<'s> PrePass<'s> {
                 })) => {
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
-                    let attrs = attr_prev
-                        .as_ref()
-                        .map_or_else(Attributes::new, |sp| attr::parse(&src[sp.clone()]));
+                    let attrs = attr_prev.as_ref().map_or_else(Attributes::new, |sp| {
+                        src[sp.clone()].try_into().expect("should be valid")
+                    });
                     let url = if let Some(block::Event {
                         kind: block::EventKind::Inline,
                         span,
@@ -663,7 +663,9 @@ impl<'s> PrePass<'s> {
                     // as formatting must be removed.
                     //
                     // We choose to parse all headers twice instead of caching them.
-                    let attrs = attr_prev.as_ref().map(|sp| attr::parse(&src[sp.clone()]));
+                    let attrs = attr_prev
+                        .as_ref()
+                        .map(|sp| Attributes::try_from(&src[sp.clone()]).expect("should be valid"));
                     let id_override = attrs
                         .as_ref()
                         .and_then(|attrs| attrs.get("id"))
@@ -1037,7 +1039,9 @@ impl<'s> Parser<'s> {
                         if self.block_attributes_pos.is_none() {
                             self.block_attributes_pos = Some(ev.span.start);
                         }
-                        self.block_attributes.parse(&self.src[ev.span.clone()]);
+                        self.block_attributes
+                            .parse(&self.src[ev.span.clone()])
+                            .expect("should be valid");
                         continue;
                     }
                 },

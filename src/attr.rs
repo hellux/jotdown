@@ -1,13 +1,6 @@
 use crate::CowStr;
 use std::fmt;
 
-/// Parse attributes, assumed to be valid.
-pub(crate) fn parse(src: &str) -> Attributes {
-    let mut a = Attributes::new();
-    a.parse(src);
-    a
-}
-
 pub fn valid(src: &str) -> usize {
     use State::*;
 
@@ -133,11 +126,12 @@ impl<'s> Attributes<'s> {
         Self(self.0.take())
     }
 
-    /// Parse and append attributes, assumed to be valid.
-    pub(crate) fn parse(&mut self, input: &'s str) {
+    /// Parse and append attributes.
+    pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         let mut parser = Parser::new(self.take());
-        parser.parse(input);
+        parser.parse(input)?;
         *self = parser.finish();
+        Ok(())
     }
 
     /// Combine all attributes from both objects, prioritizing self on conflicts.
@@ -219,6 +213,55 @@ impl<'s> Attributes<'s> {
     /// Returns an iterator over mutable references to the attribute keys and values in undefined order.
     pub fn iter_mut<'i>(&'i mut self) -> AttributesIterMut<'i, 's> {
         self.into_iter()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParseAttributesError {
+    /// Location in input string where attributes became invalid.
+    pub pos: usize,
+}
+
+impl<'s> TryFrom<&'s str> for Attributes<'s> {
+    type Error = ParseAttributesError;
+
+    /// Parse attributes represented in the djot syntax.
+    ///
+    /// Note: The [`Attributes`] borrows from the provided [`&str`], it is therefore not compatible
+    /// with the existing [`std::str::FromStr`] trait.
+    ///
+    /// # Examples
+    ///
+    /// A single set of attributes can be parsed:
+    ///
+    /// ```
+    /// # use jotdown::Attributes;
+    /// let mut a = Attributes::try_from("{.a}").unwrap().into_iter();
+    /// assert_eq!(a.next(), Some(("class", "a".into())));
+    /// assert_eq!(a.next(), None);
+    /// ```
+    ///
+    /// Multiple sets can be parsed if they immediately follow the each other:
+    ///
+    /// ```
+    /// # use jotdown::Attributes;
+    /// let mut a = Attributes::try_from("{.a}{.b}").unwrap().into_iter();
+    /// assert_eq!(a.next(), Some(("class", "a b".into())));
+    /// assert_eq!(a.next(), None);
+    /// ```
+    ///
+    /// When the attributes are invalid, the position where the parsing failed is returned:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// assert_eq!(Attributes::try_from("{.a $}"), Err(ParseAttributesError { pos: 4 }));
+    /// ```
+    fn try_from(s: &'s str) -> Result<Self, Self::Error> {
+        let mut a = Attributes::new();
+        match a.parse(s) {
+            Ok(()) => Ok(a),
+            Err(pos) => Err(ParseAttributesError { pos }),
+        }
     }
 }
 
@@ -364,9 +407,6 @@ impl Validator {
 
 /// Attributes parser, take input of one or more consecutive attributes and create an `Attributes`
 /// object.
-///
-/// Input is assumed to contain a valid series of attribute sets, the attributes are added as they
-/// are encountered.
 pub struct Parser<'s> {
     attrs: Attributes<'s>,
     i_prev: usize,
@@ -384,12 +424,17 @@ impl<'s> Parser<'s> {
 
     /// Return value indicates the number of bytes parsed if finished. If None, more input is
     /// required to finish the attributes.
-    pub fn parse(&mut self, input: &'s str) {
+    pub fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         use State::*;
 
         let mut pos_prev = 0;
         for (pos, c) in input.bytes().enumerate() {
             let state_next = self.state.step(c);
+
+            if matches!(state_next, Invalid) {
+                return Err(pos);
+            }
+
             let st = std::mem::replace(&mut self.state, state_next);
 
             if st != self.state && !matches!((st, self.state), (ValueEscape, _) | (_, ValueEscape))
@@ -415,10 +460,12 @@ impl<'s> Parser<'s> {
                 if input[pos + 1..].starts_with('{') {
                     self.state = Start;
                 } else {
-                    return;
+                    return Ok(());
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn finish(self) -> Attributes<'s> {
@@ -500,8 +547,7 @@ mod test {
     macro_rules! test_attr {
         ($src:expr $(,$($av:expr),* $(,)?)?) => {
             #[allow(unused)]
-            let mut attr = Attributes::new();
-            attr.parse($src);
+            let mut attr = Attributes::try_from($src).unwrap();
             let actual = attr.iter().collect::<Vec<_>>();
             let expected = &[$($($av),*,)?];
             for i in 0..actual.len() {
