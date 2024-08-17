@@ -11,7 +11,7 @@ target/release/jotdown:
 
 .PHONY:
 docs:
-	cargo doc --no-deps --workspace
+	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 
 .PHONY: lint
 lint:
