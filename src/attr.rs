@@ -197,6 +197,76 @@ impl<'s> AttributeKind<'s> {
 }
 
 /// A set of attributes, with order, duplicates and comments preserved.
+///
+/// `Attributes` is a wrapper object around a [`Vec`] containing the elements of the set, each a
+/// pair of an [`AttributeKind`] and an [`AttributeValue`]. It implements [`std::ops::Deref`] and
+/// [`std::ops::DerefMut`] so methods of the inner [`Vec`] and [`slice`] can be used directly on
+/// the `Attributes` to access or modify the elements. The wrapper also implements [`From`] and
+/// [`Into`] for [`Vec`] so one can easily add or remove the wrapper.
+///
+/// `Attributes` are typically created by a [`crate::Parser`] and placed in the [`crate::Event`]s
+/// that it emits. `Attributes` can also be created from a djot string representation, see
+/// [`Attributes::try_from`].
+///
+/// The attribute elements can be accessed using e.g. [`slice::iter`] or [`slice::iter_mut`], but
+/// if e.g. duplicate keys or comments are not desired, refer to [`Attributes::get_value`] and
+/// [`Attributes::unique_pairs`].
+///
+/// # Examples
+///
+/// Access the inner [`Vec`]:
+///
+/// ```
+/// # use jotdown::*;
+/// let a: Attributes = r#"{#a .b id=c class=d key="val" %comment%}"#
+///     .try_into()
+///     .unwrap();
+/// assert_eq!(
+///     Vec::from(a),
+///     vec![
+///         (AttributeKind::Id, "a".into()),
+///         (AttributeKind::Class, "b".into()),
+///         (AttributeKind::Pair { key: "id" }, "c".into()),
+///         (AttributeKind::Pair { key: "class" }, "d".into()),
+///         (AttributeKind::Pair { key: "key" }, "val".into()),
+///         (AttributeKind::Comment, "comment".into()),
+///     ],
+/// );
+/// ```
+///
+/// Replace a value:
+///
+/// ```
+/// # use jotdown::*;
+/// let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
+///
+/// for (attr, value) in &mut attrs {
+///     if attr.key() == Some("key2") {
+///         *value = "new_val".into();
+///     }
+/// }
+///
+/// assert_eq!(
+///     attrs.as_slice(),
+///     &[
+///         (AttributeKind::Pair { key: "key1" }, "val1".into()),
+///         (AttributeKind::Pair { key: "key2" }, "new_val".into()),
+///     ]
+/// );
+/// ```
+///
+/// Filter out keys with a specific prefix:
+///
+/// ```
+/// # use jotdown::*;
+/// let a: Attributes = Attributes::try_from("{ign:x=a ign:y=b z=c}")
+///     .unwrap()
+///     .into_iter()
+///     .filter(|(k, _)| !matches!(k.key(), Some(key) if key.starts_with("ign:")))
+///     .collect();
+/// let b = Attributes::try_from("{z=c}").unwrap();
+/// assert_eq!(a, b);
+/// ```
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct Attributes<'s>(Vec<AttributeElem<'s>>);
 
@@ -1043,24 +1113,5 @@ mod test {
         assert_eq!(format!("{:?}", a), "{.a #b}");
         let v1: Vec<(AttributeKind, AttributeValue)> = a.into();
         assert_eq!(v0, v1);
-    }
-
-    #[test]
-    fn iter_after_iter_mut() {
-        let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
-
-        for (attr, value) in &mut attrs {
-            if attr.key() == Some("key2") {
-                *value = "new_val".into();
-            }
-        }
-
-        assert_eq!(
-            attrs.iter().collect::<Vec<_>>(),
-            vec![
-                &(Pair { key: "key1" }, AttributeValue::from("val1")),
-                &(Pair { key: "key2" }, AttributeValue::from("new_val")),
-            ]
-        );
     }
 }
