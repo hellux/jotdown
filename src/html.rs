@@ -208,9 +208,19 @@ impl<'s> Writer<'s> {
                     Container::LinkDefinition { .. } => return Ok(()),
                 }
 
-                for (a, v) in attrs.unique_pairs().filter(|(a, _)| *a != "class") {
+                let mut id_written = false;
+                let mut class_written = false;
+                for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    match a {
+                        "class" => {
+                            class_written = true;
+                            write_class(c, true, &mut out)?;
+                        }
+                        "id" => id_written = true,
+                        _ => {}
+                    }
                     out.write_char('"')?;
                 }
 
@@ -221,59 +231,25 @@ impl<'s> Writer<'s> {
                 }
                 | Container::Section { id } = &c
                 {
-                    if !attrs.unique_pairs().any(|(a, _)| a == "id") {
+                    if !id_written {
                         out.write_str(r#" id=""#)?;
                         write_attr(id, &mut out)?;
                         out.write_char('"')?;
                     }
-                }
-
-                if attrs.unique_pairs().any(|(a, _)| a == "class")
+                } else if (matches!(c, Container::Div { class } if !class.is_empty())
                     || matches!(
                         c,
-                        Container::Div { class } if !class.is_empty())
-                    || matches!(c, |Container::Math { .. }| Container::List {
-                        kind: ListKind::Task,
-                        ..
-                    } | Container::TaskListItem { .. })
+                        Container::Math { .. }
+                            | Container::List {
+                                kind: ListKind::Task,
+                                ..
+                            }
+                            | Container::TaskListItem { .. }
+                    ))
+                    && !class_written
                 {
                     out.write_str(r#" class=""#)?;
-                    let mut first_written = false;
-                    if let Some(cls) = match c {
-                        Container::List {
-                            kind: ListKind::Task,
-                            ..
-                        } => Some("task-list"),
-                        Container::TaskListItem { checked: false } => Some("unchecked"),
-                        Container::TaskListItem { checked: true } => Some("checked"),
-                        Container::Math { display: false } => Some("math inline"),
-                        Container::Math { display: true } => Some("math display"),
-                        _ => None,
-                    } {
-                        first_written = true;
-                        out.write_str(cls)?;
-                    }
-                    for cls in attrs
-                        .unique_pairs()
-                        .filter(|(a, _)| a == &"class")
-                        .map(|(_, cls)| cls)
-                    {
-                        if first_written {
-                            out.write_char(' ')?;
-                        }
-                        first_written = true;
-                        cls.parts()
-                            .try_for_each(|part| write_attr(part, &mut out))?;
-                    }
-                    // div class goes after classes from attrs
-                    if let Container::Div { class } = c {
-                        if !class.is_empty() {
-                            if first_written {
-                                out.write_char(' ')?;
-                            }
-                            out.write_str(class)?;
-                        }
-                    }
+                    write_class(c, false, &mut out)?;
                     out.write_char('"')?;
                 }
 
@@ -471,6 +447,35 @@ impl<'s> Writer<'s> {
 
         Ok(())
     }
+}
+
+fn write_class<W>(c: &Container, mut first_written: bool, out: &mut W) -> std::fmt::Result
+where
+    W: std::fmt::Write,
+{
+    if let Some(cls) = match c {
+        Container::List {
+            kind: ListKind::Task,
+            ..
+        } => Some("task-list"),
+        Container::TaskListItem { checked: false } => Some("unchecked"),
+        Container::TaskListItem { checked: true } => Some("checked"),
+        Container::Math { display: false } => Some("math inline"),
+        Container::Math { display: true } => Some("math display"),
+        _ => None,
+    } {
+        first_written = true;
+        out.write_str(cls)?;
+    }
+    if let Container::Div { class } = c {
+        if !class.is_empty() {
+            if first_written {
+                out.write_char(' ')?;
+            }
+            out.write_str(class)?;
+        }
+    }
+    Ok(())
 }
 
 fn write_text<W>(s: &str, out: W) -> std::fmt::Result
