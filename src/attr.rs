@@ -1,7 +1,7 @@
 use crate::CowStr;
 use std::fmt;
 
-pub fn valid(src: &str) -> usize {
+pub(crate) fn valid(src: &str) -> usize {
     use State::*;
 
     let mut n = 0;
