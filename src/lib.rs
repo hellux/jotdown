@@ -205,40 +205,429 @@ impl<'s> AsRef<Event<'s>> for &Event<'s> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event<'s> {
     /// Start of a container.
+    ///
+    /// Always paired with a matching [`Event::End`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "{#a}\n",
+    ///     "[word]{#b}\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::Paragraph,
+    ///             [(AttributeKind::Id, "a".into())].into_iter().collect(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::Span,
+    ///             [(AttributeKind::Id, "b".into())].into_iter().collect(),
+    ///         ),
+    ///         Event::Str("word".into()),
+    ///         Event::End(Container::Span),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p id=\"a\"><span id=\"b\">word</span></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Start(Container<'s>, Attributes<'s>),
     /// End of a container.
+    ///
+    /// Always paired with a matching [`Event::Start`].
     End(Container<'s>),
     /// A string object, text only.
+    ///
+    /// The strings from the parser will always be borrowed, but users may replace them with owned
+    /// variants before rendering.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "str";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("str".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>str</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Str(CowStr<'s>),
     /// A footnote reference.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "txt[^nb].";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("txt".into()),
+    ///         Event::FootnoteReference("nb"),
+    ///         Event::Str(".".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>txt<a id=\"fnref1\" href=\"#fn1\" role=\"doc-noteref\"><sup>1</sup></a>.</p>\n",
+    ///     "<section role=\"doc-endnotes\">\n",
+    ///     "<hr>\n",
+    ///     "<ol>\n",
+    ///     "<li id=\"fn1\">\n",
+    ///     "<p><a href=\"#fnref1\" role=\"doc-backlink\">↩\u{fe0e}</a></p>\n",
+    ///     "</li>\n",
+    ///     "</ol>\n",
+    ///     "</section>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     FootnoteReference(&'s str),
     /// A symbol, by default rendered literally but may be treated specially.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "a :sym:";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("a ".into()),
+    ///         Event::Symbol("sym".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>a :sym:</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Symbol(CowStr<'s>),
     /// Left single quotation mark.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = r#"'quote'"#;
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::LeftSingleQuote,
+    ///         Event::Str("quote".into()),
+    ///         Event::RightSingleQuote,
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>‘quote’</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     LeftSingleQuote,
-    /// Right double quotation mark.
+    /// Right single quotation mark.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = r#"'}Tis Socrates'"#;
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::RightSingleQuote,
+    ///         Event::Str("Tis Socrates".into()),
+    ///         Event::RightSingleQuote,
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>’Tis Socrates’</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     RightSingleQuote,
     /// Left single quotation mark.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = r#""Hello," he said"#;
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::LeftDoubleQuote,
+    ///         Event::Str("Hello,".into()),
+    ///         Event::RightDoubleQuote,
+    ///         Event::Str(" he said".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>“Hello,” he said</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     LeftDoubleQuote,
     /// Right double quotation mark.
     RightDoubleQuote,
     /// A horizontal ellipsis, i.e. a set of three periods.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "yes...";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("yes".into()),
+    ///         Event::Ellipsis,
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>yes…</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Ellipsis,
     /// An en dash.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "57--33";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("57".into()),
+    ///         Event::EnDash,
+    ///         Event::Str("33".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>57–33</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     EnDash,
     /// An em dash.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "oxen---and";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("oxen".into()),
+    ///         Event::EmDash,
+    ///         Event::Str("and".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>oxen—and</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     EmDash,
     /// A space that must not break a line.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "no\\ break";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("no".into()),
+    ///         Event::Escape,
+    ///         Event::NonBreakingSpace,
+    ///         Event::Str("break".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>no&nbsp;break</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     NonBreakingSpace,
     /// A newline that may or may not break a line in the output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "soft\n",
+    ///     "break\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("soft".into()),
+    ///         Event::Softbreak,
+    ///         Event::Str("break".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>soft\n",
+    ///     "break</p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Softbreak,
     /// A newline that must break a line in the output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "hard\\\n",
+    ///     "break\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("hard".into()),
+    ///         Event::Escape,
+    ///         Event::Hardbreak,
+    ///         Event::Str("break".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>hard<br>\n",
+    ///     "break</p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Hardbreak,
     /// An escape character, not visible in output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "\\*a\\*";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Escape,
+    ///         Event::Str("*a".into()),
+    ///         Event::Escape,
+    ///         Event::Str("*".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>*a*</p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Escape,
     /// A blank line, not visible in output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "para0\n",
+    ///     "\n",
+    ///     "para1\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("para0".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("para1".into()),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>para0</p>\n",
+    ///     "<p>para1</p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Blankline,
     /// A thematic break, typically a horizontal rule.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "para0\n",
+    ///     "\n",
+    ///     " * * * *\n",
+    ///     "para1\n",
+    ///     "\n",
+    ///     "{.c}\n",
+    ///     "----\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("para0".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::ThematicBreak(Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("para1".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::ThematicBreak(
+    ///             [(AttributeKind::Class, "c".into())]
+    ///                 .into_iter()
+    ///                 .collect(),
+    ///         ),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>para0</p>\n",
+    ///     "<hr>\n",
+    ///     "<p>para1</p>\n",
+    ///     "<hr class=\"c\">\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     ThematicBreak(Attributes<'s>),
 }
 
@@ -252,30 +641,500 @@ pub enum Event<'s> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'s> {
     /// A blockquote element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "> a\n",
+    ///     "> b\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Blockquote, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("a".into()),
+    ///         Event::Softbreak,
+    ///         Event::Str("b".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Blockquote),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<blockquote>\n",
+    ///     "<p>a\n",
+    ///     "b</p>\n",
+    ///     "</blockquote>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Blockquote,
     /// A list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "- a\n",
+    ///     "\n",
+    ///     "- b\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::List {
+    ///                 kind: ListKind::Unordered,
+    ///                 tight: false,
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(Container::ListItem, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("a".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::End(Container::ListItem),
+    ///         Event::Start(Container::ListItem, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("b".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::ListItem),
+    ///         Event::End(Container::List {
+    ///             kind: ListKind::Unordered,
+    ///             tight: false
+    ///         }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<ul>\n",
+    ///     "<li>\n",
+    ///     "<p>a</p>\n",
+    ///     "</li>\n",
+    ///     "<li>\n",
+    ///     "<p>b</p>\n",
+    ///     "</li>\n",
+    ///     "</ul>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     List { kind: ListKind, tight: bool },
     /// An item of a list
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "- a";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::List { kind: ListKind::Unordered, tight: true },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(Container::ListItem, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("a".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::ListItem),
+    ///         Event::End(Container::List {
+    ///             kind: ListKind::Unordered,
+    ///             tight: true,
+    ///         }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<ul>\n",
+    ///     "<li>\n",
+    ///     "a\n",
+    ///     "</li>\n",
+    ///     "</ul>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     ListItem,
     /// An item of a task list, either checked or unchecked.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "- [x] a";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::List { kind: ListKind::Task, tight: true },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::TaskListItem { checked: true },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("a".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::TaskListItem { checked: true }),
+    ///         Event::End(Container::List {
+    ///             kind: ListKind::Task,
+    ///             tight: true,
+    ///         }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<ul class=\"task-list\">\n",
+    ///     "<li class=\"checked\">\n",
+    ///     "a\n",
+    ///     "</li>\n",
+    ///     "</ul>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     TaskListItem { checked: bool },
-    /// A description list element.
+    /// A description list.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     ": orange\n",
+    ///     "\n",
+    ///     " citrus fruit\n",
+    ///     ": apple\n",
+    ///     "\n",
+    ///     " malus fruit\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::DescriptionList, Attributes::new()),
+    ///         Event::Start(Container::DescriptionTerm, Attributes::new()),
+    ///         Event::Str("orange".into()),
+    ///         Event::End(Container::DescriptionTerm),
+    ///         Event::Blankline,
+    ///         Event::Start(Container::DescriptionDetails, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("citrus fruit".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::DescriptionDetails),
+    ///         Event::Start(Container::DescriptionTerm, Attributes::new()),
+    ///         Event::Str("apple".into()),
+    ///         Event::End(Container::DescriptionTerm),
+    ///         Event::Blankline,
+    ///         Event::Start(Container::DescriptionDetails, Attributes::new()),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("malus fruit".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::DescriptionDetails),
+    ///         Event::End(Container::DescriptionList),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<dl>\n",
+    ///     "<dt>orange</dt>\n",
+    ///     "<dd>\n",
+    ///     "<p>citrus fruit</p>\n",
+    ///     "</dd>\n",
+    ///     "<dt>apple</dt>\n",
+    ///     "<dd>\n",
+    ///     "<p>malus fruit</p>\n",
+    ///     "</dd>\n",
+    ///     "</dl>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     DescriptionList,
     /// Details describing a term within a description list.
     DescriptionDetails,
     /// A footnote definition.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "txt[^nb]\n",
+    ///     "\n",
+    ///     "[^nb]: actually..\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("txt".into()),
+    ///         Event::FootnoteReference("nb".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::Start(
+    ///             Container::Footnote { label: "nb" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("actually..".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Footnote { label: "nb" }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>txt<a id=\"fnref1\" href=\"#fn1\" role=\"doc-noteref\"><sup>1</sup></a></p>\n",
+    ///     "<section role=\"doc-endnotes\">\n",
+    ///     "<hr>\n",
+    ///     "<ol>\n",
+    ///     "<li id=\"fn1\">\n",
+    ///     "<p>actually..<a href=\"#fnref1\" role=\"doc-backlink\">↩\u{fe0e}</a></p>\n",
+    ///     "</li>\n",
+    ///     "</ol>\n",
+    ///     "</section>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Footnote { label: &'s str },
     /// A table element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "| a | b |\n",
+    ///     "|---|--:|\n",
+    ///     "| 1 | 2 |\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Table, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::TableRow { head: true },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::TableCell {
+    ///                 alignment: Alignment::Unspecified,
+    ///                 head: true
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("a".into()),
+    ///         Event::End(Container::TableCell {
+    ///             alignment: Alignment::Unspecified,
+    ///             head: true,
+    ///         }),
+    ///         Event::Start(
+    ///             Container::TableCell {
+    ///                 alignment: Alignment::Right,
+    ///                 head: true,
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("b".into()),
+    ///         Event::End(Container::TableCell {
+    ///             alignment: Alignment::Right,
+    ///             head: true,
+    ///         }),
+    ///         Event::End(Container::TableRow { head: true } ),
+    ///         Event::Start(
+    ///             Container::TableRow { head: false },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::TableCell {
+    ///                 alignment: Alignment::Unspecified,
+    ///                 head: false
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("1".into()),
+    ///         Event::End(Container::TableCell {
+    ///             alignment: Alignment::Unspecified,
+    ///             head: false,
+    ///         }),
+    ///         Event::Start(
+    ///             Container::TableCell {
+    ///                 alignment: Alignment::Right,
+    ///                 head: false,
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("2".into()),
+    ///         Event::End(Container::TableCell {
+    ///             alignment: Alignment::Right,
+    ///             head: false,
+    ///         }),
+    ///         Event::End(Container::TableRow { head: false } ),
+    ///         Event::End(Container::Table),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<table>\n",
+    ///     "<tr>\n",
+    ///     "<th>a</th>\n",
+    ///     "<th style=\"text-align: right;\">b</th>\n",
+    ///     "</tr>\n",
+    ///     "<tr>\n",
+    ///     "<td>1</td>\n",
+    ///     "<td style=\"text-align: right;\">2</td>\n",
+    ///     "</tr>\n",
+    ///     "</table>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Table,
     /// A row element of a table.
     TableRow { head: bool },
     /// A section belonging to a top level heading.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "# outer\n",
+    ///     "\n",
+    ///     "## inner\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::Section { id: "outer".into() },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::Heading {
+    ///                 level: 1,
+    ///                 has_section: true,
+    ///                 id: "outer".into(),
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("outer".into()),
+    ///         Event::End(Container::Heading {
+    ///             level: 1,
+    ///             has_section: true,
+    ///             id: "outer".into(),
+    ///         }),
+    ///         Event::Blankline,
+    ///         Event::Start(
+    ///             Container::Section { id: "inner".into() },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::Heading {
+    ///                 level: 2,
+    ///                 has_section: true,
+    ///                 id: "inner".into(),
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("inner".into()),
+    ///         Event::End(Container::Heading {
+    ///             level: 2,
+    ///             has_section: true,
+    ///             id: "inner".into(),
+    ///         }),
+    ///         Event::End(Container::Section { id: "inner".into() }),
+    ///         Event::End(Container::Section { id: "outer".into() }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<section id=\"outer\">\n",
+    ///     "<h1>outer</h1>\n",
+    ///     "<section id=\"inner\">\n",
+    ///     "<h2>inner</h2>\n",
+    ///     "</section>\n",
+    ///     "</section>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Section { id: CowStr<'s> },
     /// A block-level divider element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "::: note\n",
+    ///     "this is a note\n",
+    ///     ":::\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::Div { class: "note" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("this is a note".into()),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Div { class: "note" }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<div class=\"note\">\n",
+    ///     "<p>this is a note</p>\n",
+    ///     "</div>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Div { class: &'s str },
     /// A paragraph.
     Paragraph,
     /// A heading.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "# heading";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::Section { id: "heading".into() },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::Heading {
+    ///                 level: 1,
+    ///                 has_section: true,
+    ///                 id: "heading".into(),
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("heading".into()),
+    ///         Event::End(Container::Heading {
+    ///             level: 1,
+    ///             has_section: true,
+    ///             id: "heading".into(),
+    ///         }),
+    ///         Event::End(Container::Section { id: "heading".into() }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<section id=\"heading\">\n",
+    ///     "<h1>heading</h1>\n",
+    ///     "</section>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Heading {
         level: u16,
         has_section: bool,
@@ -284,41 +1143,585 @@ pub enum Container<'s> {
     /// A cell element of row within a table.
     TableCell { alignment: Alignment, head: bool },
     /// A caption within a table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "|a|\n",
+    ///     "^ caption\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Table, Attributes::new()),
+    ///         Event::Start(Container::Caption, Attributes::new()),
+    ///         Event::Str("caption".into()),
+    ///         Event::End(Container::Caption),
+    ///         Event::Start(
+    ///             Container::TableRow { head: false },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Start(
+    ///             Container::TableCell {
+    ///                 alignment: Alignment::Unspecified,
+    ///                 head: false
+    ///             },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("a".into()),
+    ///         Event::End(Container::TableCell {
+    ///             alignment: Alignment::Unspecified,
+    ///             head: false,
+    ///         }),
+    ///         Event::End(Container::TableRow { head: false } ),
+    ///         Event::End(Container::Table),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<table>\n",
+    ///     "<caption>caption</caption>\n",
+    ///     "<tr>\n",
+    ///     "<td>a</td>\n",
+    ///     "</tr>\n",
+    ///     "</table>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Caption,
     /// A term within a description list.
     DescriptionTerm,
     /// A link definition.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "[label]: url";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::LinkDefinition { label: "label" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("url".into()),
+    ///         Event::End(Container::LinkDefinition { label: "label" }),
+    ///     ],
+    /// );
+    /// let html = "\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     LinkDefinition { label: &'s str },
     /// A block with raw markup for a specific output format.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "```=html\n",
+    ///     "<tag>x</tag>\n",
+    ///     "```\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::RawBlock { format: "html" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("<tag>x</tag>".into()),
+    ///         Event::End(Container::RawBlock { format: "html" }),
+    ///     ],
+    /// );
+    /// let html = "<tag>x</tag>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     RawBlock { format: &'s str },
     /// A block with code in a specific language.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "```html\n",
+    ///     "<tag>x</tag>\n",
+    ///     "```\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(
+    ///             Container::CodeBlock { language: "html" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("<tag>x</tag>\n".into()),
+    ///         Event::End(Container::CodeBlock { language: "html" }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<pre><code class=\"language-html\">&lt;tag&gt;x&lt;/tag&gt;\n",
+    ///     "</code></pre>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     CodeBlock { language: &'s str },
     /// An inline divider element.
+    ///
+    /// # Examples
+    ///
+    /// Can be used to add attributes:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "word{#a}\n",
+    ///     "[two words]{#b}\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::Span,
+    ///             [(AttributeKind::Id, "a".into())].into_iter().collect(),
+    ///         ),
+    ///         Event::Str("word".into()),
+    ///         Event::End(Container::Span),
+    ///         Event::Softbreak,
+    ///         Event::Start(
+    ///             Container::Span,
+    ///             [(AttributeKind::Id, "b".into())].into_iter().collect(),
+    ///         ),
+    ///         Event::Str("two words".into()),
+    ///         Event::End(Container::Span),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p><span id=\"a\">word</span>\n",
+    ///     "<span id=\"b\">two words</span></p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Span,
     /// An inline link, the first field is either a destination URL or an unresolved tag.
+    ///
+    /// # Examples
+    ///
+    /// URLs or email addresses can be enclosed with angled brackets to create a hyperlink:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "<https://example.com>\n",
+    ///     "<me@example.com>\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::Link(
+    ///                 "https://example.com".into(),
+    ///                 LinkType::AutoLink,
+    ///             ),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("https://example.com".into()),
+    ///         Event::End(Container::Link(
+    ///             "https://example.com".into(),
+    ///             LinkType::AutoLink,
+    ///         )),
+    ///         Event::Softbreak,
+    ///         Event::Start(
+    ///             Container::Link(
+    ///                 "me@example.com".into(),
+    ///                 LinkType::Email,
+    ///             ),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("me@example.com".into()),
+    ///         Event::End(Container::Link(
+    ///             "me@example.com".into(),
+    ///             LinkType::Email,
+    ///         )),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p><a href=\"https://example.com\">https://example.com</a>\n",
+    ///     "<a href=\"mailto:me@example.com\">me@example.com</a></p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
+    ///
+    /// Anchor text and the URL can be specified inline:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "[anchor](url)\n";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::Link(
+    ///                 "url".into(),
+    ///                 LinkType::Span(SpanLinkType::Inline),
+    ///             ),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("anchor".into()),
+    ///         Event::End(
+    ///             Container::Link("url".into(),
+    ///             LinkType::Span(SpanLinkType::Inline)),
+    ///         ),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><a href=\"url\">anchor</a></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
+    ///
+    /// Alternatively, the URL can be retrieved from a link definition using hard brackets, if it
+    /// exists:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "[a][label]\n",
+    ///     "[b][non-existent]\n",
+    ///     "\n",
+    ///     "[label]: url\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::Link(
+    ///                 "url".into(),
+    ///                 LinkType::Span(SpanLinkType::Reference),
+    ///             ),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("a".into()),
+    ///         Event::End(
+    ///             Container::Link("url".into(),
+    ///             LinkType::Span(SpanLinkType::Reference)),
+    ///         ),
+    ///         Event::Softbreak,
+    ///         Event::Start(
+    ///             Container::Link(
+    ///                 "non-existent".into(),
+    ///                 LinkType::Span(SpanLinkType::Unresolved),
+    ///             ),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("b".into()),
+    ///         Event::End(
+    ///             Container::Link("non-existent".into(),
+    ///             LinkType::Span(SpanLinkType::Unresolved)),
+    ///         ),
+    ///         Event::End(Container::Paragraph),
+    ///         Event::Blankline,
+    ///         Event::Start(
+    ///             Container::LinkDefinition { label: "label" },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("url".into()),
+    ///         Event::End(Container::LinkDefinition { label: "label" }),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p><a href=\"url\">a</a>\n",
+    ///     "<a>b</a></p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Link(CowStr<'s>, LinkType),
-    /// An inline image, the first field is either a destination URL or an unresolved tag. Inner
-    /// Str objects compose the alternative text.
+    /// An inline image, the first field is either a destination URL or an unresolved tag.
+    ///
+    /// # Examples
+    ///
+    /// Inner Str objects compose the alternative text:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "![alt text](img.png)";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::Image("img.png".into(), SpanLinkType::Inline),
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str("alt text".into()),
+    ///         Event::End(
+    ///             Container::Image("img.png".into(), SpanLinkType::Inline),
+    ///         ),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><img alt=\"alt text\" src=\"img.png\"></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Image(CowStr<'s>, SpanLinkType),
     /// An inline verbatim string.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "inline `verbatim`";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("inline ".into()),
+    ///         Event::Start(Container::Verbatim, Attributes::new()),
+    ///         Event::Str("verbatim".into()),
+    ///         Event::End(Container::Verbatim),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p>inline <code>verbatim</code></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Verbatim,
     /// An inline or display math element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = concat!(
+    ///     "inline $`a\\cdot{}b` or\n",
+    ///     "display $$`\\frac{a}{b}`\n",
+    /// );
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Str("inline ".into()),
+    ///         Event::Start(
+    ///             Container::Math { display: false },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str(r"a\cdot{}b".into()),
+    ///         Event::End(Container::Math { display: false }),
+    ///         Event::Str(" or".into()),
+    ///         Event::Softbreak,
+    ///         Event::Str("display ".into()),
+    ///         Event::Start(
+    ///             Container::Math { display: true },
+    ///             Attributes::new(),
+    ///         ),
+    ///         Event::Str(r"\frac{a}{b}".into()),
+    ///         Event::End(Container::Math { display: true }),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = concat!(
+    ///     "<p>inline <span class=\"math inline\">\\(a\\cdot{}b\\)</span> or\n",
+    ///     "display <span class=\"math display\">\\[\\frac{a}{b}\\]</span></p>\n",
+    /// );
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Math { display: bool },
     /// Inline raw markup for a specific output format.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "`<tag>a</tag>`{=html}";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(
+    ///             Container::RawInline { format: "html" }, Attributes::new(),
+    ///         ),
+    ///         Event::Str("<tag>a</tag>".into()),
+    ///         Event::End(Container::RawInline { format: "html" }),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><tag>a</tag></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     RawInline { format: &'s str },
     /// A subscripted element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "~SUB~";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Subscript, Attributes::new()),
+    ///         Event::Str("SUB".into()),
+    ///         Event::End(Container::Subscript),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><sub>SUB</sub></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Subscript,
     /// A superscripted element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "^SUP^";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Superscript, Attributes::new()),
+    ///         Event::Str("SUP".into()),
+    ///         Event::End(Container::Superscript),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><sup>SUP</sup></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Superscript,
     /// An inserted inline element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "{+INS+}";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Insert, Attributes::new()),
+    ///         Event::Str("INS".into()),
+    ///         Event::End(Container::Insert),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><ins>INS</ins></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Insert,
     /// A deleted inline element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "{-DEL-}";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Delete, Attributes::new()),
+    ///         Event::Str("DEL".into()),
+    ///         Event::End(Container::Delete),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><del>DEL</del></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Delete,
     /// An inline element emphasized with a bold typeface.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "*STRONG*";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Strong, Attributes::new()),
+    ///         Event::Str("STRONG".into()),
+    ///         Event::End(Container::Strong),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><strong>STRONG</strong></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Strong,
     /// An emphasized inline element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "_EM_";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Emphasis, Attributes::new()),
+    ///         Event::Str("EM".into()),
+    ///         Event::End(Container::Emphasis),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><em>EM</em></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Emphasis,
     /// A highlighted inline element.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "{=MARK=}";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Paragraph, Attributes::new()),
+    ///         Event::Start(Container::Mark, Attributes::new()),
+    ///         Event::Str("MARK".into()),
+    ///         Event::End(Container::Mark),
+    ///         Event::End(Container::Paragraph),
+    ///     ],
+    /// );
+    /// let html = "<p><mark>MARK</mark></p>\n";
+    /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// ```
     Mark,
 }
 
