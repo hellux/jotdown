@@ -1966,8 +1966,7 @@ pub struct Parser<'s> {
     pre_pass: PrePass<'s>,
 
     /// Last parsed block attributes, and its starting offset.
-    block_attributes: Attributes<'s>,
-    block_attributes_pos: Option<usize>,
+    block_attributes: Option<(Attributes<'s>, usize)>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -2203,8 +2202,7 @@ impl<'s> Parser<'s> {
             src,
             blocks: blocks.into_iter().peekable(),
             pre_pass,
-            block_attributes: Attributes::new(),
-            block_attributes_pos: None,
+            block_attributes: None,
             table_head_row: false,
             verbatim: false,
             inline_parser,
@@ -2440,23 +2438,27 @@ impl<'s> Parser<'s> {
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => {
-                        self.block_attributes_pos = None;
-                        self.block_attributes.clear();
+                        self.block_attributes = None;
                         Event::Blankline
                     }
                     block::Atom::ThematicBreak => {
-                        if let Some(pos) = self.block_attributes_pos.take() {
+                        let attrs = if let Some((attrs, pos)) = self.block_attributes.take() {
                             ev.span.start = pos;
-                        }
-                        Event::ThematicBreak(self.block_attributes.take())
+                            attrs
+                        } else {
+                            Attributes::new()
+                        };
+                        Event::ThematicBreak(attrs)
                     }
                     block::Atom::Attributes => {
-                        if self.block_attributes_pos.is_none() {
-                            self.block_attributes_pos = Some(ev.span.start);
-                        }
-                        self.block_attributes
+                        let (mut attrs, pos) = self
+                            .block_attributes
+                            .take()
+                            .unwrap_or_else(|| (Attributes::new(), ev.span.start));
+                        attrs
                             .parse(&self.src[ev.span.clone()])
                             .expect("should be valid");
+                        self.block_attributes = Some((attrs, pos));
                         continue;
                     }
                 },
@@ -2550,13 +2552,15 @@ impl<'s> Parser<'s> {
                         },
                     };
                     if enter {
-                        if let Some(pos) = self.block_attributes_pos.take() {
+                        let attrs = if let Some((attrs, pos)) = self.block_attributes.take() {
                             ev.span.start = pos;
-                        }
-                        Event::Start(cont, self.block_attributes.take())
+                            attrs
+                        } else {
+                            Attributes::new()
+                        };
+                        Event::Start(cont, attrs)
                     } else {
-                        self.block_attributes = Attributes::new();
-                        self.block_attributes_pos = None;
+                        self.block_attributes = None;
                         Event::End(cont)
                     }
                 }
