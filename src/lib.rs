@@ -2224,6 +2224,22 @@ mod test {
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
         );
+        test_parse!(
+            concat!(
+                "{.a}\n",
+                "{#b}\n",
+                "para\n", //
+            ),
+            (
+                Start(
+                    Paragraph,
+                    [("class", "a"), ("id", "b")].into_iter().collect(),
+                ),
+                "{.a}\n{#b}\n",
+            ),
+            (Str("para".into()), "para"),
+            (End(Paragraph), ""),
+        );
     }
 
     #[test]
