@@ -61,6 +61,7 @@ pub enum EventKind<'s> {
     Exit(Container<'s>),
     Atom(Atom<'s>),
     Str,
+    Empty, // dummy to hold attributes
     Attributes {
         container: bool,
         attrs: AttributesIndex,
@@ -516,7 +517,9 @@ impl<'s> Parser<'s> {
                 .chain(self.input.ahead.iter().take(state.valid_lines).cloned())
             {
                 let line = line.start..usize::min(state.end_attr, line.end);
-                parser.parse(&self.input.src[line]);
+                parser
+                    .parse(&self.input.src[line])
+                    .expect("should be valid");
             }
             parser.finish()
         };
@@ -555,6 +558,8 @@ impl<'s> Parser<'s> {
                 }
                 AttributesElementType::Word => {
                     self.events.push_back(attr_event);
+                    // push for now, pop later if attrs attached to word
+                    self.push(EventKind::Empty);
                 }
             }
         }
@@ -817,13 +822,16 @@ impl<'s> Parser<'s> {
                 if self.input.peek().map_or(false, |t| {
                     matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
                 }) {
-                    self.ahead_attributes(
+                    let elem_ty = if matches!(opener, Opener::DoubleQuoted | Opener::SingleQuoted) {
+                        // quote delimiters will turn into atoms instead of containers, so cannot
+                        // place attributes on the container start
+                        AttributesElementType::Word
+                    } else {
                         AttributesElementType::Container {
                             e_placeholder: e_attr,
-                        },
-                        false,
-                    )
-                    .or(Some(Continue))
+                        }
+                    };
+                    self.ahead_attributes(elem_ty, false).or(Some(Continue))
                 } else {
                     closed
                 }
@@ -983,18 +991,22 @@ impl<'s> Parser<'s> {
             }
         } else {
             let attr = self.events.pop_front().unwrap();
-            self.events.push_front(Event {
-                kind: EventKind::Exit(Span),
-                span: attr.span.clone(),
-            });
-            self.events.push_front(Event {
-                kind: EventKind::Str,
-                span: span_str.clone(),
-            });
-            self.events.push_front(Event {
-                kind: EventKind::Enter(Span),
-                span: span_str.start..span_str.start,
-            });
+            if !span_str.is_empty() {
+                let empty = self.events.pop_front();
+                debug_assert_eq!(empty.unwrap().kind, EventKind::Empty);
+                self.events.push_front(Event {
+                    kind: EventKind::Exit(Span),
+                    span: attr.span.clone(),
+                });
+                self.events.push_front(Event {
+                    kind: EventKind::Str,
+                    span: span_str.clone(),
+                });
+                self.events.push_front(Event {
+                    kind: EventKind::Enter(Span),
+                    span: span_str.start..span_str.start,
+                });
+            }
             attr
         }
     }
@@ -1182,12 +1194,20 @@ impl<'s> Iterator for Parser<'s> {
         }
 
         self.events.pop_front().and_then(|e| match e.kind {
-            EventKind::Str if e.span.is_empty() => self.next(),
+            EventKind::Str
+                if e.span.is_empty()
+                    && !matches!(
+                        self.events.front().map(|ev| &ev.kind),
+                        Some(EventKind::Attributes {
+                            container: false,
+                            ..
+                        })
+                    ) =>
+            {
+                self.next()
+            }
             EventKind::Str => Some(self.merge_str_events(e.span)),
-            EventKind::Placeholder
-            | EventKind::Attributes {
-                container: false, ..
-            } => self.next(),
+            EventKind::Placeholder => self.next(),
             _ => Some(e),
         })
     }
@@ -1569,7 +1589,19 @@ mod test {
             (Str, "abc"),
             (Exit(Span), "]{.def}"),
         );
-        test_parse!("not a [span] {#id}.", (Str, "not a [span] "), (Str, "."));
+        test_parse!(
+            "not a [span] {#id}.",
+            (Str, "not a [span] "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{#id}",
+            ),
+            (Empty, "{#id}"),
+            (Str, "."),
+        );
     }
 
     #[test]
@@ -1731,6 +1763,13 @@ mod test {
         );
         test_parse!(
             "_abc def_{ % comment % } ghi",
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0
+                },
+                "{ % comment % }"
+            ),
             (Enter(Emphasis), "_"),
             (Str, "abc def"),
             (Exit(Emphasis), "_{ % comment % }"),
@@ -1753,6 +1792,14 @@ mod test {
             (Str, "abc def"),
             (Exit(Emphasis), "_{.a}{.b}{.c}"),
             (Str, " "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 1,
+                },
+                "{.d}",
+            ),
+            (Empty, "{.d}"),
         );
     }
 
@@ -1807,16 +1854,90 @@ mod test {
 
     #[test]
     fn attr_whitespace() {
-        test_parse!("word {%comment%}", (Str, "word "));
-        test_parse!("word {%comment%} word", (Str, "word "), (Str, " word"));
-        test_parse!("word {a=b}", (Str, "word "));
-        test_parse!("word {.d}", (Str, "word "));
+        test_parse!(
+            "word {%comment%}",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{%comment%}",
+            ),
+            (Empty, "{%comment%}"),
+        );
+        test_parse!(
+            "word {%comment%} word",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0
+                },
+                "{%comment%}",
+            ),
+            (Empty, "{%comment%}"),
+            (Str, " word"),
+        );
+        test_parse!(
+            "word {a=b}",
+            (Str, "word "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+        );
+        test_parse!(
+            " {a=b}",
+            (Str, " "),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+        );
+    }
+
+    #[test]
+    fn attr_start() {
+        test_parse!(
+            "{a=b} word",
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{a=b}",
+            ),
+            (Empty, "{a=b}"),
+            (Str, " word"),
+        );
     }
 
     #[test]
     fn attr_empty() {
         test_parse!("word{}", (Str, "word"));
-        test_parse!("word{ % comment % } trail", (Str, "word"), (Str, " trail"));
+        test_parse!(
+            "word{ % comment % } trail",
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0
+                },
+                "{ % comment % }"
+            ),
+            (Enter(Span), ""),
+            (Str, "word"),
+            (Exit(Span), "{ % comment % }"),
+            (Str, " trail")
+        );
     }
 
     #[test]
@@ -1858,6 +1979,36 @@ mod test {
                 "'",
             ),
             (Str, " "),
+        );
+    }
+
+    #[test]
+    fn quote_attr() {
+        test_parse!(
+            "'a'{.b}",
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: true
+                }),
+                "'"
+            ),
+            (Str, "a"),
+            (
+                Atom(Quote {
+                    ty: QuoteType::Single,
+                    left: false
+                }),
+                "'"
+            ),
+            (
+                Attributes {
+                    container: false,
+                    attrs: 0,
+                },
+                "{.b}",
+            ),
+            (Empty, "{.b}"),
         );
     }
 }

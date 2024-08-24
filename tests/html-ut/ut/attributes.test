@@ -1,0 +1,18 @@
+Classes should be concatenated
+
+```
+word{.a #a class=b #b .c}
+.
+<p><span class="a b c" id="b">word</span></p>
+```
+
+Automatic and explicit classes should be merged correctly
+
+```
+{.a}
+::: b
+:::
+.
+<div class="a b">
+</div>
+```
