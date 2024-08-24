@@ -1,3 +1,26 @@
+## [0.5.0](https://github.com/hellux/jotdown/releases/tag/0.5.0) - 2024-08-24
+
+### Added
+
+- (breaking) `Attributes` events for dangling attribute sets (#56).
+- Implement TryFrom<&str> for `Attributes`, allowing to use the attributes
+  parser on its own (#56).
+- More examples in documentation (#56).
+- `AttributeValue::new`, `AttributeValue::default` (#56).
+
+### Changed
+
+- (breaking) Replace `Render::push_borrowed`, `Render::write_borrowed` with
+  `RenderRef::push_ref`, `RenderRef::write_ref`.
+- (breaking) Turn map-like opaque `Attributes` into wrapper of Vec<"AttributeElem"> (#56).
+- (breaking) Preserve comments and duplicate values in attributes (#55, #56)
+  (but still do not render).
+- (breaking) Block attributes followed by a blank line are not attached to the next block.
+
+### Fixed
+
+- Remove extra whitespaces in attribute values (#56).
+
 ## [0.4.1](https://github.com/hellux/jotdown/releases/tag/0.4.1) - 2024-07-02
 
 ### Added
