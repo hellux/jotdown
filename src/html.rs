@@ -126,7 +126,7 @@ impl<'s> Writer<'s> {
                     Container::List { kind, tight } => {
                         self.list_tightness.push(*tight);
                         match kind {
-                            ListKind::Unordered | ListKind::Task => out.write_str("<ul")?,
+                            ListKind::Unordered(..) | ListKind::Task(..) => out.write_str("<ul")?,
                             ListKind::Ordered {
                                 numbering, start, ..
                             } => {
@@ -241,7 +241,7 @@ impl<'s> Writer<'s> {
                         c,
                         Container::Math { .. }
                             | Container::List {
-                                kind: ListKind::Task,
+                                kind: ListKind::Task(..),
                                 ..
                             }
                             | Container::TaskListItem { .. }
@@ -297,7 +297,9 @@ impl<'s> Writer<'s> {
                     Container::List { kind, .. } => {
                         self.list_tightness.pop();
                         match kind {
-                            ListKind::Unordered | ListKind::Task => out.write_str("</ul>")?,
+                            ListKind::Unordered(..) | ListKind::Task(..) => {
+                                out.write_str("</ul>")?
+                            }
                             ListKind::Ordered { .. } => out.write_str("</ol>")?,
                         }
                     }
@@ -455,7 +457,7 @@ where
 {
     if let Some(cls) = match c {
         Container::List {
-            kind: ListKind::Task,
+            kind: ListKind::Task(..),
             ..
         } => Some("task-list"),
         Container::TaskListItem { checked: false } => Some("unchecked"),

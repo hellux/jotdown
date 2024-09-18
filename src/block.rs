@@ -100,7 +100,7 @@ pub enum ListItemKind {
 pub enum ListType {
     Unordered(u8),
     Ordered(ListNumber, crate::OrderedListStyle),
-    Task,
+    Task(u8),
     Description,
 }
 
@@ -396,7 +396,7 @@ impl<'s> TreeParser<'s> {
                 } => Block::Container(Footnote { label }),
                 Kind::Blockquote => Block::Container(Blockquote),
                 Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
-                    ListType::Task => ListItemKind::Task {
+                    ListType::Task(..) => ListItemKind::Task {
                         checked: self.src.as_bytes()[span_start.start + 3] != b' ',
                     },
                     ListType::Description => ListItemKind::Description,
@@ -999,7 +999,7 @@ impl<'s> IdentifiedBlock<'s> {
                     (
                         Kind::ListItem {
                             indent,
-                            ty: Task,
+                            ty: Task(b as u8),
                             last_blankline: false,
                         },
                         indent..(indent + 5),
@@ -3033,7 +3033,7 @@ mod test {
             "- [ ] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task,
+                ty: Task(b'-'),
                 last_blankline: false,
             },
             "- [ ]",
@@ -3043,7 +3043,7 @@ mod test {
             "+ [x] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task,
+                ty: Task(b'+'),
                 last_blankline: false,
             },
             "+ [x]",
@@ -3053,7 +3053,7 @@ mod test {
             "* [X] abc\n",
             Kind::ListItem {
                 indent: 0,
-                ty: Task,
+                ty: Task(b'*'),
                 last_blankline: false,
             },
             "* [X]",

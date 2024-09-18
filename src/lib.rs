@@ -735,7 +735,7 @@ pub enum Container<'s> {
     ///     &[
     ///         Event::Start(
     ///             Container::List {
-    ///                 kind: ListKind::Unordered,
+    ///                 kind: ListKind::Unordered(ListBulletType::Dash),
     ///                 tight: false,
     ///             },
     ///             Attributes::new(),
@@ -752,7 +752,7 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::ListItem),
     ///         Event::End(Container::List {
-    ///             kind: ListKind::Unordered,
+    ///             kind: ListKind::Unordered(ListBulletType::Dash),
     ///             tight: false
     ///         }),
     ///     ],
@@ -782,7 +782,10 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::List { kind: ListKind::Unordered, tight: true },
+    ///             Container::List {
+    ///                 kind: ListKind::Unordered(ListBulletType::Dash),
+    ///                 tight: true,
+    ///             },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Start(Container::ListItem, Attributes::new()),
@@ -791,7 +794,7 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::ListItem),
     ///         Event::End(Container::List {
-    ///             kind: ListKind::Unordered,
+    ///             kind: ListKind::Unordered(ListBulletType::Dash),
     ///             tight: true,
     ///         }),
     ///     ],
@@ -818,7 +821,10 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::List { kind: ListKind::Task, tight: true },
+    ///             Container::List {
+    ///                 kind: ListKind::Task(ListBulletType::Dash),
+    ///                 tight: true
+    ///             },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Start(
@@ -830,7 +836,7 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::TaskListItem { checked: true }),
     ///         Event::End(Container::List {
-    ///             kind: ListKind::Task,
+    ///             kind: ListKind::Task(ListBulletType::Dash),
     ///             tight: true,
     ///         }),
     ///     ],
@@ -1882,11 +1888,61 @@ pub enum LinkType {
     Email,
 }
 
+/// Character used to create an unordered list item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListBulletType {
+    /// `-`
+    Dash,
+    /// `*`
+    Star,
+    /// `+`
+    Plus,
+}
+
+impl TryFrom<u8> for ListBulletType {
+    type Error = ();
+
+    fn try_from(c: u8) -> Result<Self, Self::Error> {
+        match c {
+            b'-' => Ok(Self::Dash),
+            b'*' => Ok(Self::Star),
+            b'+' => Ok(Self::Plus),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<char> for ListBulletType {
+    type Error = ();
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        u8::try_from(u32::from(c))
+            .map_err(|_| ())
+            .and_then(Self::try_from)
+    }
+}
+
+impl From<ListBulletType> for u8 {
+    fn from(t: ListBulletType) -> Self {
+        match t {
+            ListBulletType::Dash => b'-',
+            ListBulletType::Star => b'-',
+            ListBulletType::Plus => b'-',
+        }
+    }
+}
+
+impl From<ListBulletType> for char {
+    fn from(t: ListBulletType) -> Self {
+        u8::from(t).into()
+    }
+}
+
 /// The type of a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListKind {
     /// A bullet list.
-    Unordered,
+    Unordered(ListBulletType),
     /// An enumerated list.
     Ordered {
         numbering: OrderedListNumbering,
@@ -1894,7 +1950,7 @@ pub enum ListKind {
         start: u64,
     },
     /// A task list.
-    Task,
+    Task(ListBulletType),
 }
 
 /// Numbering type of an ordered list.
@@ -2568,8 +2624,12 @@ impl<'s> Parser<'s> {
                                     Container::DescriptionList
                                 } else {
                                     let kind = match ty {
-                                        block::ListType::Unordered(..) => ListKind::Unordered,
-                                        block::ListType::Task => ListKind::Task,
+                                        block::ListType::Unordered(c) => ListKind::Unordered(
+                                            c.try_into().expect("should be bullet character"),
+                                        ),
+                                        block::ListType::Task(c) => ListKind::Task(
+                                            c.try_into().expect("should be bullet character"),
+                                        ),
                                         block::ListType::Ordered(
                                             block::ListNumber { numbering, value },
                                             style,
@@ -2681,6 +2741,7 @@ mod test {
     use super::Container::*;
     use super::Event::*;
     use super::LinkType;
+    use super::ListBulletType::*;
     use super::ListKind;
     use super::OrderedListNumbering::*;
     use super::OrderedListStyle::*;
@@ -4126,7 +4187,7 @@ mod test {
             (
                 Start(
                     List {
-                        kind: ListKind::Unordered,
+                        kind: ListKind::Unordered(Dash),
                         tight: true,
                     },
                     Attributes::new(),
@@ -4140,7 +4201,7 @@ mod test {
             (End(ListItem), ""),
             (
                 End(List {
-                    kind: ListKind::Unordered,
+                    kind: ListKind::Unordered(Dash),
                     tight: true,
                 }),
                 "",
@@ -4196,7 +4257,7 @@ mod test {
             (
                 Start(
                     List {
-                        kind: ListKind::Task,
+                        kind: ListKind::Task(Dash),
                         tight: true,
                     },
                     Attributes::new(),
@@ -4229,7 +4290,7 @@ mod test {
             (End(TaskListItem { checked: true }), ""),
             (
                 End(List {
-                    kind: ListKind::Task,
+                    kind: ListKind::Task(Dash),
                     tight: true,
                 }),
                 "",
