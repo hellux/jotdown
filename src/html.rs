@@ -31,9 +31,244 @@ where
     s
 }
 
+#[derive(Clone)]
+/// Options for indentation of HTML output.
+pub struct Indentation {
+    /// String to use for each indentation level.
+    ///
+    /// NOTE: The resulting HTML output may be invalid depending on the contents of this string.
+    ///
+    /// # Examples
+    ///
+    /// Defaults to a single tab character:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// let src = "> a\n";
+    /// let events = Parser::new(src);
+    ///
+    /// let mut html = String::new();
+    /// let renderer = Renderer::indented(Indentation::default());
+    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// assert_eq!(
+    ///     html,
+    ///     concat!(
+    ///         "<blockquote>\n",
+    ///         "\t<p>a</p>\n",
+    ///         "</blockquote>\n",
+    ///     ),
+    /// );
+    /// ```
+    ///
+    /// To indent with e.g. 4 spaces, set to `"    "`:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// # let src = "> a\n";
+    /// # let events = Parser::new(src);
+    /// # let mut html = String::new();
+    /// let renderer = Renderer::indented(Indentation {
+    ///     string: "    ".to_string(),
+    ///     ..Indentation::default()
+    /// });
+    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// assert_eq!(
+    ///     html,
+    ///     concat!(
+    ///         "<blockquote>\n",
+    ///         "    <p>a</p>\n",
+    ///         "</blockquote>\n",
+    ///     ),
+    /// );
+    /// ```
+    pub string: String,
+    /// Number of indentation levels to use for the outermost elements.
+    ///
+    /// # Examples
+    ///
+    /// Defaults to zero:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// let src = "> a\n";
+    /// let events = Parser::new(src);
+    ///
+    /// let mut html = String::new();
+    /// let renderer = Renderer::indented(Indentation::default());
+    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// assert_eq!(
+    ///     html,
+    ///     concat!(
+    ///         "<blockquote>\n",
+    ///         "\t<p>a</p>\n",
+    ///         "</blockquote>\n",
+    ///     ),
+    /// );
+    /// ```
+    ///
+    /// Set to a non-zero value to use a starting indent:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// # let src = "> a\n";
+    /// # let events = Parser::new(src);
+    /// # let mut html = String::new();
+    /// let renderer = Renderer::indented(Indentation {
+    ///     initial_level: 2,
+    ///     ..Indentation::default()
+    /// });
+    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// assert_eq!(
+    ///     html,
+    ///     concat!(
+    ///         "\t\t<blockquote>\n",
+    ///         "\t\t\t<p>a</p>\n",
+    ///         "\t\t</blockquote>\n",
+    ///     ),
+    /// );
+    /// ```
+    pub initial_level: usize,
+}
+
+impl Default for Indentation {
+    fn default() -> Self {
+        Self {
+            string: "\t".to_string(),
+            initial_level: 0,
+        }
+    }
+}
+
 /// [`Render`] implementor that writes HTML output.
-#[derive(Default)]
-pub struct Renderer {}
+///
+/// By default, block elements are placed on separate lines. To configure the formatting of the
+/// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
+#[derive(Clone)]
+pub struct Renderer {
+    indent: Option<Indentation>,
+}
+
+impl Renderer {
+    /// Create a renderer that emits no whitespace between elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// let src = concat!(
+    ///     "- a\n",
+    ///     "\n",
+    ///     "  - b\n",
+    ///     "\n",
+    ///     "  - c\n",
+    /// );
+    /// let mut actual = String::new();
+    /// let renderer = Renderer::minified();
+    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let expected =
+    ///     "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li></ul>";
+    /// assert_eq!(actual, expected);
+    /// ```
+    #[must_use]
+    pub fn minified() -> Self {
+        Self { indent: None }
+    }
+
+    /// Create a renderer that indents lines based on their block element depth.
+    ///
+    /// See the [`Indentation`] struct for indentation options.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// let src = concat!(
+    ///     "- a\n",
+    ///     "\n",
+    ///     "  - b\n",
+    ///     "\n",
+    ///     "  - c\n",
+    /// );
+    /// let mut actual = String::new();
+    /// let renderer = Renderer::indented(Indentation::default());
+    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let expected = concat!(
+    ///     "<ul>\n",
+    ///     "\t<li>\n",
+    ///     "\t\ta\n",
+    ///     "\t\t<ul>\n",
+    ///     "\t\t\t<li>\n",
+    ///     "\t\t\t\t<p>b</p>\n",
+    ///     "\t\t\t</li>\n",
+    ///     "\t\t\t<li>\n",
+    ///     "\t\t\t\t<p>c</p>\n",
+    ///     "\t\t\t</li>\n",
+    ///     "\t\t</ul>\n",
+    ///     "\t</li>\n",
+    ///     "</ul>\n",
+    /// );
+    /// assert_eq!(actual, expected);
+    /// ```
+    #[must_use]
+    pub fn indented(indent: Indentation) -> Self {
+        Self {
+            indent: Some(indent),
+        }
+    }
+}
+
+impl Default for Renderer {
+    /// Place block elements on separate lines.
+    ///
+    /// This is the default behavior and matches the reference implementation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// # use jotdown::html::*;
+    /// let src = concat!(
+    ///     "- a\n",
+    ///     "\n",
+    ///     "  - b\n",
+    ///     "\n",
+    ///     "  - c\n",
+    /// );
+    /// let mut actual = String::new();
+    /// let renderer = Renderer::default();
+    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let expected = concat!(
+    ///     "<ul>\n",
+    ///     "<li>\n",
+    ///     "a\n",
+    ///     "<ul>\n",
+    ///     "<li>\n",
+    ///     "<p>b</p>\n",
+    ///     "</li>\n",
+    ///     "<li>\n",
+    ///     "<p>c</p>\n",
+    ///     "</li>\n",
+    ///     "</ul>\n",
+    ///     "</li>\n",
+    ///     "</ul>\n",
+    /// );
+    /// assert_eq!(actual, expected);
+    /// ```
+    fn default() -> Self {
+        Self {
+            indent: Some(Indentation {
+                string: String::new(),
+                initial_level: 0,
+            }),
+        }
+    }
+}
 
 impl Render for Renderer {
     fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
@@ -41,7 +276,7 @@ impl Render for Renderer {
         I: Iterator<Item = Event<'s>>,
         W: std::fmt::Write,
     {
-        let mut w = Writer::default();
+        let mut w = Writer::new(&self.indent);
         events.try_for_each(|e| w.render_event(&e, &mut out))?;
         w.render_epilogue(&mut out)
     }
@@ -54,7 +289,7 @@ impl RenderRef for Renderer {
         I: Iterator<Item = E>,
         W: std::fmt::Write,
     {
-        let mut w = Writer::default();
+        let mut w = Writer::new(&self.indent);
         events.try_for_each(|e| w.render_event(e.as_ref(), &mut out))?;
         w.render_epilogue(&mut out)
     }
@@ -72,8 +307,9 @@ impl Default for Raw {
     }
 }
 
-#[derive(Default)]
-struct Writer<'s> {
+struct Writer<'s, 'f> {
+    indent: &'f Option<Indentation>,
+    depth: usize,
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
@@ -82,7 +318,63 @@ struct Writer<'s> {
     footnotes: Footnotes<'s>,
 }
 
-impl<'s> Writer<'s> {
+impl<'s, 'f> Writer<'s, 'f> {
+    fn new(indent: &'f Option<Indentation>) -> Self {
+        let depth = if let Some(indent) = indent {
+            indent.initial_level
+        } else {
+            0
+        };
+        Self {
+            indent,
+            depth,
+            raw: Raw::default(),
+            img_alt_text: 0,
+            list_tightness: Vec::new(),
+            not_first_line: false,
+            ignore: false,
+            footnotes: Footnotes::default(),
+        }
+    }
+
+    fn block<W>(&mut self, mut out: W, depth_change: isize) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        if self.indent.is_none() {
+            return Ok(());
+        }
+
+        if self.not_first_line {
+            out.write_char('\n')?;
+        }
+
+        let next_depth = (self.depth as isize + depth_change) as usize;
+        if depth_change < 0 {
+            self.depth = next_depth;
+        }
+        self.indent(&mut out)?;
+        if depth_change > 0 {
+            self.depth = next_depth;
+        }
+
+        Ok(())
+    }
+
+    fn indent<W>(&self, mut out: W) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        if let Some(indent) = self.indent {
+            if !indent.string.is_empty() {
+                for _ in 0..self.depth {
+                    out.write_str(&indent.string)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn render_event<W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
     where
         W: std::fmt::Write,
@@ -115,8 +407,8 @@ impl<'s> Writer<'s> {
 
         match e {
             Event::Start(c, attrs) => {
-                if c.is_block() && self.not_first_line {
-                    out.write_char('\n')?;
+                if c.is_block() {
+                    self.block(&mut out, c.is_block_container().into())?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -287,7 +579,7 @@ impl<'s> Writer<'s> {
             }
             Event::End(c) => {
                 if c.is_block_container() {
-                    out.write_char('\n')?;
+                    self.block(&mut out, -1)?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -385,13 +677,17 @@ impl<'s> Writer<'s> {
             Event::EnDash => out.write_str("–")?,
             Event::EmDash => out.write_str("—")?,
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
-            Event::Hardbreak => out.write_str("<br>\n")?,
-            Event::Softbreak => out.write_char('\n')?,
+            Event::Hardbreak => {
+                out.write_str("<br>")?;
+                self.block(out, 0)?;
+            }
+            Event::Softbreak => {
+                out.write_char('\n')?;
+                self.indent(&mut out)?;
+            }
             Event::Escape | Event::Blankline | Event::Attributes(..) => {}
             Event::ThematicBreak(attrs) => {
-                if self.not_first_line {
-                    out.write_char('\n')?;
-                }
+                self.block(&mut out, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
@@ -411,10 +707,16 @@ impl<'s> Writer<'s> {
         W: std::fmt::Write,
     {
         if self.footnotes.reference_encountered() {
-            out.write_str("\n<section role=\"doc-endnotes\">\n<hr>\n<ol>")?;
+            self.block(&mut out, 0)?;
+            out.write_str("<section role=\"doc-endnotes\">")?;
+            self.block(&mut out, 0)?;
+            out.write_str("<hr>")?;
+            self.block(&mut out, 0)?;
+            out.write_str("<ol>")?;
 
             while let Some((number, events)) = self.footnotes.next() {
-                write!(out, "\n<li id=\"fn{}\">", number)?;
+                self.block(&mut out, 0)?;
+                write!(out, "<li id=\"fn{}\">", number)?;
 
                 let mut unclosed_para = false;
                 for e in events.iter().flatten() {
@@ -431,7 +733,8 @@ impl<'s> Writer<'s> {
                 }
                 if !unclosed_para {
                     // create a new paragraph
-                    out.write_str("\n<p>")?;
+                    self.block(&mut out, 0)?;
+                    out.write_str("<p>")?;
                 }
                 write!(
                     out,
@@ -439,13 +742,19 @@ impl<'s> Writer<'s> {
                     number,
                 )?;
 
-                out.write_str("\n</li>")?;
+                self.block(&mut out, 0)?;
+                out.write_str("</li>")?;
             }
 
-            out.write_str("\n</ol>\n</section>")?;
+            self.block(&mut out, 0)?;
+            out.write_str("</ol>")?;
+            self.block(&mut out, 0)?;
+            out.write_str("</section>")?;
         }
 
-        out.write_char('\n')?;
+        if self.indent.is_some() {
+            out.write_char('\n')?;
+        }
 
         Ok(())
     }
@@ -586,5 +895,122 @@ impl<'s> Iterator for Footnotes<'s> {
             self.number += 1;
             (self.number, self.events.remove(label))
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Indentation;
+    use crate::Render;
+
+    macro_rules! test_html {
+        ($src:expr, $expected:expr $(,$indent:expr)? $(,)?) => {
+            #[allow(unused)]
+            let mut indent = None;
+            $(indent = Some($indent);)?
+            let renderer = super::Renderer { indent };
+            let mut actual = String::new();
+            renderer
+                .push(crate::Parser::new($src), &mut actual)
+                .unwrap();
+            assert_eq!(actual, $expected);
+        };
+        ($src:expr, $expected:expr, $(,)?) => {
+            test_html!($src, $expected, Newlines)
+        };
+    }
+
+    #[test]
+    fn mini_soft_break() {
+        test_html!(
+            concat!(
+                "a\n", //
+                "b\n",
+            ),
+            concat!(
+                "<p>a\n", //
+                "b</p>"
+            ),
+        );
+    }
+
+    #[test]
+    fn mini_hard_break() {
+        test_html!(
+            concat!(
+                "a\\\n", //
+                "b\n",
+            ),
+            "<p>a<br>b</p>",
+        );
+    }
+
+    #[test]
+    fn mini_blank_line() {
+        test_html!(
+            concat!(
+                "a\n", //
+                "\n",  //
+                "\n",  //
+                "b\n",
+            ),
+            "<p>a</p><p>b</p>",
+        );
+    }
+
+    #[test]
+    fn mini_code_block() {
+        test_html!(
+            concat!(
+                "```\n", //
+                "a\n",   //
+                "b\n",   //
+                "```\n",
+            ),
+            concat!(
+                "<pre><code>a\n", //
+                "b\n",
+                "</code></pre>",
+            ),
+        );
+    }
+
+    #[test]
+    fn indent_para() {
+        test_html!(
+            concat!(
+                "> a\n", //
+                "> b\n",
+            ),
+            concat!(
+                "<blockquote>\n", //
+                "\t<p>a\n",
+                "\tb</p>\n",
+                "</blockquote>\n",
+            ),
+            Indentation::default(),
+        );
+    }
+
+    #[test]
+    fn indent_code_block() {
+        test_html!(
+            concat!(
+                "> ```\n", //
+                "> fn x() {\n",
+                ">     todo!()\n",
+                "> }\n",
+                "> ```\n",
+            ),
+            concat!(
+                "<blockquote>\n",
+                "\t<pre><code>fn x() {\n",
+                "    todo!()\n",
+                "}\n",
+                "</code></pre>\n",
+                "</blockquote>\n",
+            ),
+            Indentation::default(),
+        );
     }
 }
