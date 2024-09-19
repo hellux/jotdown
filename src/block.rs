@@ -300,6 +300,12 @@ impl<'s> TreeParser<'s> {
 
             // skip outer block part for inner content
             lines[0].start += outer_len;
+            if matches!(kind, Kind::Blockquote)
+                && lines[0].start < lines[0].end
+                && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ')
+            {
+                lines[0].start += 1;
+            }
 
             // skip opening and closing fence of code block / div
             let lines = if let Kind::Fenced {
