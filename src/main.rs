@@ -10,6 +10,9 @@ use jotdown::Render;
 struct App {
     input: Option<OsString>,
     output: Option<OsString>,
+    minified: bool,
+    start_indent: usize,
+    indent_string: String,
 }
 
 fn parse_args() -> App {
@@ -37,6 +40,34 @@ fn parse_args() -> App {
                     exit(1);
                 }
             },
+            ("--minified", _) => app.minified = true,
+            (flag @ "--indent-string", s) => {
+                if let Some(s) = s {
+                    app.indent_string = s.to_string_lossy().into_owned();
+                    args.next();
+                } else {
+                    eprintln!("please supply an argument to {}", flag);
+                    exit(1);
+                }
+            }
+            (flag @ "--start-indent", s) => {
+                if let Some(s) = s {
+                    if let Ok(n) = s.to_string_lossy().parse() {
+                        app.start_indent = n;
+                    } else {
+                        eprintln!(
+                            "{} expected a non-negative integer, got '{}'",
+                            flag,
+                            s.to_string_lossy(),
+                        );
+                        exit(1);
+                    }
+                    args.next();
+                } else {
+                    eprintln!("please supply an argument to {}", flag);
+                    exit(1);
+                }
+            }
             ("-", _) => {}
             (file, _) if !file.starts_with('-') => {
                 if app.input.is_some() {
@@ -68,7 +99,14 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     let parser = jotdown::Parser::new(&content);
-    let renderer = jotdown::html::Renderer::default();
+    let renderer = if app.minified {
+        jotdown::html::Renderer::minified()
+    } else {
+        jotdown::html::Renderer::indented(jotdown::html::Indentation {
+            string: app.indent_string,
+            initial_level: app.start_indent,
+        })
+    };
 
     match app.output {
         Some(path) => renderer.write(parser, File::create(path)?)?,
