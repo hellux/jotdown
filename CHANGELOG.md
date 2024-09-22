@@ -1,3 +1,13 @@
+## [0.6.0](https://github.com/hellux/jotdown/releases/tag/0.6.0) - 2024-09-22
+
+### Added
+
+- (breaking) `ListBulletType` to `ListKind::Unordered` and `ListKind::Task` in
+  order to specify which bullet character was used for the list item (#57).
+- (breaking) HTML renderer: configurable formatting, with minified or indented
+  options (#58, #59).
+- CLI: arguments for HTML formatting options.
+
 ## [0.5.0](https://github.com/hellux/jotdown/releases/tag/0.5.0) - 2024-08-24
 
 ### Added
