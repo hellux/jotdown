@@ -313,7 +313,7 @@ struct Writer<'s, 'f> {
     raw: Raw,
     img_alt_text: usize,
     list_tightness: Vec<bool>,
-    not_first_line: bool,
+    first_line: bool,
     ignore: bool,
     footnotes: Footnotes<'s>,
 }
@@ -331,7 +331,7 @@ impl<'s, 'f> Writer<'s, 'f> {
             raw: Raw::default(),
             img_alt_text: 0,
             list_tightness: Vec::new(),
-            not_first_line: false,
+            first_line: true,
             ignore: false,
             footnotes: Footnotes::default(),
         }
@@ -345,7 +345,7 @@ impl<'s, 'f> Writer<'s, 'f> {
             return Ok(());
         }
 
-        if self.not_first_line {
+        if !self.first_line {
             out.write_char('\n')?;
         }
 
@@ -697,7 +697,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 out.write_str(">")?;
             }
         }
-        self.not_first_line = true;
+        self.first_line = false;
 
         Ok(())
     }
