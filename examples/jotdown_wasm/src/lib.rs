@@ -30,6 +30,13 @@ pub fn jotdown_parse(djot: &str, spans: bool) -> String {
 
 #[must_use]
 #[wasm_bindgen]
+pub fn jotdown_parse_json(djot: &str) -> String {
+    let parser = jotdown::Parser::new(djot);
+    serde_json::to_string_pretty(&parser.into_iter().collect::<Vec<_>>()).unwrap()
+}
+
+#[must_use]
+#[wasm_bindgen]
 pub fn jotdown_parse_indent(djot: &str) -> String {
     let mut level = 0;
     let mut out = String::new();
