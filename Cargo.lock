@@ -274,6 +274,9 @@ dependencies = [
 [[package]]
 name = "jotdown"
 version = "0.6.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "jotdown_wasm"

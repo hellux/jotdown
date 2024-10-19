@@ -48,6 +48,9 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 use std::ops::Range;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[cfg(feature = "html")]
 pub mod html;
 
@@ -203,6 +206,7 @@ impl<'s> AsRef<Event<'s>> for &Event<'s> {
 /// events representing its content, and finally a [`Event::End`]. Atomic elements without any
 /// inside elements are represented by a single event.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Event<'s> {
     /// Start of a container.
     ///
@@ -685,6 +689,7 @@ pub enum Event<'s> {
 /// - block leaf, may only contain inline elements,
 /// - block container, may contain any block-level elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Container<'s> {
     /// A blockquote element.
     ///
@@ -1859,6 +1864,7 @@ impl<'s> Container<'s> {
 
 /// Alignment of a table column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Alignment {
     Unspecified,
     Left,
@@ -1868,6 +1874,7 @@ pub enum Alignment {
 
 /// The type of an inline span link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SpanLinkType {
     /// E.g. `[text](url)`
     Inline,
@@ -1879,6 +1886,7 @@ pub enum SpanLinkType {
 
 /// The type of an inline link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum LinkType {
     /// E.g. `[text](url)`.
     Span(SpanLinkType),
@@ -1890,6 +1898,7 @@ pub enum LinkType {
 
 /// Character used to create an unordered list item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ListBulletType {
     /// `-`
     Dash,
@@ -1940,6 +1949,7 @@ impl From<ListBulletType> for char {
 
 /// The type of a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ListKind {
     /// A bullet list.
     Unordered(ListBulletType),
@@ -1955,6 +1965,7 @@ pub enum ListKind {
 
 /// Numbering type of an ordered list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OrderedListNumbering {
     /// Decimal numbering, e.g. `1)`.
     Decimal,
@@ -1970,6 +1981,7 @@ pub enum OrderedListNumbering {
 
 /// Style of an ordered list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OrderedListStyle {
     /// Number is followed by a period, e.g. `1.`.
     Period,

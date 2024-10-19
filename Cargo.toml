@@ -44,6 +44,9 @@ default = ["html"]
 html = [] # html renderer and minimal cli binary
 deterministic = [] # for stable fuzzing
 
+[dependencies]
+serde = { version = "1.0", optional = true, features = ["derive"] }
+
 [profile.release]
 lto = true
 
