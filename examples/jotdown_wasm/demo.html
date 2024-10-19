@@ -5,6 +5,7 @@
         jotdown_render,
         jotdown_parse,
         jotdown_parse_indent,
+        jotdown_parse_json,
     } from './pkg/jotdown_wasm.js';
     await init();
 
@@ -31,6 +32,10 @@
         } else if (fmt.value == "preview") {
             output.classList.remove("verbatim")
             output.innerHTML = jotdown_render(input.innerText);
+        } else if (fmt.value == "events_json") {
+            output.classList.add("verbatim")
+            output.innerHTML = jotdown_parse_json(input.innerText);
+            console.log(jotdown_parse_json(input.innerText))
         }
     }
 
@@ -55,6 +60,7 @@
         <option value="events">events</option>
         <option value="events_spans">events (with offsets)</option>
         <option value="events_indent">events (indented)</option>
+        <option value="events_json">events (JSON)</option>
       </select>
     </div>
   </div>
