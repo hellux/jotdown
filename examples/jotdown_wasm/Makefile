@@ -8,6 +8,8 @@ ${WASM}: ${SRC}
 wasm: ${WASM}
 
 index.html: Makefile demo.html
+	# demo.html doesn't contain a doctype so that it can be easily
+	# embedded in other web pages (which is used for the online demo)
 	echo '<!DOCTYPE html><html>' > $@
 	echo '<head>' >> $@
 	echo '<title>Jotdown Demo</title>' >> $@
