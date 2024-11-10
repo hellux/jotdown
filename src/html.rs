@@ -536,7 +536,6 @@ impl<'s, 'f> Writer<'s, 'f> {
                                 kind: ListKind::Task(..),
                                 ..
                             }
-                            | Container::TaskListItem { .. }
                     ))
                     && !class_written
                 {
@@ -573,6 +572,15 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::Math { display } => {
                         out.write_str(if *display { r#">\["# } else { r#">\("# })?;
+                    }
+                    Container::TaskListItem { checked } => {
+                        out.write_char('>')?;
+                        self.block(&mut out, 0)?;
+                        if *checked {
+                            out.write_str(r#"<input disabled="" type="checkbox" checked=""/>"#)?;
+                        } else {
+                            out.write_str(r#"<input disabled="" type="checkbox"/>"#)?;
+                        }
                     }
                     _ => out.write_char('>')?,
                 }
@@ -769,8 +777,6 @@ where
             kind: ListKind::Task(..),
             ..
         } => Some("task-list"),
-        Container::TaskListItem { checked: false } => Some("unchecked"),
-        Container::TaskListItem { checked: true } => Some("checked"),
         Container::Math { display: false } => Some("math inline"),
         Container::Math { display: true } => Some("math display"),
         _ => None,
