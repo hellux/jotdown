@@ -843,7 +843,8 @@ pub enum Container<'s> {
     /// );
     /// let html = concat!(
     ///     "<ul class=\"task-list\">\n",
-    ///     "<li class=\"checked\">\n",
+    ///     "<li>\n",
+    ///     "<input disabled=\"\" type=\"checkbox\" checked=\"\"/>\n",
     ///     "a\n",
     ///     "</li>\n",
     ///     "</ul>\n",
