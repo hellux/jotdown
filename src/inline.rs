@@ -1125,7 +1125,7 @@ enum DelimEventKind<'s> {
     },
 }
 
-impl<'s> From<Opener> for DelimEventKind<'s> {
+impl From<Opener> for DelimEventKind<'_> {
     fn from(d: Opener) -> Self {
         match d {
             Opener::Span(ty) => Self::Span(ty),

@@ -1778,7 +1778,7 @@ pub enum Container<'s> {
     Mark,
 }
 
-impl<'s> Container<'s> {
+impl Container<'_> {
     /// Is a block element.
     #[must_use]
     pub fn is_block(&self) -> bool {

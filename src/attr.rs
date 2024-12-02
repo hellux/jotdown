@@ -81,13 +81,13 @@ impl<'s> From<CowStr<'s>> for AttributeValue<'s> {
     }
 }
 
-impl<'s> From<String> for AttributeValue<'s> {
+impl From<String> for AttributeValue<'_> {
     fn from(value: String) -> Self {
         Self { raw: value.into() }
     }
 }
 
-impl<'s> fmt::Display for AttributeValue<'s> {
+impl fmt::Display for AttributeValue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.parts().try_for_each(|part| f.write_str(part))
     }
@@ -475,7 +475,7 @@ impl<'s> std::ops::Deref for Attributes<'s> {
     }
 }
 
-impl<'s> std::ops::DerefMut for Attributes<'s> {
+impl std::ops::DerefMut for Attributes<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -512,7 +512,7 @@ impl<'s> FromIterator<AttributeElem<'s>> for Attributes<'s> {
     }
 }
 
-impl<'s> std::fmt::Debug for Attributes<'s> {
+impl std::fmt::Debug for Attributes<'_> {
     /// Formats the attributes using the given formatter.
     ///
     /// # Examples

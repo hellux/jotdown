@@ -279,7 +279,7 @@ impl<'s> Lexer<'s> {
     }
 }
 
-impl<'s> Iterator for Lexer<'s> {
+impl Iterator for Lexer<'_> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
