@@ -1,6 +1,9 @@
 use crate::CowStr;
 use std::fmt;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub(crate) fn valid(src: &str) -> usize {
     use State::*;
 
@@ -27,6 +30,7 @@ pub(crate) fn valid(src: &str) -> usize {
 ///
 /// Each value is paired together with an [`AttributeKind`] in order to form an element.
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(transparent))]
 pub struct AttributeValue<'s> {
     raw: CowStr<'s>,
 }
@@ -126,6 +130,7 @@ impl<'s> Iterator for AttributeValueParts<'s> {
 ///
 /// Each kind is paired together with an [`AttributeValue`] to form an element.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AttributeKind<'s> {
     /// A class element, e.g. `.a`.
     ///
@@ -268,7 +273,8 @@ impl<'s> AttributeKind<'s> {
 /// assert_eq!(a, b);
 /// ```
 #[derive(Clone, PartialEq, Eq, Default)]
-pub struct Attributes<'s>(Vec<AttributeElem<'s>>);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Attributes<'s>(#[cfg_attr(feature = "serde", serde(borrow))] Vec<AttributeElem<'s>>);
 
 type AttributeElem<'s> = (AttributeKind<'s>, AttributeValue<'s>);
 
