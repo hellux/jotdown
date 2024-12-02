@@ -25,6 +25,10 @@ check:
 	cargo test --workspace
 	cargo test --workspace --no-default-features
 
+.PHONY: enable-git-hooks
+enable-git-hooks:
+	git config --local core.hooksPath contrib/
+
 .PHONY: test_html_ut
 test_html_ut:
 	git submodule update --init modules/djot.js
