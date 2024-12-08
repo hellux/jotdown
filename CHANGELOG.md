@@ -1,3 +1,9 @@
+## [0.7.0](https://github.com/hellux/jotdown/releases/tag/0.7.0) - 2024-12-08
+
+### Changed
+
+- (breaking) HTML renderer: use interactive `<input>` elements for task list items (#64).
+
 ## [0.6.0](https://github.com/hellux/jotdown/releases/tag/0.6.0) - 2024-09-22
 
 ### Added
