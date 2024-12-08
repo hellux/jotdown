@@ -2541,7 +2541,9 @@ impl<'s> Parser<'s> {
     }
 
     fn block(&mut self) -> Option<(Event<'s>, Range<usize>)> {
-        while let Some(mut ev) = self.blocks.next() {
+        while let Some(ev) = self.blocks.peek() {
+            let mut ev_span = ev.span.clone();
+            let mut pop = true;
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
                     block::Atom::Blankline => {
@@ -2550,7 +2552,7 @@ impl<'s> Parser<'s> {
                     }
                     block::Atom::ThematicBreak => {
                         let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
-                            ev.span.start = span.start;
+                            ev_span.start = span.start;
                             attrs
                         } else {
                             Attributes::new()
@@ -2561,11 +2563,12 @@ impl<'s> Parser<'s> {
                         let (mut attrs, mut span) = self
                             .block_attributes
                             .take()
-                            .unwrap_or_else(|| (Attributes::new(), ev.span.clone()));
+                            .unwrap_or_else(|| (Attributes::new(), ev_span.clone()));
                         attrs
-                            .parse(&self.src[ev.span.clone()])
+                            .parse(&self.src[ev_span.clone()])
                             .expect("should be valid");
-                        span.end = ev.span.end;
+                        span.end = ev_span.end;
+                        self.blocks.next().unwrap();
                         if matches!(
                             self.blocks.peek().map(|e| &e.kind),
                             Some(block::EventKind::Atom(block::Atom::Blankline))
@@ -2671,23 +2674,27 @@ impl<'s> Parser<'s> {
                     };
                     if enter {
                         let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
-                            ev.span.start = span.start;
+                            ev_span.start = span.start;
                             attrs
                         } else {
                             Attributes::new()
                         };
                         Event::Start(cont, attrs)
+                    } else if let Some((attrs, sp)) = self.block_attributes.take() {
+                        pop = false;
+                        ev_span = sp;
+                        Event::Attributes(attrs)
                     } else {
-                        self.block_attributes = None;
                         Event::End(cont)
                     }
                 }
                 block::EventKind::Inline => {
                     if self.verbatim {
-                        Event::Str(self.src[ev.span.clone()].into())
+                        Event::Str(self.src[ev_span.clone()].into())
                     } else {
+                        self.blocks.next().unwrap();
                         self.inline_parser.feed_line(
-                            ev.span.clone(),
+                            ev_span.clone(),
                             !matches!(
                                 self.blocks.peek().map(|e| &e.kind),
                                 Some(block::EventKind::Inline),
@@ -2696,9 +2703,15 @@ impl<'s> Parser<'s> {
                         return self.next_span();
                     }
                 }
-                block::EventKind::Stale => continue,
+                block::EventKind::Stale => {
+                    self.blocks.next().unwrap();
+                    continue;
+                }
             };
-            return Some((event, ev.span));
+            if pop {
+                self.blocks.next().unwrap();
+            }
+            return Some((event, ev_span));
         }
         None
     }
@@ -3843,6 +3856,57 @@ mod test {
                 ),
                 "{.a}\n{.b}\n",
             ),
+        );
+    }
+
+    #[test]
+    fn attr_block_dangling_end_of_block() {
+        test_parse!(
+            concat!(
+                "# h\n",  //
+                "\n",     //
+                "{%cmt}", //
+            ),
+            (Start(Section { id: "h".into() }, Attributes::new()), ""),
+            (
+                Start(
+                    Heading {
+                        level: 1,
+                        has_section: true,
+                        id: "h".into(),
+                    },
+                    Attributes::new(),
+                ),
+                "#"
+            ),
+            (Str("h".into()), "h"),
+            (
+                End(Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "h".into(),
+                }),
+                ""
+            ),
+            (Blankline, "\n"),
+            (
+                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                "{%cmt}"
+            ),
+            (End(Section { id: "h".into() }), ""),
+        );
+        test_parse!(
+            concat!(
+                ":::\n",    //
+                "{%cmt}\n", //
+                ":::\n",    //
+            ),
+            (Start(Div { class: "" }, Attributes::new()), ":::\n"),
+            (
+                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                "{%cmt}\n"
+            ),
+            (End(Div { class: "" }), ":::\n"),
         );
     }
 
