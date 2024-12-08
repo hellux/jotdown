@@ -2558,13 +2558,14 @@ impl<'s> Parser<'s> {
                         Event::ThematicBreak(attrs)
                     }
                     block::Atom::Attributes => {
-                        let (mut attrs, span) = self
+                        let (mut attrs, mut span) = self
                             .block_attributes
                             .take()
                             .unwrap_or_else(|| (Attributes::new(), ev.span.clone()));
                         attrs
                             .parse(&self.src[ev.span.clone()])
                             .expect("should be valid");
+                        span.end = ev.span.end;
                         if matches!(
                             self.blocks.peek().map(|e| &e.kind),
                             Some(block::EventKind::Atom(block::Atom::Blankline))
@@ -3830,6 +3831,17 @@ mod test {
             (
                 Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
                 "{.a}",
+            ),
+        );
+        test_parse!(
+            "{.a}\n{.b}\n",
+            (
+                Attributes(
+                    [(AttributeKind::Class, "a"), (AttributeKind::Class, "b")]
+                        .into_iter()
+                        .collect()
+                ),
+                "{.a}\n{.b}\n",
             ),
         );
     }
