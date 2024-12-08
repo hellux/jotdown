@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/sh -e
 
 make lint
 make check
