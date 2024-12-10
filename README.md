@@ -33,7 +33,10 @@ Jotdown supports Rust edition 2021, i.e. Rust 1.56 and above.
 ## Usage
 
 Jotdown is primarily a parsing library but also has a minimal CLI
-implementation and a simple web demo version.
+implementation, a simple web demo, and a [mdBook] [plugin].
+
+[mdBook]: https://github.com/rust-lang/mdBook
+[plugin]: https://github.com/dcampbell24/mdbook-djot
 
 ### Library
 
@@ -85,6 +88,12 @@ You may need to install [wasm-pack] and make sure your Rust compiler has the
 WebAssembly backend.
 
 [wasm-pack]: https://rustwasm.github.io/wasm-pack/
+
+### mdBook Plugin
+
+Check out the [test_book] for an example of how this works.
+
+[test_book]: https://github.com/dcampbell24/mdbook-djot/tree/main/test_book
 
 ## Status
 
