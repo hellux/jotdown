@@ -4168,6 +4168,28 @@ mod test {
     }
 
     #[test]
+    fn attr_inline_multiline_comment() {
+        test_parse!(
+            concat!(
+                "a{%a\n", //
+                "b\n",    //
+                "c%}\n",  //
+            ),
+            (Start(Paragraph, Attributes::new()), ""),
+            (
+                Start(
+                    Span,
+                    [(AttributeKind::Comment, "a\nb\nc")].into_iter().collect(),
+                ),
+                "",
+            ),
+            (Str("a".into()), "a"),
+            (End(Span), "{%a\nb\nc%}"),
+            (End(Paragraph), ""),
+        );
+    }
+
+    #[test]
     fn attr_inline_multiline_unclosed() {
         test_parse!(
             concat!(

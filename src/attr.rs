@@ -49,19 +49,25 @@ impl<'s> AttributeValue<'s> {
         if s.is_empty() {
             return;
         }
+        if !self.raw.is_empty() {
+            self.extend_raw(" ");
+        }
+        self.extend_raw(s);
+    }
+
+    fn extend_raw(&mut self, s: &'s str) {
         match &mut self.raw {
             CowStr::Borrowed(prev) => {
                 if prev.is_empty() {
                     *prev = s;
                 } else {
-                    self.raw = format!("{} {}", prev, s).into();
+                    self.raw = format!("{}{}", prev, s).into();
                 }
             }
             CowStr::Owned(ref mut prev) => {
                 if prev.is_empty() {
                     self.raw = s.into();
                 } else {
-                    prev.push(' ');
                     prev.push_str(s);
                 }
             }
@@ -765,11 +771,19 @@ impl<'s> Parser<'s> {
                     Key => self
                         .attrs
                         .push((AttributeKind::Pair { key: content }, "".into())),
-                    Value | ValueQuoted | ValueContinued | Comment => {
+                    Value | ValueQuoted | ValueContinued => {
                         let last = self.attrs.len() - 1;
                         self.attrs.0[last]
                             .1
                             .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
+                    }
+                    Comment | CommentNewline => {
+                        let last = self.attrs.len() - 1;
+                        self.attrs.0[last].1.extend_raw(if matches!(st, Comment) {
+                            content
+                        } else {
+                            "\n"
+                        });
                     }
                     CommentFirst => self.attrs.push((AttributeKind::Comment, "".into())),
                     _ => {}
@@ -801,6 +815,7 @@ enum State {
     Whitespace,
     CommentFirst,
     Comment,
+    CommentNewline,
     ClassFirst,
     Class,
     IdentifierFirst,
@@ -832,9 +847,10 @@ impl State {
                 c if c.is_ascii_whitespace() => Whitespace,
                 _ => Invalid,
             },
-            CommentFirst | Comment if c == b'%' => Whitespace,
-            CommentFirst | Comment if c == b'}' => Done,
-            CommentFirst | Comment => Comment,
+            CommentFirst | Comment | CommentNewline if c == b'%' => Whitespace,
+            CommentFirst | Comment | CommentNewline if c == b'}' => Done,
+            CommentFirst | Comment | CommentNewline if c == b'\n' => CommentNewline,
+            CommentFirst | Comment | CommentNewline => Comment,
             ClassFirst if is_name(c) => Class,
             ClassFirst => Invalid,
             IdentifierFirst if is_name(c) => Identifier,
@@ -956,6 +972,15 @@ mod test {
             [(Class, "some_class"), (Comment, " abc "), (Id, "some_id")],
             [("class", "some_class"), ("id", "some_id")],
         );
+    }
+
+    #[test]
+    fn comment_newline() {
+        test_attr!("{%a\nb%}", [(Comment, "a\nb")], []);
+        test_attr!("{%\nb%}", [(Comment, "\nb")], []);
+        test_attr!("{%a\n%}", [(Comment, "a\n")], []);
+        test_attr!("{%a\n}", [(Comment, "a\n")], []);
+        test_attr!("{%\nb\n%}", [(Comment, "\nb\n")], []);
     }
 
     #[test]
