@@ -168,3 +168,11 @@ To run the iai benchmarks, use
 ```
 cargo bench -p bench-iai
 ```
+
+### See also
+
+- [djot_ast][]: Rust crate with djot AST types.
+- [mdbook-djot][]: Plugin for mdbook to add support for djot files.
+
+[djot_ast]: https://github.com/clbarnes/djot_ast
+[mdbook-djot]: https://github.com/dcampbell24/mdbook-djot
