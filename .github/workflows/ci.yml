@@ -126,11 +126,9 @@ jobs:
       - name: "Benchmark"
         run: |
           cargo bench -p bench-crit all > crit
-          cargo bench -p bench-iai > iai
       - name: "Artifact results"
         uses: actions/upload-artifact@v4
         with:
           name: benchmark
           path: |
             crit
-            iai

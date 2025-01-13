@@ -107,7 +107,6 @@ afl_tmin:
 clean:
 	cargo clean
 	(cd tests/afl && cargo clean)
-	rm -rf bench/iai/target
 	git submodule deinit -f --all
 	find tests -type l -path 'tests/html-ut/ut/*.test' -print0 | xargs -0 rm -f
 	(cd tests/html-ut && make clean)

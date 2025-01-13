@@ -148,10 +148,7 @@ symlink them to the bench directory, run:
 make bench
 ```
 
-There are two separate benchmarks suites that can be run; criterion and iai.
-Criterion measures statistical real-time performance while iai measures exact
-number of executed instructions and memory accesses. To run the criterion
-benchmarks, use
+To run the benchmarks, use
 
 ```
 cargo bench -p bench-crit [filter]
@@ -161,10 +158,4 @@ Alternatively, if `cargo-criterion` is installed:
 
 ```
 cargo criterion -p bench-crit -- [filter]
-```
-
-To run the iai benchmarks, use
-
-```
-cargo bench -p bench-iai
 ```

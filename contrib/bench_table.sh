@@ -25,7 +25,6 @@ trap "git checkout $current" EXIT
         OPTIND=1
         while getopts i:c: flag "$@"; do
             case "$flag" in
-                i) echo "iai:$OPTARG [cycles]";;
                 c) echo "criterion:$OPTARG [MB/s]";;
                 *) exit 1
             esac

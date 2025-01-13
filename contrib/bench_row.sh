@@ -6,14 +6,6 @@
 
     while getopts i:c: flag; do
         case "$flag" in
-            i)
-                cargo bench -p bench-iai 2>|/dev/null \
-                    | awk -v b="$OPTARG" '
-                        $0 == b {inside=1}
-                        $0 == "" {inside=0}
-                        inside && $1 == "Estimated" {print $3, $4, $5}
-                    '
-                ;;
             c)
                 # try to reduce noise by selecting max throughput of multiple runs
                 for _ in $(seq 100); do
