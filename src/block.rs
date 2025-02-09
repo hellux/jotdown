@@ -980,18 +980,22 @@ impl<'s> IdentifiedBlock<'s> {
                     None
                 }
             }
-            '[' => chars.as_str().find("]:").map(|l| {
-                let label = &chars.as_str()[0..l];
-                let footnote = label.starts_with('^');
-                (
-                    Kind::Definition {
-                        indent,
-                        footnote,
-                        label: &label[usize::from(footnote)..],
-                        last_blankline: false,
-                    },
-                    0..(indent + 3 + l),
-                )
+            '[' => chars.as_str().find("]").and_then(|l| {
+                if chars.clone().nth(l + 1) == Some(':') {
+                    let label = &chars.as_str()[0..l];
+                    let footnote = label.starts_with('^');
+                    Some((
+                        Kind::Definition {
+                            indent,
+                            footnote,
+                            label: &label[usize::from(footnote)..],
+                            last_blankline: false,
+                        },
+                        0..(indent + 3 + l),
+                    ))
+                } else {
+                    None
+                }
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
                 Some((Kind::Atom(ThematicBreak), indent..(indent + lt)))
