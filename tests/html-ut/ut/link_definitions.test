@@ -1,0 +1,7 @@
+```
+[foo][bar]: click me
+
+[bar]: https://example.com
+.
+<p><a href="https://example.com">foo</a>: click me</p>
+```
