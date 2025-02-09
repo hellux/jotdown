@@ -2115,7 +2115,7 @@ impl<'s> PrePass<'s> {
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<String> = Set::new();
 
-        let mut attr_prev: Option<Range<usize>> = None;
+        let mut attr_prev: Vec<Range<usize>> = Vec::new();
         while let Some(e) = blocks.next() {
             match e.kind {
                 block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
@@ -2123,9 +2123,9 @@ impl<'s> PrePass<'s> {
                 })) => {
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
-                    let attrs = attr_prev.as_ref().map_or_else(Attributes::new, |sp| {
-                        src[sp.clone()].try_into().expect("should be valid")
-                    });
+                    let attrs = Attributes::from_iter(attr_prev.iter().flat_map(|sp| {
+                        Attributes::try_from(&src[sp.clone()]).expect("should be valid")
+                    }));
                     let url = if let Some(block::Event {
                         kind: block::EventKind::Inline,
                         span,
@@ -2167,13 +2167,10 @@ impl<'s> PrePass<'s> {
                     // as formatting must be removed.
                     //
                     // We choose to parse all headers twice instead of caching them.
-                    let attrs = attr_prev
-                        .as_ref()
-                        .map(|sp| Attributes::try_from(&src[sp.clone()]).expect("should be valid"));
-                    let id_override = attrs
-                        .as_ref()
-                        .and_then(|attrs| attrs.get_value("id"))
-                        .map(|s| s.to_string());
+                    let attrs = Attributes::from_iter(attr_prev.iter().flat_map(|sp| {
+                        Attributes::try_from(&src[sp.clone()]).expect("should be valid")
+                    }));
+                    let id_override = attrs.get_value("id").map(|s| s.to_string());
 
                     let mut id_auto = String::new();
                     let mut text = String::new();
@@ -2252,14 +2249,14 @@ impl<'s> PrePass<'s> {
                     });
                 }
                 block::EventKind::Atom(block::Atom::Attributes) => {
-                    attr_prev = Some(e.span.clone());
+                    attr_prev.push(e.span.clone());
                 }
                 block::EventKind::Enter(..)
                 | block::EventKind::Exit(block::Node::Container(block::Container::Section {
                     ..
                 })) => {}
                 _ => {
-                    attr_prev = None;
+                    attr_prev = Vec::new();
                 }
             }
         }
