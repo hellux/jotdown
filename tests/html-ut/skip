@@ -4,7 +4,6 @@ ae6fc15:bugged left/right quote
 168469a:bugged left/right quote
 2fa94d1:bugged left/right quote
 e1f5b5e:untrimmed whitespace before linebreak
-07888f3:div close within raw block
 8423412:heading id conflict with existing id
 c0a3dec:escape in url
 642d380:table end in verbatim inline
