@@ -17,3 +17,14 @@ paragraph
 </tag2>
 </tag1>
 ````
+
+A code block "ends with a line of backticks equal or greater in length to the opening backtick fence"
+
+`````
+```
+foo
+````
+.
+<pre><code>foo
+</code></pre>
+`````
