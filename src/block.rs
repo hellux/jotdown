@@ -1244,9 +1244,7 @@ impl<'s> Kind<'s> {
                 } = IdentifiedBlock::new(line).kind
                 {
                     if spec.is_empty() {
-                        *has_closing_fence = k == *kind
-                            && (l == *fence_length
-                                || (matches!(k, FenceKind::Div) && l > *fence_length));
+                        *has_closing_fence = k == *kind && l >= *fence_length;
                     }
                 }
                 true
