@@ -910,6 +910,7 @@ enum Kind<'s> {
         kind: FenceKind,
         spec: &'s str,
         has_closing_fence: bool,
+        nested_raw: Option<(u8, usize)>,
     },
     Definition {
         indent: usize,
@@ -1060,6 +1061,7 @@ impl<'s> IdentifiedBlock<'s> {
                             },
                             spec,
                             has_closing_fence: false,
+                            nested_raw: None,
                         },
                         indent..(indent + line.len()),
                     )
@@ -1234,6 +1236,7 @@ impl<'s> Kind<'s> {
                 fence_length,
                 kind,
                 has_closing_fence,
+                nested_raw,
                 ..
             } => {
                 if let Kind::Fenced {
@@ -1243,8 +1246,16 @@ impl<'s> Kind<'s> {
                     ..
                 } = IdentifiedBlock::new(line).kind
                 {
-                    if spec.is_empty() {
-                        *has_closing_fence = k == *kind && l >= *fence_length;
+                    if let Some((c, nested_l)) = nested_raw {
+                        if FenceKind::CodeBlock(*c) == k && l >= *nested_l && spec.is_empty() {
+                            *nested_raw = None;
+                        }
+                    } else if k == *kind {
+                        *has_closing_fence = l >= *fence_length && spec.is_empty();
+                    } else if *kind == FenceKind::Div {
+                        if let FenceKind::CodeBlock(c) = k {
+                            *nested_raw = Some((c, l));
+                        }
                     }
                 }
                 true
@@ -2851,6 +2862,7 @@ mod test {
                 fence_length: 4,
                 spec: "lang",
                 has_closing_fence: true,
+                nested_raw: None,
             },
             "````  lang\n",
             5,
@@ -2870,6 +2882,7 @@ mod test {
                 fence_length: 3,
                 spec: "",
                 has_closing_fence: true,
+                nested_raw: None,
             },
             "```\n",
             3,
