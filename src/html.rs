@@ -8,7 +8,6 @@ use crate::ListKind;
 use crate::Map;
 use crate::OrderedListNumbering::*;
 use crate::Render;
-use crate::RenderRef;
 use crate::SpanLinkType;
 
 /// Render events into a string.
@@ -278,19 +277,6 @@ impl Render for Renderer {
     {
         let mut w = Writer::new(&self.indent);
         events.try_for_each(|e| w.render_event(&e, &mut out))?;
-        w.render_epilogue(&mut out)
-    }
-}
-
-impl RenderRef for Renderer {
-    fn push_ref<'s, E, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
-    where
-        E: AsRef<Event<'s>>,
-        I: Iterator<Item = E>,
-        W: std::fmt::Write,
-    {
-        let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(e.as_ref(), &mut out))?;
         w.render_epilogue(&mut out)
     }
 }

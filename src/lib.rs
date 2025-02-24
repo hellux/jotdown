@@ -66,9 +66,6 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 ///
 /// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
 ///
-/// If ownership of the [`Event`]s cannot be given to the renderer, refer to the [`RenderRef`]
-/// trait instead.
-///
 /// # Examples
 ///
 /// Push to a [`String`] (implements [`std::fmt::Write`]):
@@ -121,57 +118,6 @@ pub trait Render {
             Err(e) => e,
             _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
         })
-    }
-}
-
-/// A trait for rendering borrowed [`Event`]s to an output format.
-///
-/// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
-///
-/// If ownership of the [`Event`]s can be given to the renderer, refer to the [`Render`] trait
-/// instead.
-pub trait RenderRef {
-    /// Push borrowed [`Event`]s to a unicode-accepting buffer or stream.
-    ///
-    /// # Examples
-    ///
-    /// Render a borrowed slice of [`Event`]s.
-    /// ```
-    /// # #[cfg(feature = "html")]
-    /// # {
-    /// # use jotdown::RenderRef;
-    /// # let events: &[jotdown::Event] = &[];
-    /// let mut output = String::new();
-    /// let renderer = jotdown::html::Renderer::default();
-    /// renderer.push_ref(events.iter(), &mut output);
-    /// # }
-    /// ```
-    fn push_ref<'s, E, I, W>(&self, events: I, out: W) -> fmt::Result
-    where
-        E: AsRef<Event<'s>>,
-        I: Iterator<Item = E>,
-        W: fmt::Write;
-
-    /// Write borrowed [`Event`]s to a byte sink, encoded as UTF-8.
-    ///
-    /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
-    /// [`std::io::BufWriter`].
-    fn write_ref<'s, E, I, W>(&self, events: I, out: W) -> io::Result<()>
-    where
-        E: AsRef<Event<'s>>,
-        I: Iterator<Item = E>,
-        W: io::Write,
-    {
-        let mut out = WriteAdapter {
-            inner: out,
-            error: Ok(()),
-        };
-
-        self.push_ref(events, &mut out)
-            .map_err(|_| match out.error {
-                Err(e) => e,
-                _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
-            })
     }
 }
 
