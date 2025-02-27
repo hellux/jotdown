@@ -547,10 +547,25 @@ impl<'s> Parser<'s> {
                 span: self.input.span.clone(),
             };
             match state.elem_ty {
-                AttributesElementType::Container { e_placeholder } => {
+                AttributesElementType::Container { mut e_placeholder } => {
                     self.events[e_placeholder] = attr_event;
-                    let last = self.events.len() - 1;
+                    let mut last = self.events.len() - 1;
                     if matches!(self.events[e_placeholder + 1].kind, EventKind::Str) {
+                        let range = self.events[e_placeholder + 1].span.clone();
+                        if &self.input.src[range] == "![" {
+                            // Lexed as image link, but actually just a span preceeded by an exclamation mark
+                            let start = self.events[e_placeholder + 1].span.start;
+                            self.events.insert(
+                                e_placeholder,
+                                Event {
+                                    kind: EventKind::Str,
+                                    span: start..start + 1,
+                                },
+                            );
+                            e_placeholder += 1;
+                            last += 1;
+                            self.events[e_placeholder + 1].span.start += 1;
+                        }
                         self.events[e_placeholder + 1].kind = EventKind::Enter(Span);
                         self.events[last].kind = EventKind::Exit(Span);
                     }
@@ -1618,6 +1633,24 @@ mod test {
             (Enter(Span), "["),
             (Str, "x_y"),
             (Exit(Span), "]{.bar_}"),
+        );
+    }
+
+    #[test]
+    fn span_attr_exclamation_mark() {
+        test_parse!(
+            "![abc]{.def}",
+            (Str, "!"),
+            (
+                Attributes {
+                    container: true,
+                    attrs: 0,
+                },
+                "{.def}"
+            ),
+            (Enter(Span), "["),
+            (Str, "abc"),
+            (Exit(Span), "]{.def}"),
         );
     }
 
