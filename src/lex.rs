@@ -42,7 +42,7 @@ pub enum Delimiter {
 pub enum Symbol {
     Asterisk,
     Caret,
-    ExclaimBracket,
+    Exclaim,
     Lt,
     Pipe,
     Quote1,
@@ -238,14 +238,7 @@ impl<'s> Lexer<'s> {
                         }
                     }
 
-                    b'!' => {
-                        if self.peek_byte() == Some(b'[') {
-                            self.eat_byte();
-                            Sym(ExclaimBracket)
-                        } else {
-                            Text
-                        }
-                    }
+                    b'!' => Sym(Exclaim),
                     b'<' => Sym(Lt),
                     b'|' => Sym(Pipe),
                     b':' => Sym(Colon),
@@ -386,11 +379,11 @@ mod test {
     #[test]
     fn sym() {
         test_lex!(
-            r#"'*^![<|"~_"#,
+            r#"'*^!<|"~_"#,
             Sym(Quote1).l(1),
             Sym(Asterisk).l(1),
             Sym(Caret).l(1),
-            Sym(ExclaimBracket).l(2),
+            Sym(Exclaim).l(1),
             Sym(Lt).l(1),
             Sym(Pipe).l(1),
             Sym(Quote2).l(1),
