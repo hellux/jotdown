@@ -713,7 +713,19 @@ impl<'s> Parser<'s> {
                         self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
                         self.push(EventKind::Atom(Quote { ty, left: false }))
                     }
-                    DelimEventKind::Span(ty) => {
+                    DelimEventKind::Span => {
+                        let image = e_opener
+                            .checked_sub(2)
+                            .and_then(|i| self.events.get(i))
+                            .map(|e| {
+                                e.kind == EventKind::Str && &self.input.src[e.span.clone()] == "!"
+                            })
+                            .unwrap_or_default();
+                        if image {
+                            // make preceeding ! part of the owner
+                            self.events[e_opener].span.start -= 1;
+                            self.events[e_opener - 2].kind = EventKind::Placeholder;
+                        }
                         if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
                             self.input.peek().map(|t| t.kind)
                         {
@@ -721,7 +733,7 @@ impl<'s> Parser<'s> {
                             self.openers.push((
                                 Opener::Link {
                                     event_span: e_opener,
-                                    image: matches!(ty, SpanType::Image),
+                                    image,
                                     inline: matches!(d, Delimiter::Paren),
                                 },
                                 self.events.len(),
@@ -1019,14 +1031,8 @@ enum Directionality {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpanType {
-    Image,
-    General,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Opener {
-    Span(SpanType),
+    Span,
     Strong(Directionality),
     Emphasis(Directionality),
     Superscript(Directionality),
@@ -1047,7 +1053,6 @@ impl Opener {
     fn from_token(kind: lex::Kind) -> Option<Self> {
         use Directionality::{Bi, Uni};
         use Opener::*;
-        use SpanType::{General, Image};
 
         match kind {
             lex::Kind::Sym(Symbol::Asterisk) => Some(Strong(Bi)),
@@ -1056,8 +1061,7 @@ impl Opener {
             lex::Kind::Sym(Symbol::Tilde) => Some(Subscript(Bi)),
             lex::Kind::Sym(Symbol::Quote1) => Some(SingleQuoted),
             lex::Kind::Sym(Symbol::Quote2) => Some(DoubleQuoted),
-            lex::Kind::Sym(Symbol::ExclaimBracket) => Some(Span(Image)),
-            lex::Kind::Open(Delimiter::Bracket) => Some(Span(General)),
+            lex::Kind::Open(Delimiter::Bracket) => Some(Span),
             lex::Kind::Open(Delimiter::BraceAsterisk) => Some(Strong(Uni)),
             lex::Kind::Open(Delimiter::BraceUnderscore) => Some(Emphasis(Uni)),
             lex::Kind::Open(Delimiter::BraceCaret) => Some(Superscript(Uni)),
@@ -1076,7 +1080,7 @@ impl Opener {
         use Opener::*;
 
         match self {
-            Span(..) => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
+            Span => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
             Strong(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Asterisk)),
             Strong(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceAsterisk)),
             Emphasis(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Underscore)),
@@ -1116,7 +1120,7 @@ impl Opener {
 
 enum DelimEventKind<'s> {
     Container(Container<'s>),
-    Span(SpanType),
+    Span,
     Quote(QuoteType),
     Link {
         event_span: usize,
@@ -1128,7 +1132,7 @@ enum DelimEventKind<'s> {
 impl From<Opener> for DelimEventKind<'_> {
     fn from(d: Opener) -> Self {
         match d {
-            Opener::Span(ty) => Self::Span(ty),
+            Opener::Span => Self::Span,
             Opener::Strong(..) => Self::Container(Strong),
             Opener::Emphasis(..) => Self::Container(Emphasis),
             Opener::Superscript(..) => Self::Container(Superscript),
