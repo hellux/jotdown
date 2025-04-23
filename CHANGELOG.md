@@ -1,3 +1,20 @@
+## [0.8.0](https://github.com/hellux/jotdown/releases/tag/0.8.0) - 2024-04-23
+
+### Fixed
+
+- Span of merged dangling block attributes.
+- Events missing for dangling attributes at the end of a block (#70).
+- Multi-line comments broken in inline attributes (#74).
+- Labeled links at start of line incorrectly parsed as link definitions (#81).
+- Repeated attributes on link definitions being overwritten (#83).
+- Div being closed by a div fence inside a raw block (#87).
+- Spans breaking due to preceding exclamation mark (#88).
+
+### Changed
+
+- (breaking) Code block can now be closed by any longer fence (#84).
+- (breaking) Remove the RenderRef trait.
+
 ## [0.7.0](https://github.com/hellux/jotdown/releases/tag/0.7.0) - 2024-12-08
 
 ### Changed
