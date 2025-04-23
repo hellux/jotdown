@@ -4,8 +4,6 @@ on:
   push:
   pull_request:
 
-permissions: {}
-
 jobs:
   zizmor:
     name: zizmor
