@@ -120,7 +120,7 @@ jobs:
       shell: bash
       run: |
         rustup update stable
-        rustup target add wasm32-wasi
+        rustup target add wasm32-wasip1
         cargo install wasm-pack
 
     - name: build
