@@ -34,7 +34,7 @@ pub enum Node<'s> {
 }
 
 #[must_use]
-pub fn parse(src: &str) -> Vec<Event> {
+pub fn parse(src: &str) -> Vec<Event<'_>> {
     TreeParser::new(src).parse()
 }
 

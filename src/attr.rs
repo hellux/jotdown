@@ -344,7 +344,7 @@ impl<'s> Attributes<'s> {
     /// );
     /// ```
     #[must_use]
-    pub fn get_value(&self, key: &str) -> Option<AttributeValue> {
+    pub fn get_value(&self, key: &str) -> Option<AttributeValue<'_>> {
         if key == "class"
             && self
                 .0
