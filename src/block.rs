@@ -982,7 +982,7 @@ impl<'s> IdentifiedBlock<'s> {
                 }
             }
             '[' => chars.as_str().find("]").and_then(|l| {
-                if chars.clone().nth(l + 1) == Some(':') {
+                if chars.as_str()[l + 1..].starts_with(':') {
                     let label = &chars.as_str()[0..l];
                     let footnote = label.starts_with('^');
                     Some((
