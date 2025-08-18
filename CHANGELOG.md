@@ -1,3 +1,10 @@
+## [0.8.1](https://github.com/hellux/jotdown/releases/tag/0.8.1) - 2025-08-19
+
+### Fixed
+
+- Incorrect parsing of link spans with unicode characters (#92).
+- Incorrect conversion from LinkBulletType to u8 (#94).
+
 ## [0.8.0](https://github.com/hellux/jotdown/releases/tag/0.8.0) - 2024-04-23
 
 ### Fixed
