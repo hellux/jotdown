@@ -1873,8 +1873,8 @@ impl From<ListBulletType> for u8 {
     fn from(t: ListBulletType) -> Self {
         match t {
             ListBulletType::Dash => b'-',
-            ListBulletType::Star => b'-',
-            ListBulletType::Plus => b'-',
+            ListBulletType::Star => b'*',
+            ListBulletType::Plus => b'+',
         }
     }
 }
