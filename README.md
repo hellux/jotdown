@@ -55,7 +55,7 @@ this repository and run locally with cargo:
 
 ```
 $ cargo build --release
-$ echo "hello world" | ./target/release/djot
+$ echo "hello world" | ./target/release/jotdown
 <p>hello world</p>
 ```
 
