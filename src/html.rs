@@ -585,7 +585,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         self.list_tightness.pop();
                         match kind {
                             ListKind::Unordered(..) | ListKind::Task(..) => {
-                                out.write_str("</ul>")?
+                                out.write_str("</ul>")?;
                             }
                             ListKind::Ordered { .. } => out.write_str("</ol>")?,
                         }
