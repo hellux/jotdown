@@ -41,9 +41,8 @@ The Jotdown API is inspired by [pulldown-cmark] and is overall very similar.
 The Jotdown crate contains in-source documentation, a rendered version is
 available at <https://docs.rs/jotdown>.
 
-While Jotdown is usable, it is still in early development and breaking changes
-to the API may occur frequently. The Djot syntax is also in quite early stages
-and may also change significantly.
+While Jotdown is usable, it is still in development and breaking changes to the
+API may occur. The Djot syntax is also not stabilized and may change.
 
 [pulldown-cmark]: https://github.com/raphlinus/pulldown-cmark
 
