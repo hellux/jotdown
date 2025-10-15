@@ -90,40 +90,25 @@ WebAssembly backend.
 
 ### Correctness
 
-As of writing, Jotdown implements all the current features of the Djot syntax,
-including:
+As of writing, Jotdown implements all current features of the Djot syntax. Any
+difference in parsing or HTML rendering from the [reference
+implementation][djot-js] is considered a bug.
 
-- links, images, either inline or with reference link definitions,
-- autolinks,
-- inline typesetting
-    - emphasis,
-    - highlight,
-    - super/subscript,
-    - insert/delete,
-    - smart punctuation,
-- inline verbatim, code and code blocks,
-- math,
-- line breaks,
-- comments,
-- symbols,
-- headings, including hierarchical sections, and automatic links
-- block quotes,
-- lists,
-    - unordered,
-    - ordered,
-    - task,
-    - definitions,
-- raw inline and blocks,
-- thematic breaks,
-- pipe tables,
-- attributes, on inline and block elements,
-- inline spans and div blocks,
-- footnotes.
+Feature requests for changed syntax or HTML rendering will be implemented if it
+is agreed to be implemented in the reference implementation first. Create a new
+[issue][djot-issue] or a new [discussion][djot-discussion] in the official djot
+repo first for such requests.
 
-The HTML output is in some cases not exactly identical to the [reference
-implementation][djot-js]. There are two test suites that compares Jotdown's
-HTML output with that of the reference implementation. One uses the unit tests
-of the reference implementation and runs them with Jotdown. It can be run with:
+[djot-issue]: https://github.com/jgm/djot/issues
+[djot-discussion]: https://github.com/jgm/djot/discussions
+
+There are still some known HTML differences from the reference implementation.
+There are two test suites that compares Jotdown's HTML output with that of the
+reference implementation. Their known failures are listed in
+`tests/html-ut/skip` and `tests/html-ref/skip`.
+
+One of the suites uses the unit tests of the reference implementation and runs
+them with Jotdown. It can be run with:
 
 ```
 $ make test_html_ut
