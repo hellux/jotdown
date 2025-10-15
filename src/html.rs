@@ -558,7 +558,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         }
                     }
                     Container::Math { display } => {
-                        out.write_str(if display { r#">\["# } else { r#">\("# })?;
+                        out.write_str(if display { r">\[" } else { r">\(" })?;
                     }
                     Container::TaskListItem { checked } => {
                         out.write_char('>')?;
@@ -628,11 +628,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::Verbatim => out.write_str("</code>")?,
                     Container::Math { display } => {
-                        out.write_str(if display {
-                            r#"\]</span>"#
-                        } else {
-                            r#"\)</span>"#
-                        })?;
+                        out.write_str(if display { r"\]</span>" } else { r"\)</span>" })?;
                     }
                     Container::RawBlock { .. } | Container::RawInline { .. } => {
                         self.raw = Raw::None;
