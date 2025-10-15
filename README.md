@@ -163,7 +163,9 @@ cargo criterion -p bench-crit -- [filter]
 ### See also
 
 - [djot_ast][]: Rust crate with djot AST types.
+- [djotfmt][]: Djot source code formatter.
 - [mdbook-djot][]: Plugin for mdbook to add support for djot files.
 
 [djot_ast]: https://github.com/clbarnes/djot_ast
+[djotfmt]: https://github.com/black-desk/djotfmt
 [mdbook-djot]: https://github.com/dcampbell24/mdbook-djot
