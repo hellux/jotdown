@@ -13,9 +13,9 @@ to HTML.
 
 Jotdown aims to be fast and efficient, using a minimal number of allocations.
 The API should use idiomatic Rust and be easy to use and flexible. The event
-interface allows clients to e.g. construct an AST or generate any type of
-output format. It also allows one to perform filters on the document before
-generating the output. Jotdown aims to be feature complete and match the
+interface allows downstream crates to e.g. construct an AST or generate any
+type of output format. It also allows one to perform filters on the document
+before generating the output. Jotdown aims to be feature complete and match the
 [syntax reference][djot-syntax] and the [reference implementation][djot-js] in
 terms of output.
 
