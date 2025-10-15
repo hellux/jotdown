@@ -160,6 +160,12 @@ Alternatively, if `cargo-criterion` is installed:
 cargo criterion -p bench-crit -- [filter]
 ```
 
+There are also external benchmarks that compare jotdown to other markdown/djot
+implementations:
+
+- https://github.com/rosetta-rs/md-rosetta-rs
+- https://github.com/dcampbell24/djot-implementations
+
 ### See also
 
 - [djot_ast][]: Rust crate with djot AST types.
