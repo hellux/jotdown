@@ -2,6 +2,7 @@
 
 use crate::Alignment;
 use crate::Container;
+use crate::CowStr;
 use crate::Event;
 use crate::LinkType;
 use crate::ListKind;
@@ -276,7 +277,7 @@ impl Render for Renderer {
         W: std::fmt::Write,
     {
         let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(&e, &mut out))?;
+        events.try_for_each(|e| w.render_event(e, &mut out))?;
         w.render_epilogue(&mut out)
     }
 }
@@ -361,7 +362,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_event<W>(&mut self, e: &Event<'s>, mut out: W) -> std::fmt::Result
+    fn render_event<W>(&mut self, e: Event<'s>, mut out: W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -469,7 +470,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::Verbatim => out.write_str("<code")?,
                     Container::RawBlock { format } | Container::RawInline { format } => {
-                        self.raw = if format == &"html" {
+                        self.raw = if format == "html" {
                             Raw::Html
                         } else {
                             Raw::Other
@@ -494,7 +495,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     match a {
                         "class" => {
                             class_written = true;
-                            write_class(c, true, &mut out)?;
+                            write_class(&c, true, &mut out)?;
                         }
                         "id" => id_written = true,
                         _ => {}
@@ -514,7 +515,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         write_attr(id, &mut out)?;
                         out.write_char('"')?;
                     }
-                } else if (matches!(c, Container::Div { class } if !class.is_empty())
+                } else if (matches!(c.clone(), Container::Div { class } if !class.is_empty())
                     || matches!(
                         c,
                         Container::Math { .. }
@@ -526,7 +527,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     && !class_written
                 {
                     out.write_str(r#" class=""#)?;
-                    write_class(c, false, &mut out)?;
+                    write_class(&c, false, &mut out)?;
                     out.write_char('"')?;
                 }
 
@@ -547,7 +548,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             out.write_str("><code>")?;
                         } else {
                             out.write_str(r#"><code class="language-"#)?;
-                            write_attr(language, &mut out)?;
+                            write_attr(&language, &mut out)?;
                             out.write_str(r#"">"#)?;
                         }
                     }
@@ -557,12 +558,12 @@ impl<'s, 'f> Writer<'s, 'f> {
                         }
                     }
                     Container::Math { display } => {
-                        out.write_str(if *display { r#">\["# } else { r#">\("# })?;
+                        out.write_str(if display { r#">\["# } else { r#">\("# })?;
                     }
                     Container::TaskListItem { checked } => {
                         out.write_char('>')?;
                         self.block(&mut out, 0)?;
-                        if *checked {
+                        if checked {
                             out.write_str(r#"<input disabled="" type="checkbox" checked=""/>"#)?;
                         } else {
                             out.write_str(r#"<input disabled="" type="checkbox"/>"#)?;
@@ -619,7 +620,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         if self.img_alt_text == 1 {
                             if !src.is_empty() {
                                 out.write_str(r#"" src=""#)?;
-                                write_attr(src, &mut out)?;
+                                write_attr(&src, &mut out)?;
                             }
                             out.write_str(r#"">"#)?;
                         }
@@ -627,7 +628,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::Verbatim => out.write_str("</code>")?,
                     Container::Math { display } => {
-                        out.write_str(if *display {
+                        out.write_str(if display {
                             r#"\]</span>"#
                         } else {
                             r#"\)</span>"#
@@ -647,9 +648,9 @@ impl<'s, 'f> Writer<'s, 'f> {
                 }
             }
             Event::Str(s) => match self.raw {
-                Raw::None if self.img_alt_text > 0 => write_attr(s, &mut out)?,
-                Raw::None => write_text(s, &mut out)?,
-                Raw::Html => out.write_str(s)?,
+                Raw::None if self.img_alt_text > 0 => write_attr(&s, &mut out)?,
+                Raw::None => write_text(&s, &mut out)?,
+                Raw::Html => out.write_str(&s)?,
                 Raw::Other => {}
             },
             Event::FootnoteReference(label) => {
@@ -713,7 +714,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 write!(out, "<li id=\"fn{}\">", number)?;
 
                 let mut unclosed_para = false;
-                for e in events.iter().flatten() {
+                for e in events.into_iter().flatten() {
                     if matches!(&e, Event::Blankline | Event::Escape) {
                         continue;
                     }
@@ -721,7 +722,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         // not a footnote, so no need to add href before para close
                         out.write_str("</p>")?;
                     }
-                    self.render_event(e, &mut out)?;
+                    self.render_event(e.clone(), &mut out)?;
                     unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
                         && !matches!(self.list_tightness.last(), Some(true));
                 }
@@ -828,11 +829,11 @@ where
 #[derive(Default)]
 struct Footnotes<'s> {
     /// Stack of current open footnotes, with label and staging buffer.
-    open: Vec<(&'s str, Vec<Event<'s>>)>,
+    open: Vec<(CowStr<'s>, Vec<Event<'s>>)>,
     /// Footnote references in the order they were first encountered.
-    references: Vec<&'s str>,
+    references: Vec<CowStr<'s>>,
     /// Events for each footnote.
-    events: Map<&'s str, Vec<Event<'s>>>,
+    events: Map<CowStr<'s>, Vec<Event<'s>>>,
     /// Number of last footnote that was emitted.
     number: usize,
 }
@@ -849,7 +850,7 @@ impl<'s> Footnotes<'s> {
     }
 
     /// Add a footnote reference.
-    fn reference(&mut self, label: &'s str) -> usize {
+    fn reference(&mut self, label: CowStr<'s>) -> usize {
         self.references
             .iter()
             .position(|t| *t == label)
@@ -863,7 +864,7 @@ impl<'s> Footnotes<'s> {
     }
 
     /// Start aggregating a footnote.
-    fn start(&mut self, label: &'s str, events: Vec<Event<'s>>) {
+    fn start(&mut self, label: CowStr<'s>, events: Vec<Event<'s>>) {
         self.open.push((label, events));
     }
 
