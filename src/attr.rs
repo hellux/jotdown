@@ -131,7 +131,7 @@ impl<'s> Iterator for AttributeValueParts<'s> {
 /// The kind of an element within an attribute set.
 ///
 /// Each kind is paired together with an [`AttributeValue`] to form an element.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AttributeKind<'s> {
     /// A class element, e.g. `.a`.
     ///
@@ -166,15 +166,15 @@ pub enum AttributeKind<'s> {
     ///     .into_iter();
     /// assert_eq!(
     ///     a.next(),
-    ///     Some((AttributeKind::Pair { key: "key" }, "value".into())),
+    ///     Some((AttributeKind::Pair { key: "key".into() }, "value".into())),
     /// );
     /// assert_eq!(
     ///     a.next(),
-    ///     Some((AttributeKind::Pair { key: "id" }, "a".into())),
+    ///     Some((AttributeKind::Pair { key: "id".into() }, "a".into())),
     /// );
     /// assert_eq!(a.next(), None);
     /// ```
-    Pair { key: &'s str },
+    Pair { key: CowStr<'s> },
     /// A comment element, e.g. `%cmt%`.
     ///
     /// # Examples
@@ -189,14 +189,14 @@ pub enum AttributeKind<'s> {
     Comment,
 }
 
-impl<'s> AttributeKind<'s> {
+impl AttributeKind<'_> {
     /// Returns the element's key, if applicable.
     #[must_use]
-    pub fn key(&self) -> Option<&'s str> {
+    pub fn key(&self) -> Option<&str> {
         match self {
             AttributeKind::Class => Some("class"),
             AttributeKind::Id => Some("id"),
-            AttributeKind::Pair { key } => Some(key),
+            AttributeKind::Pair { key } => Some(key.as_ref()),
             AttributeKind::Comment => None,
         }
     }
@@ -232,9 +232,9 @@ impl<'s> AttributeKind<'s> {
 ///     vec![
 ///         (AttributeKind::Id, "a".into()),
 ///         (AttributeKind::Class, "b".into()),
-///         (AttributeKind::Pair { key: "id" }, "c".into()),
-///         (AttributeKind::Pair { key: "class" }, "d".into()),
-///         (AttributeKind::Pair { key: "key" }, "val".into()),
+///         (AttributeKind::Pair { key: "id".into() }, "c".into()),
+///         (AttributeKind::Pair { key: "class".into() }, "d".into()),
+///         (AttributeKind::Pair { key: "key".into() }, "val".into()),
 ///         (AttributeKind::Comment, "comment".into()),
 ///     ],
 /// );
@@ -255,8 +255,8 @@ impl<'s> AttributeKind<'s> {
 /// assert_eq!(
 ///     attrs.as_slice(),
 ///     &[
-///         (AttributeKind::Pair { key: "key1" }, "val1".into()),
-///         (AttributeKind::Pair { key: "key2" }, "new_val".into()),
+///         (AttributeKind::Pair { key: "key1".into() }, "val1".into()),
+///         (AttributeKind::Pair { key: "key2".into() }, "new_val".into()),
 ///     ]
 /// );
 /// ```
@@ -564,14 +564,14 @@ impl<'s> IntoIterator for Attributes<'s> {
     /// assert_eq!(
     ///     elems.next(),
     ///     Some((
-    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeKind::Pair { key: "key1".into() },
     ///         AttributeValue::from("val1"),
     ///     )),
     /// );
     /// assert_eq!(
     ///     elems.next(),
     ///     Some((
-    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeKind::Pair { key: "key2".into() },
     ///         AttributeValue::from("val2"),
     ///     )),
     /// );
@@ -598,14 +598,14 @@ impl<'i, 's> IntoIterator for &'i Attributes<'s> {
     /// assert_eq!(
     ///     elems.next(),
     ///     Some(&(
-    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeKind::Pair { key: "key1".into() },
     ///         AttributeValue::from("val1"),
     ///     )),
     /// );
     /// assert_eq!(
     ///     elems.next(),
     ///     Some(&(
-    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeKind::Pair { key: "key2".into() },
     ///         AttributeValue::from("val2"),
     ///     )),
     /// );
@@ -632,14 +632,14 @@ impl<'i, 's> IntoIterator for &'i mut Attributes<'s> {
     /// assert_eq!(
     ///     elems.next(),
     ///     Some(&mut (
-    ///         AttributeKind::Pair { key: "key1" },
+    ///         AttributeKind::Pair { key: "key1".into() },
     ///         AttributeValue::from("val1"),
     ///     )),
     /// );
     /// assert_eq!(
     ///     elems.next(),
     ///     Some(&mut (
-    ///         AttributeKind::Pair { key: "key2" },
+    ///         AttributeKind::Pair { key: "key2".into() },
     ///         AttributeValue::from("val2"),
     ///     )),
     /// );
@@ -768,9 +768,12 @@ impl<'s> Parser<'s> {
                 match st {
                     Class => self.attrs.push((AttributeKind::Class, content.into())),
                     Identifier => self.attrs.push((AttributeKind::Id, content.into())),
-                    Key => self
-                        .attrs
-                        .push((AttributeKind::Pair { key: content }, "".into())),
+                    Key => self.attrs.push((
+                        AttributeKind::Pair {
+                            key: content.into(),
+                        },
+                        "".into(),
+                    )),
                     Value | ValueQuoted | ValueContinued => {
                         let last = self.attrs.len() - 1;
                         self.attrs.0[last]
@@ -920,8 +923,18 @@ mod test {
         test_attr!(
             "{attr0=val0 attr1=val1}",
             [
-                (Pair { key: "attr0" }, "val0"),
-                (Pair { key: "attr1" }, "val1"),
+                (
+                    Pair {
+                        key: "attr0".into()
+                    },
+                    "val0"
+                ),
+                (
+                    Pair {
+                        key: "attr1".into()
+                    },
+                    "val1"
+                ),
             ],
             [("attr0", "val0"), ("attr1", "val1")],
         );
@@ -932,8 +945,18 @@ mod test {
         test_attr!(
             r#"{attr0="val0" attr1="val1"}"#,
             [
-                (Pair { key: "attr0" }, "val0"),
-                (Pair { key: "attr1" }, "val1"),
+                (
+                    Pair {
+                        key: "attr0".into()
+                    },
+                    "val0"
+                ),
+                (
+                    Pair {
+                        key: "attr1".into()
+                    },
+                    "val1"
+                ),
             ],
             [("attr0", "val0"), ("attr1", "val1")],
         );
@@ -942,7 +965,12 @@ mod test {
             [
                 (Id, "id"),
                 (Class, "class"),
-                (Pair { key: "style" }, "color:red"),
+                (
+                    Pair {
+                        key: "style".into()
+                    },
+                    "color:red"
+                ),
             ],
             [("id", "id"), ("class", "class"), ("style", "color:red")]
         );
@@ -952,7 +980,12 @@ mod test {
     fn value_newline() {
         test_attr!(
             "{attr0=\"abc\ndef\"}",
-            [(Pair { key: "attr0" }, "abc def")],
+            [(
+                Pair {
+                    key: "attr0".into()
+                },
+                "abc def"
+            )],
             [("attr0", "abc def")]
         );
     }
@@ -987,12 +1020,12 @@ mod test {
     fn escape() {
         test_attr!(
             r#"{attr="with escaped \~ char"}"#,
-            [(Pair { key: "attr" }, "with escaped ~ char")],
+            [(Pair { key: "attr".into() }, "with escaped ~ char")],
             [("attr", "with escaped ~ char")]
         );
         test_attr!(
             r#"{key="quotes \" should be escaped"}"#,
-            [(Pair { key: "key" }, r#"quotes " should be escaped"#)],
+            [(Pair { key: "key".into() }, r#"quotes " should be escaped"#)],
             [("key", r#"quotes " should be escaped"#)]
         );
     }
@@ -1001,17 +1034,17 @@ mod test {
     fn escape_backslash() {
         test_attr!(
             r#"{attr="with\\backslash"}"#,
-            [(Pair { key: "attr" }, r"with\backslash")],
+            [(Pair { key: "attr".into() }, r"with\backslash")],
             [("attr", r"with\backslash")]
         );
         test_attr!(
             r#"{attr="with many backslashes\\\\"}"#,
-            [(Pair { key: "attr" }, r"with many backslashes\\")],
+            [(Pair { key: "attr".into() }, r"with many backslashes\\")],
             [("attr", r"with many backslashes\\")]
         );
         test_attr!(
             r#"{attr="\\escaped backslash at start"}"#,
-            [(Pair { key: "attr" }, r"\escaped backslash at start")],
+            [(Pair { key: "attr".into() }, r"\escaped backslash at start")],
             [("attr", r"\escaped backslash at start")]
         );
     }
@@ -1020,12 +1053,12 @@ mod test {
     fn only_escape_punctuation() {
         test_attr!(
             r#"{attr="do not \escape"}"#,
-            [(Pair { key: "attr" }, r"do not \escape")],
+            [(Pair { key: "attr".into() }, r"do not \escape")],
             [("attr", r"do not \escape")]
         );
         test_attr!(
             r#"{attr="\backslash at the beginning"}"#,
-            [(Pair { key: "attr" }, r"\backslash at the beginning")],
+            [(Pair { key: "attr".into() }, r"\backslash at the beginning")],
             [("attr", r"\backslash at the beginning")]
         );
     }

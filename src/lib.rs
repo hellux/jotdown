@@ -223,7 +223,7 @@ pub enum Event<'s> {
     ///     &[
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("txt".into()),
-    ///         Event::FootnoteReference("nb"),
+    ///         Event::FootnoteReference("nb".into()),
     ///         Event::Str(".".into()),
     ///         Event::End(Container::Paragraph),
     ///     ],
@@ -241,7 +241,7 @@ pub enum Event<'s> {
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    FootnoteReference(&'s str),
+    FootnoteReference(CowStr<'s>),
     /// A symbol, by default rendered literally but may be treated specially.
     ///
     /// # Examples
@@ -876,13 +876,13 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::Blankline,
     ///         Event::Start(
-    ///             Container::Footnote { label: "nb" },
+    ///             Container::Footnote { label: "nb".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("actually..".into()),
     ///         Event::End(Container::Paragraph),
-    ///         Event::End(Container::Footnote { label: "nb" }),
+    ///         Event::End(Container::Footnote { label: "nb".into() }),
     ///     ],
     /// );
     /// let html = concat!(
@@ -898,7 +898,7 @@ pub enum Container<'s> {
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    Footnote { label: &'s str },
+    Footnote { label: CowStr<'s> },
     /// A table element.
     ///
     /// # Examples
@@ -1076,13 +1076,13 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::Div { class: "note" },
+    ///             Container::Div { class: "note".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("this is a note".into()),
     ///         Event::End(Container::Paragraph),
-    ///         Event::End(Container::Div { class: "note" }),
+    ///         Event::End(Container::Div { class: "note".into() }),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1092,7 +1092,7 @@ pub enum Container<'s> {
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    Div { class: &'s str },
+    Div { class: CowStr<'s> },
     /// A paragraph.
     Paragraph,
     /// A heading.
@@ -1204,17 +1204,17 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::LinkDefinition { label: "label" },
+    ///             Container::LinkDefinition { label: "label".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("url".into()),
-    ///         Event::End(Container::LinkDefinition { label: "label" }),
+    ///         Event::End(Container::LinkDefinition { label: "label".into() }),
     ///     ],
     /// );
     /// let html = "\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    LinkDefinition { label: &'s str },
+    LinkDefinition { label: CowStr<'s> },
     /// A block with raw markup for a specific output format.
     ///
     /// # Examples
@@ -1231,17 +1231,17 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::RawBlock { format: "html" },
+    ///             Container::RawBlock { format: "html".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("<tag>x</tag>".into()),
-    ///         Event::End(Container::RawBlock { format: "html" }),
+    ///         Event::End(Container::RawBlock { format: "html".into() }),
     ///     ],
     /// );
     /// let html = "<tag>x</tag>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    RawBlock { format: &'s str },
+    RawBlock { format: CowStr<'s> },
     /// A block with code in a specific language.
     ///
     /// # Examples
@@ -1258,11 +1258,11 @@ pub enum Container<'s> {
     ///     &events,
     ///     &[
     ///         Event::Start(
-    ///             Container::CodeBlock { language: "html" },
+    ///             Container::CodeBlock { language: "html".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("<tag>x</tag>\n".into()),
-    ///         Event::End(Container::CodeBlock { language: "html" }),
+    ///         Event::End(Container::CodeBlock { language: "html".into() }),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1271,7 +1271,7 @@ pub enum Container<'s> {
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    CodeBlock { language: &'s str },
+    CodeBlock { language: CowStr<'s> },
     /// An inline divider element.
     ///
     /// # Examples
@@ -1437,11 +1437,11 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::Blankline,
     ///         Event::Start(
-    ///             Container::LinkDefinition { label: "label" },
+    ///             Container::LinkDefinition { label: "label".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("url".into()),
-    ///         Event::End(Container::LinkDefinition { label: "label" }),
+    ///         Event::End(Container::LinkDefinition { label: "label".into() }),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1557,17 +1557,17 @@ pub enum Container<'s> {
     ///     &[
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
-    ///             Container::RawInline { format: "html" }, Attributes::new(),
+    ///             Container::RawInline { format: "html".into() }, Attributes::new(),
     ///         ),
     ///         Event::Str("<tag>a</tag>".into()),
-    ///         Event::End(Container::RawInline { format: "html" }),
+    ///         Event::End(Container::RawInline { format: "html".into() }),
     ///         Event::End(Container::Paragraph),
     ///     ],
     /// );
     /// let html = "<p><tag>a</tag></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
-    RawInline { format: &'s str },
+    RawInline { format: CowStr<'s> },
     /// A subscripted element.
     ///
     /// # Examples
@@ -2386,7 +2386,9 @@ impl<'s> Parser<'s> {
                         inline::Container::Verbatim => Container::Verbatim,
                         inline::Container::InlineMath => Container::Math { display: false },
                         inline::Container::DisplayMath => Container::Math { display: true },
-                        inline::Container::RawFormat { format } => Container::RawInline { format },
+                        inline::Container::RawFormat { format } => Container::RawInline {
+                            format: format.into(),
+                        },
                         inline::Container::Subscript => Container::Subscript,
                         inline::Container::Superscript => Container::Superscript,
                         inline::Container::Insert => Container::Insert,
@@ -2405,11 +2407,8 @@ impl<'s> Parser<'s> {
                         inline::Container::ReferenceLink(tag)
                         | inline::Container::ReferenceImage(tag) => {
                             let tag = &self.inline_parser.store_cowstrs[tag as usize];
-                            let link_def = self
-                                .pre_pass
-                                .link_definitions
-                                .get::<str>(tag.as_ref())
-                                .cloned();
+                            let link_def =
+                                self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
 
                             let (url_or_tag, ty) = if let Some((url, mut attrs_def)) = link_def {
                                 if enter {
@@ -2446,7 +2445,9 @@ impl<'s> Parser<'s> {
                     }
                 }
                 inline::EventKind::Atom(a) => match a {
-                    inline::Atom::FootnoteReference { label } => Event::FootnoteReference(label),
+                    inline::Atom::FootnoteReference { label } => {
+                        Event::FootnoteReference(label.into())
+                    }
                     inline::Atom::Symbol(sym) => Event::Symbol(sym.into()),
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
@@ -2547,9 +2548,13 @@ impl<'s> Parser<'s> {
                                 block::Leaf::CodeBlock { language } => {
                                     self.verbatim = enter;
                                     if let Some(format) = language.strip_prefix('=') {
-                                        Container::RawBlock { format }
+                                        Container::RawBlock {
+                                            format: format.into(),
+                                        }
                                     } else {
-                                        Container::CodeBlock { language }
+                                        Container::CodeBlock {
+                                            language: language.into(),
+                                        }
                                     }
                                 }
                                 block::Leaf::TableCell(alignment) => Container::TableCell {
@@ -2559,14 +2564,20 @@ impl<'s> Parser<'s> {
                                 block::Leaf::Caption => Container::Caption,
                                 block::Leaf::LinkDefinition { label } => {
                                     self.verbatim = enter;
-                                    Container::LinkDefinition { label }
+                                    Container::LinkDefinition {
+                                        label: label.into(),
+                                    }
                                 }
                             }
                         }
                         block::Node::Container(c) => match c {
                             block::Container::Blockquote => Container::Blockquote,
-                            block::Container::Div { class } => Container::Div { class },
-                            block::Container::Footnote { label } => Container::Footnote { label },
+                            block::Container::Div { class } => Container::Div {
+                                class: class.into(),
+                            },
+                            block::Container::Footnote { label } => Container::Footnote {
+                                label: label.into(),
+                            },
                             block::Container::List { ty, tight } => {
                                 if matches!(ty, block::ListType::Description) {
                                     Container::DescriptionList
@@ -2863,7 +2874,7 @@ mod test {
             (
                 Start(
                     Section { id: "def".into() },
-                    [(AttributeKind::Pair { key: "a" }, "b")]
+                    [(AttributeKind::Pair { key: "a".into() }, "b")]
                         .into_iter()
                         .collect(),
                 ),
@@ -3113,11 +3124,21 @@ mod test {
             "``raw\nraw``{=format}",
             (Start(Paragraph, Attributes::new()), ""),
             (
-                Start(RawInline { format: "format" }, Attributes::new()),
+                Start(
+                    RawInline {
+                        format: "format".into()
+                    },
+                    Attributes::new()
+                ),
                 "``",
             ),
             (Str("raw\nraw".into()), "raw\nraw"),
-            (End(RawInline { format: "format" }), "``{=format}"),
+            (
+                End(RawInline {
+                    format: "format".into()
+                }),
+                "``{=format}"
+            ),
             (End(Paragraph), ""),
         );
     }
@@ -3127,11 +3148,21 @@ mod test {
         test_parse!(
             "``` =html\n<table>\n```",
             (
-                Start(RawBlock { format: "html" }, Attributes::new()),
+                Start(
+                    RawBlock {
+                        format: "html".into()
+                    },
+                    Attributes::new()
+                ),
                 "``` =html\n",
             ),
             (Str("<table>".into()), "<table>"),
-            (End(RawBlock { format: "html" }), "```"),
+            (
+                End(RawBlock {
+                    format: "html".into()
+                }),
+                "```"
+            ),
         );
     }
 
@@ -3152,24 +3183,44 @@ mod test {
                 "```\n",       //
             ),
             (
-                Start(RawBlock { format: "html" }, Attributes::new()),
+                Start(
+                    RawBlock {
+                        format: "html".into()
+                    },
+                    Attributes::new()
+                ),
                 "```=html\n",
             ),
             (Str("<tag1>\n".into()), "<tag1>\n"),
             (Str("<tag2>".into()), "<tag2>"),
-            (End(RawBlock { format: "html" }), "```\n"),
+            (
+                End(RawBlock {
+                    format: "html".into()
+                }),
+                "```\n"
+            ),
             (Blankline, "\n"),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("paragraph".into()), "paragraph"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
             (
-                Start(RawBlock { format: "html" }, Attributes::new()),
+                Start(
+                    RawBlock {
+                        format: "html".into()
+                    },
+                    Attributes::new()
+                ),
                 "```=html\n",
             ),
             (Str("</tag2>\n".into()), "</tag2>\n"),
             (Str("</tag1>".into()), "</tag1>"),
-            (End(RawBlock { format: "html" }), "```\n"),
+            (
+                End(RawBlock {
+                    format: "html".into()
+                }),
+                "```\n"
+            ),
         );
     }
 
@@ -3279,11 +3330,21 @@ mod test {
             (End(Paragraph), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "tag" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
+                    Attributes::new()
+                ),
                 "[tag]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
         );
         test_parse!(
             concat!(
@@ -3304,11 +3365,21 @@ mod test {
             (End(Paragraph), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "tag" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
+                    Attributes::new()
+                ),
                 "[tag]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
         );
     }
 
@@ -3374,11 +3445,21 @@ mod test {
             (End(Blockquote), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "a b" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "a b".into()
+                    },
+                    Attributes::new()
+                ),
                 "[a b]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "a b" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "a b".into()
+                }),
+                ""
+            ),
         );
     }
 
@@ -3429,11 +3510,21 @@ mod test {
             (End(Blockquote), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "a b" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "a b".into()
+                    },
+                    Attributes::new()
+                ),
                 "[a b]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "a b" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "a b".into()
+                }),
+                ""
+            ),
         );
     }
 
@@ -3462,12 +3553,22 @@ mod test {
             (End(Paragraph), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "tag" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
+                    Attributes::new()
+                ),
                 "[tag]:",
             ),
             (Str("u".into()), "u"),
             (Str("rl".into()), "rl"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
         );
         test_parse!(
             concat!(
@@ -3496,12 +3597,22 @@ mod test {
             (End(Paragraph), ""),
             (Blankline, "\n"),
             (
-                Start(LinkDefinition { label: "tag" }, Attributes::new()),
+                Start(
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
+                    Attributes::new()
+                ),
                 "[tag]:",
             ),
             (Str("url".into()), "url"),
             (Str("cont".into()), "cont"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
         );
     }
 
@@ -3520,8 +3631,8 @@ mod test {
                 Start(
                     Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
                     [
-                        (AttributeKind::Pair { key: "a" }, "b"),
-                        (AttributeKind::Pair { key: "b" }, "c"),
+                        (AttributeKind::Pair { key: "a".into() }, "b"),
+                        (AttributeKind::Pair { key: "b".into() }, "c"),
                     ]
                     .into_iter()
                     .collect(),
@@ -3537,15 +3648,22 @@ mod test {
             (Blankline, "\n"),
             (
                 Start(
-                    LinkDefinition { label: "tag" },
-                    [(AttributeKind::Pair { key: "a" }, "b")]
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
+                    [(AttributeKind::Pair { key: "a".into() }, "b")]
                         .into_iter()
                         .collect(),
                 ),
                 "{a=b}\n[tag]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
@@ -3584,13 +3702,20 @@ mod test {
             (Blankline, "\n"),
             (
                 Start(
-                    LinkDefinition { label: "tag" },
+                    LinkDefinition {
+                        label: "tag".into()
+                    },
                     [(AttributeKind::Class, "def")].into_iter().collect(),
                 ),
                 "{.def}\n[tag]:",
             ),
             (Str("url".into()), "url"),
-            (End(LinkDefinition { label: "tag" }), ""),
+            (
+                End(LinkDefinition {
+                    label: "tag".into()
+                }),
+                ""
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
@@ -3638,9 +3763,9 @@ mod test {
         test_parse!(
             "[^a][^b][^c]",
             (Start(Paragraph, Attributes::new()), ""),
-            (FootnoteReference("a"), "[^a]"),
-            (FootnoteReference("b"), "[^b]"),
-            (FootnoteReference("c"), "[^c]"),
+            (FootnoteReference("a".into()), "[^a]"),
+            (FootnoteReference("b".into()), "[^b]"),
+            (FootnoteReference("c".into()), "[^c]"),
             (End(Paragraph), ""),
         );
     }
@@ -3650,14 +3775,17 @@ mod test {
         test_parse!(
             "[^a]\n\n[^a]: a\n",
             (Start(Paragraph, Attributes::new()), ""),
-            (FootnoteReference("a"), "[^a]"),
+            (FootnoteReference("a".into()), "[^a]"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (Start(Footnote { label: "a" }, Attributes::new()), "[^a]:"),
+            (
+                Start(Footnote { label: "a".into() }, Attributes::new()),
+                "[^a]:"
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("a".into()), "a"),
             (End(Paragraph), ""),
-            (End(Footnote { label: "a" }), ""),
+            (End(Footnote { label: "a".into() }), ""),
         );
     }
 
@@ -3672,10 +3800,13 @@ mod test {
                 " def", //
             ),
             (Start(Paragraph, Attributes::new()), ""),
-            (FootnoteReference("a"), "[^a]"),
+            (FootnoteReference("a".into()), "[^a]"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (Start(Footnote { label: "a" }, Attributes::new()), "[^a]:"),
+            (
+                Start(Footnote { label: "a".into() }, Attributes::new()),
+                "[^a]:"
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("abc".into()), "abc"),
             (End(Paragraph), ""),
@@ -3683,7 +3814,7 @@ mod test {
             (Start(Paragraph, Attributes::new()), ""),
             (Str("def".into()), "def"),
             (End(Paragraph), ""),
-            (End(Footnote { label: "a" }), ""),
+            (End(Footnote { label: "a".into() }), ""),
         );
     }
 
@@ -3699,17 +3830,20 @@ mod test {
                 "para\n", //
             ),
             (Start(Paragraph, Attributes::new()), ""),
-            (FootnoteReference("a"), "[^a]"),
+            (FootnoteReference("a".into()), "[^a]"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (Start(Footnote { label: "a" }, Attributes::new()), "[^a]:"),
+            (
+                Start(Footnote { label: "a".into() }, Attributes::new()),
+                "[^a]:"
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("note".into()), "note"),
             (Softbreak, "\n"),
             (Str("cont".into()), "cont"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (End(Footnote { label: "a" }), ""),
+            (End(Footnote { label: "a".into() }), ""),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
@@ -3722,16 +3856,19 @@ mod test {
                 ":::\n",        //
             ),
             (Start(Paragraph, Attributes::new()), ""),
-            (FootnoteReference("a"), "[^a]"),
+            (FootnoteReference("a".into()), "[^a]"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (Start(Footnote { label: "a" }, Attributes::new()), "[^a]:"),
+            (
+                Start(Footnote { label: "a".into() }, Attributes::new()),
+                "[^a]:"
+            ),
             (Start(Paragraph, Attributes::new()), ""),
             (Str("note".into()), "note"),
             (End(Paragraph), ""),
-            (End(Footnote { label: "a" }), ""),
-            (Start(Div { class: "" }, Attributes::new()), ":::\n"),
-            (End(Div { class: "" }), ""),
+            (End(Footnote { label: "a".into() }), ""),
+            (Start(Div { class: "".into() }, Attributes::new()), ":::\n"),
+            (End(Div { class: "".into() }), ""),
         );
     }
 
@@ -3844,12 +3981,12 @@ mod test {
                 "{%cmt}\n", //
                 ":::\n",    //
             ),
-            (Start(Div { class: "" }, Attributes::new()), ":::\n"),
+            (Start(Div { class: "".into() }, Attributes::new()), ":::\n"),
             (
                 Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
                 "{%cmt}\n"
             ),
-            (End(Div { class: "" }), ":::\n"),
+            (End(Div { class: "".into() }), ":::\n"),
         );
     }
 
@@ -4027,8 +4164,8 @@ mod test {
                 Start(
                     Emphasis,
                     [
-                        (AttributeKind::Pair { key: "a" }, "b"),
-                        (AttributeKind::Pair { key: "c" }, "d"),
+                        (AttributeKind::Pair { key: "a".into() }, "b"),
+                        (AttributeKind::Pair { key: "c".into() }, "d"),
                     ]
                     .into_iter()
                     .collect(),
@@ -4053,7 +4190,7 @@ mod test {
                     Span,
                     [
                         (AttributeKind::Comment, ""),
-                        (AttributeKind::Pair { key: "a" }, "a"),
+                        (AttributeKind::Pair { key: "a".into() }, "a"),
                     ]
                     .into_iter()
                     .collect(),
@@ -4076,7 +4213,7 @@ mod test {
             (
                 Start(
                     Span,
-                    [(AttributeKind::Pair { key: "a" }, "a b c")]
+                    [(AttributeKind::Pair { key: "a".into() }, "a b c")]
                         .into_iter()
                         .collect(),
                 ),
@@ -4097,7 +4234,7 @@ mod test {
             (
                 Start(
                     Span,
-                    [(AttributeKind::Pair { key: "a" }, "b")]
+                    [(AttributeKind::Pair { key: "a".into() }, "b")]
                         .into_iter()
                         .collect(),
                 ),
