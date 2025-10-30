@@ -1,3 +1,10 @@
+## [0.9.0](https://github.com/hellux/jotdown/releases/tag/0.9.0) - 2025-10-30
+
+### Changed
+
+- (breaking) All `&str`s in `Event`s replaced by `Cow<str>`, allowing them to
+  be replaced with owned `String`s by filters.
+
 ## [0.8.1](https://github.com/hellux/jotdown/releases/tag/0.8.1) - 2025-08-19
 
 ### Fixed
