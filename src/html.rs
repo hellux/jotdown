@@ -324,7 +324,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         }
     }
 
-    fn block<W>(&mut self, mut out: W, depth_change: isize) -> std::fmt::Result
+    fn block<W>(&mut self, out: &mut W, depth_change: isize) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -340,7 +340,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         if depth_change < 0 {
             self.depth = next_depth;
         }
-        self.indent(&mut out)?;
+        self.indent(out)?;
         if depth_change > 0 {
             self.depth = next_depth;
         }
@@ -348,7 +348,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn indent<W>(&self, mut out: W) -> std::fmt::Result
+    fn indent<W>(&self, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -362,7 +362,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_event<W>(&mut self, e: Event<'s>, mut out: W) -> std::fmt::Result
+    fn render_event<W>(&mut self, e: Event<'s>, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -395,7 +395,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         match e {
             Event::Start(c, attrs) => {
                 if c.is_block() {
-                    self.block(&mut out, c.is_block_container().into())?;
+                    self.block(out, c.is_block_container().into())?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -457,7 +457,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             if matches!(ty, LinkType::Email) {
                                 out.write_str("mailto:")?;
                             }
-                            write_attr(dst, &mut out)?;
+                            write_attr(dst, out)?;
                             out.write_char('"')?;
                         }
                     }
@@ -492,11 +492,11 @@ impl<'s, 'f> Writer<'s, 'f> {
                 let mut class_written = false;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    v.parts().try_for_each(|part| write_attr(part, out))?;
                     match a {
                         "class" => {
                             class_written = true;
-                            write_class(&c, true, &mut out)?;
+                            write_class(&c, true, out)?;
                         }
                         "id" => id_written = true,
                         _ => {}
@@ -513,7 +513,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 {
                     if !id_written {
                         out.write_str(r#" id=""#)?;
-                        write_attr(id, &mut out)?;
+                        write_attr(id, out)?;
                         out.write_char('"')?;
                     }
                 } else if (matches!(c.clone(), Container::Div { class } if !class.is_empty())
@@ -528,7 +528,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     && !class_written
                 {
                     out.write_str(r#" class=""#)?;
-                    write_class(&c, false, &mut out)?;
+                    write_class(&c, false, out)?;
                     out.write_char('"')?;
                 }
 
@@ -549,7 +549,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             out.write_str("><code>")?;
                         } else {
                             out.write_str(r#"><code class="language-"#)?;
-                            write_attr(&language, &mut out)?;
+                            write_attr(&language, out)?;
                             out.write_str(r#"">"#)?;
                         }
                     }
@@ -563,7 +563,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::TaskListItem { checked } => {
                         out.write_char('>')?;
-                        self.block(&mut out, 0)?;
+                        self.block(out, 0)?;
                         if checked {
                             out.write_str(r#"<input disabled="" type="checkbox" checked=""/>"#)?;
                         } else {
@@ -575,7 +575,7 @@ impl<'s, 'f> Writer<'s, 'f> {
             }
             Event::End(c) => {
                 if c.is_block_container() {
-                    self.block(&mut out, -1)?;
+                    self.block(out, -1)?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -622,7 +622,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         if self.img_alt_text == 1 {
                             if !src.is_empty() {
                                 out.write_str(r#"" src=""#)?;
-                                write_attr(&src, &mut out)?;
+                                write_attr(&src, out)?;
                             }
                             out.write_str(r#"">"#)?;
                         }
@@ -646,8 +646,8 @@ impl<'s, 'f> Writer<'s, 'f> {
                 }
             }
             Event::Str(s) => match self.raw {
-                Raw::None if self.img_alt_text > 0 => write_attr(&s, &mut out)?,
-                Raw::None => write_text(&s, &mut out)?,
+                Raw::None if self.img_alt_text > 0 => write_attr(&s, out)?,
+                Raw::None => write_text(&s, out)?,
                 Raw::Html => out.write_str(&s)?,
                 Raw::Other => {}
             },
@@ -676,15 +676,15 @@ impl<'s, 'f> Writer<'s, 'f> {
             }
             Event::Softbreak => {
                 out.write_char('\n')?;
-                self.indent(&mut out)?;
+                self.indent(out)?;
             }
             Event::Escape | Event::Blankline | Event::Attributes(..) => {}
             Event::ThematicBreak(attrs) => {
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    v.parts().try_for_each(|part| write_attr(part, out))?;
                     out.write_char('"')?;
                 }
                 out.write_str(">")?;
@@ -695,20 +695,20 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_epilogue<W>(&mut self, mut out: W) -> std::fmt::Result
+    fn render_epilogue<W>(&mut self, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
         if self.footnotes.reference_encountered() {
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<section role=\"doc-endnotes\">")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<hr>")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<ol>")?;
 
             while let Some((number, events)) = self.footnotes.next() {
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 write!(out, "<li id=\"fn{}\">", number)?;
 
                 let mut unclosed_para = false;
@@ -720,13 +720,13 @@ impl<'s, 'f> Writer<'s, 'f> {
                         // not a footnote, so no need to add href before para close
                         out.write_str("</p>")?;
                     }
-                    self.render_event(e.clone(), &mut out)?;
+                    self.render_event(e.clone(), out)?;
                     unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
                         && !matches!(self.list_tightness.last(), Some(true));
                 }
                 if !unclosed_para {
                     // create a new paragraph
-                    self.block(&mut out, 0)?;
+                    self.block(out, 0)?;
                     out.write_str("<p>")?;
                 }
                 write!(
@@ -735,13 +735,13 @@ impl<'s, 'f> Writer<'s, 'f> {
                     number,
                 )?;
 
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 out.write_str("</li>")?;
             }
 
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("</ol>")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("</section>")?;
         }
 
@@ -780,21 +780,21 @@ where
     Ok(())
 }
 
-fn write_text<W>(s: &str, out: W) -> std::fmt::Result
+fn write_text<W>(s: &str, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
     write_escape(s, false, out)
 }
 
-fn write_attr<W>(s: &str, out: W) -> std::fmt::Result
+fn write_attr<W>(s: &str, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
     write_escape(s, true, out)
 }
 
-fn write_escape<W>(mut s: &str, escape_quotes: bool, mut out: W) -> std::fmt::Result
+fn write_escape<W>(mut s: &str, escape_quotes: bool, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
