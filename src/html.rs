@@ -277,8 +277,7 @@ impl Render for Renderer {
         W: std::fmt::Write,
     {
         let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(e, &mut out))?;
-        w.render_epilogue(&mut out)
+        events.try_for_each(|e| w.render_event(e, &mut out))
     }
 }
 
@@ -581,7 +580,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     return Ok(());
                 }
                 match c {
-                    Container::Document => return Ok(()),
+                    Container::Document => return self.render_epilogue(out),
                     Container::Blockquote => out.write_str("</blockquote>")?,
                     Container::List { kind, .. } => {
                         self.list_tightness.pop();
