@@ -155,6 +155,7 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::Paragraph,
     ///             [(AttributeKind::Id, "a".into())].into_iter().collect(),
@@ -166,6 +167,7 @@ pub enum Event<'s> {
     ///         Event::Str("word".into()),
     ///         Event::End(Container::Span),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p id=\"a\"><span id=\"b\">word</span></p>\n";
@@ -190,9 +192,11 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("str".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>str</p>\n";
@@ -210,11 +214,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("txt".into()),
     ///         Event::FootnoteReference("nb".into()),
     ///         Event::Str(".".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -242,10 +248,12 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("a ".into()),
     ///         Event::Symbol("sym".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>a :sym:</p>\n";
@@ -263,11 +271,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::LeftSingleQuote,
     ///         Event::Str("quote".into()),
     ///         Event::RightSingleQuote,
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>‘quote’</p>\n";
@@ -285,11 +295,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::RightSingleQuote,
     ///         Event::Str("Tis Socrates".into()),
     ///         Event::RightSingleQuote,
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>’Tis Socrates’</p>\n";
@@ -307,12 +319,14 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::LeftDoubleQuote,
     ///         Event::Str("Hello,".into()),
     ///         Event::RightDoubleQuote,
     ///         Event::Str(" he said".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>“Hello,” he said</p>\n";
@@ -332,10 +346,12 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("yes".into()),
     ///         Event::Ellipsis,
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>yes…</p>\n";
@@ -353,11 +369,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("57".into()),
     ///         Event::EnDash,
     ///         Event::Str("33".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>57–33</p>\n";
@@ -375,11 +393,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("oxen".into()),
     ///         Event::EmDash,
     ///         Event::Str("and".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>oxen—and</p>\n";
@@ -397,12 +417,14 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("no".into()),
     ///         Event::Escape,
     ///         Event::NonBreakingSpace,
     ///         Event::Str("break".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>no&nbsp;break</p>\n";
@@ -423,11 +445,13 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("soft".into()),
     ///         Event::Softbreak,
     ///         Event::Str("break".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -451,12 +475,14 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("hard".into()),
     ///         Event::Escape,
     ///         Event::Hardbreak,
     ///         Event::Str("break".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -477,12 +503,14 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Escape,
     ///         Event::Str("*a".into()),
     ///         Event::Escape,
     ///         Event::Str("*".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>*a*</p>\n";
@@ -504,6 +532,7 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("para0".into()),
     ///         Event::End(Container::Paragraph),
@@ -511,6 +540,7 @@ pub enum Event<'s> {
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("para1".into()),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -539,6 +569,7 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("para0".into()),
     ///         Event::End(Container::Paragraph),
@@ -553,6 +584,7 @@ pub enum Event<'s> {
     ///                 .into_iter()
     ///                 .collect(),
     ///         ),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -581,6 +613,7 @@ pub enum Event<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Attributes(
     ///             [(AttributeKind::Id, "a".into())]
     ///                 .into_iter()
@@ -601,6 +634,7 @@ pub enum Event<'s> {
     ///                 .into_iter()
     ///                 .collect(),
     ///         ),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -621,6 +655,25 @@ pub enum Event<'s> {
 /// - block container, may contain any block-level elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'s> {
+    /// A document.
+    ///
+    /// Must appear exactly once at the start and end of the event stream.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let src = "";
+    /// let events: Vec<_> = Parser::new(src).collect();
+    /// assert_eq!(
+    ///     &events,
+    ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
+    ///         Event::End(Container::Document),
+    ///     ],
+    /// );
+    /// ```
+    Document,
     /// A blockquote element.
     ///
     /// # Examples
@@ -635,6 +688,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Blockquote, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("a".into()),
@@ -642,6 +696,7 @@ pub enum Container<'s> {
     ///         Event::Str("b".into()),
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::Blockquote),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -668,6 +723,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::List {
     ///                 kind: ListKind::Unordered(ListBulletType::Dash),
@@ -690,6 +746,7 @@ pub enum Container<'s> {
     ///             kind: ListKind::Unordered(ListBulletType::Dash),
     ///             tight: false
     ///         }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -716,6 +773,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::List {
     ///                 kind: ListKind::Unordered(ListBulletType::Dash),
@@ -732,6 +790,7 @@ pub enum Container<'s> {
     ///             kind: ListKind::Unordered(ListBulletType::Dash),
     ///             tight: true,
     ///         }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -755,6 +814,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::List {
     ///                 kind: ListKind::Task(ListBulletType::Dash),
@@ -774,6 +834,7 @@ pub enum Container<'s> {
     ///             kind: ListKind::Task(ListBulletType::Dash),
     ///             tight: true,
     ///         }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -805,6 +866,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::DescriptionList, Attributes::new()),
     ///         Event::Start(Container::DescriptionTerm, Attributes::new()),
     ///         Event::Str("orange".into()),
@@ -825,6 +887,7 @@ pub enum Container<'s> {
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::DescriptionDetails),
     ///         Event::End(Container::DescriptionList),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -859,6 +922,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("txt".into()),
     ///         Event::FootnoteReference("nb".into()),
@@ -872,6 +936,7 @@ pub enum Container<'s> {
     ///         Event::Str("actually..".into()),
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::Footnote { label: "nb".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -903,6 +968,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Table, Attributes::new()),
     ///         Event::Start(
     ///             Container::TableRow { head: true },
@@ -963,6 +1029,7 @@ pub enum Container<'s> {
     ///         }),
     ///         Event::End(Container::TableRow { head: false } ),
     ///         Event::End(Container::Table),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -997,6 +1064,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::Section { id: "outer".into() },
     ///             Attributes::new(),
@@ -1036,6 +1104,7 @@ pub enum Container<'s> {
     ///         }),
     ///         Event::End(Container::Section { id: "inner".into() }),
     ///         Event::End(Container::Section { id: "outer".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1064,6 +1133,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::Div { class: "note".into() },
     ///             Attributes::new(),
@@ -1072,6 +1142,7 @@ pub enum Container<'s> {
     ///         Event::Str("this is a note".into()),
     ///         Event::End(Container::Paragraph),
     ///         Event::End(Container::Div { class: "note".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1095,6 +1166,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::Section { id: "heading".into() },
     ///             Attributes::new(),
@@ -1114,6 +1186,7 @@ pub enum Container<'s> {
     ///             id: "heading".into(),
     ///         }),
     ///         Event::End(Container::Section { id: "heading".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1144,6 +1217,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Table, Attributes::new()),
     ///         Event::Start(Container::Caption, Attributes::new()),
     ///         Event::Str("caption".into()),
@@ -1166,6 +1240,7 @@ pub enum Container<'s> {
     ///         }),
     ///         Event::End(Container::TableRow { head: false } ),
     ///         Event::End(Container::Table),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1192,12 +1267,14 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::LinkDefinition { label: "label".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("url".into()),
     ///         Event::End(Container::LinkDefinition { label: "label".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "\n";
@@ -1219,12 +1296,14 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::RawBlock { format: "html".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("<tag>x</tag>".into()),
     ///         Event::End(Container::RawBlock { format: "html".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<tag>x</tag>\n";
@@ -1246,12 +1325,14 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(
     ///             Container::CodeBlock { language: "html".into() },
     ///             Attributes::new(),
     ///         ),
     ///         Event::Str("<tag>x</tag>\n".into()),
     ///         Event::End(Container::CodeBlock { language: "html".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1277,6 +1358,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::Span,
@@ -1292,6 +1374,7 @@ pub enum Container<'s> {
     ///         Event::Str("two words".into()),
     ///         Event::End(Container::Span),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1317,6 +1400,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::Link(
@@ -1344,6 +1428,7 @@ pub enum Container<'s> {
     ///             LinkType::Email,
     ///         )),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1362,6 +1447,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::Link(
@@ -1376,6 +1462,7 @@ pub enum Container<'s> {
     ///             LinkType::Span(SpanLinkType::Inline)),
     ///         ),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><a href=\"url\">anchor</a></p>\n";
@@ -1397,6 +1484,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::Link(
@@ -1431,6 +1519,7 @@ pub enum Container<'s> {
     ///         ),
     ///         Event::Str("url".into()),
     ///         Event::End(Container::LinkDefinition { label: "label".into() }),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1453,6 +1542,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::Image("img.png".into(), SpanLinkType::Inline),
@@ -1463,6 +1553,7 @@ pub enum Container<'s> {
     ///             Container::Image("img.png".into(), SpanLinkType::Inline),
     ///         ),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><img alt=\"alt text\" src=\"img.png\"></p>\n";
@@ -1480,12 +1571,14 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("inline ".into()),
     ///         Event::Start(Container::Verbatim, Attributes::new()),
     ///         Event::Str("verbatim".into()),
     ///         Event::End(Container::Verbatim),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p>inline <code>verbatim</code></p>\n";
@@ -1506,6 +1599,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("inline ".into()),
     ///         Event::Start(
@@ -1524,6 +1618,7 @@ pub enum Container<'s> {
     ///         Event::Str(r"\frac{a}{b}".into()),
     ///         Event::End(Container::Math { display: true }),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = concat!(
@@ -1544,6 +1639,7 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(
     ///             Container::RawInline { format: "html".into() }, Attributes::new(),
@@ -1551,6 +1647,7 @@ pub enum Container<'s> {
     ///         Event::Str("<tag>a</tag>".into()),
     ///         Event::End(Container::RawInline { format: "html".into() }),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><tag>a</tag></p>\n";
@@ -1568,11 +1665,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Subscript, Attributes::new()),
     ///         Event::Str("SUB".into()),
     ///         Event::End(Container::Subscript),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><sub>SUB</sub></p>\n";
@@ -1590,11 +1689,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Superscript, Attributes::new()),
     ///         Event::Str("SUP".into()),
     ///         Event::End(Container::Superscript),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><sup>SUP</sup></p>\n";
@@ -1612,11 +1713,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Insert, Attributes::new()),
     ///         Event::Str("INS".into()),
     ///         Event::End(Container::Insert),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><ins>INS</ins></p>\n";
@@ -1634,11 +1737,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Delete, Attributes::new()),
     ///         Event::Str("DEL".into()),
     ///         Event::End(Container::Delete),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><del>DEL</del></p>\n";
@@ -1656,11 +1761,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Strong, Attributes::new()),
     ///         Event::Str("STRONG".into()),
     ///         Event::End(Container::Strong),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><strong>STRONG</strong></p>\n";
@@ -1678,11 +1785,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Emphasis, Attributes::new()),
     ///         Event::Str("EM".into()),
     ///         Event::End(Container::Emphasis),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><em>EM</em></p>\n";
@@ -1700,11 +1809,13 @@ pub enum Container<'s> {
     /// assert_eq!(
     ///     &events,
     ///     &[
+    ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Start(Container::Mark, Attributes::new()),
     ///         Event::Str("MARK".into()),
     ///         Event::End(Container::Mark),
     ///         Event::End(Container::Paragraph),
+    ///         Event::End(Container::Document),
     ///     ],
     /// );
     /// let html = "<p><mark>MARK</mark></p>\n";
@@ -1737,7 +1848,8 @@ impl Container<'_> {
             | Self::LinkDefinition { .. }
             | Self::RawBlock { .. }
             | Self::CodeBlock { .. } => true,
-            Self::Span
+            Self::Document
+            | Self::Span
             | Self::Link(..)
             | Self::Image(..)
             | Self::Verbatim
@@ -1768,7 +1880,8 @@ impl Container<'_> {
             | Self::TableRow { .. }
             | Self::Section { .. }
             | Self::Div { .. } => true,
-            Self::Paragraph
+            Self::Document
+            | Self::Paragraph
             | Self::Heading { .. }
             | Self::TableCell { .. }
             | Self::Caption
@@ -2279,6 +2392,7 @@ impl<'s> Parser<'s> {
     ///         .collect::<Vec<_>>()
     ///         .as_slice(),
     ///     &[
+    ///         ("", Start(Document, ..)),
     ///         (">", Start(Blockquote, ..)),
     ///         ("", Start(Paragraph, ..)),
     ///         ("_", Start(Emphasis, ..)),
@@ -2290,6 +2404,7 @@ impl<'s> Parser<'s> {
     ///         ("](url)", End(Link { .. })),
     ///         ("", End(Paragraph)),
     ///         ("", End(Blockquote)),
+    ///         ("", End(Document)),
     ///     ],
     /// ));
     /// ```
@@ -2311,6 +2426,7 @@ impl<'s> Parser<'s> {
     ///         .collect::<Vec<_>>()
     ///         .as_slice(),
     ///     &[
+    ///         ("", Start(Document, ..)),
     ///         ("\n", Blankline),
     ///         ("{.quote}\n>", Start(Blockquote, ..)),
     ///         ("", Start(Paragraph, ..)),
@@ -2320,6 +2436,7 @@ impl<'s> Parser<'s> {
     ///         (" world!", Str(..)),
     ///         ("", End(Paragraph)),
     ///         ("", End(Blockquote)),
+    ///         ("", End(Document)),
     ///     ],
     /// ));
     /// ```
@@ -2341,6 +2458,7 @@ impl<'s> Parser<'s> {
     ///         .collect::<Vec<_>>()
     ///         .as_slice(),
     ///     &[
+    ///         ("", Start(Document, ..)),
     ///         ("\n", Blankline),
     ///         (">", Start(Blockquote, ..)),
     ///         ("", Start(Paragraph, ..)),
@@ -2349,6 +2467,7 @@ impl<'s> Parser<'s> {
     ///         ("](multi\n> line)", End(Link { .. })),
     ///         ("", End(Paragraph)),
     ///         ("", End(Blockquote)),
+    ///         ("", End(Document)),
     ///     ],
     /// ));
     /// ```
@@ -2564,6 +2683,7 @@ impl<'s> Parser<'s> {
                             }
                         }
                         block::Node::Container(c) => match c {
+                            block::Container::Document => Container::Document,
                             block::Container::Blockquote => Container::Blockquote,
                             block::Container::Div { class } => Container::Div {
                                 class: class.into(),

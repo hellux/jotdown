@@ -401,6 +401,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     return Ok(());
                 }
                 match &c {
+                    Container::Document => return Ok(()),
                     Container::Blockquote => out.write_str("<blockquote")?,
                     Container::List { kind, tight } => {
                         self.list_tightness.push(*tight);
@@ -580,6 +581,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     return Ok(());
                 }
                 match c {
+                    Container::Document => return Ok(()),
                     Container::Blockquote => out.write_str("</blockquote>")?,
                     Container::List { kind, .. } => {
                         self.list_tightness.pop();

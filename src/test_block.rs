@@ -17,7 +17,11 @@ macro_rules! test_parse {
     ($src:expr $(,$($event:expr),* $(,)?)?) => {
         let t = super::TreeParser::new($src).parse();
         let actual = t.into_iter().map(|ev| (ev.kind, &$src[ev.span])).collect::<Vec<_>>();
-        let expected = &[$($($event),*,)?];
+        let expected = &[
+            (Enter(Container(Document)), ""),
+            $($($event),*,)?
+            (Exit(Container(Document)), ""),
+        ];
         assert_eq!(
             actual,
             expected,
