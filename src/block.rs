@@ -77,6 +77,7 @@ pub enum Leaf<'s> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Container<'s> {
+    Document,
     Blockquote,
     Div { class: &'s str },
     List { ty: ListType, tight: bool },
@@ -223,6 +224,8 @@ impl<'s> TreeParser<'s> {
 
     #[must_use]
     fn parse(mut self) -> Vec<Event<'s>> {
+        self.enter(Node::Container(Document), 0..0);
+
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
         while line_pos < lines.len() {
@@ -239,7 +242,10 @@ impl<'s> TreeParser<'s> {
         for _ in std::mem::take(&mut self.open_sections).drain(..) {
             self.exit(self.src.len()..self.src.len());
         }
+
+        self.exit(self.src.len()..self.src.len()); // Document
         debug_assert_eq!(self.open, &[]);
+
         self.events
     }
 
@@ -1317,7 +1323,11 @@ mod test {
         ($src:expr $(,$($event:expr),* $(,)?)?) => {
             let t = super::TreeParser::new($src).parse();
             let actual = t.into_iter().map(|ev| (ev.kind, &$src[ev.span])).collect::<Vec<_>>();
-            let expected = &[$($($event),*,)?];
+            let expected = &[
+                (Enter(Container(Document)), ""),
+                $($($event),*,)?
+                (Exit(Container(Document)), ""),
+            ];
             assert_eq!(
                 actual,
                 expected,
