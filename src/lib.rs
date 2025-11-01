@@ -71,8 +71,8 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut output = String::new();
-/// let renderer = jotdown::html::Renderer::default();
-/// renderer.push(events, &mut output);
+/// let mut renderer = jotdown::html::Renderer::default();
+/// renderer.push_events(events, &mut output);
 /// # }
 /// ```
 ///
@@ -84,24 +84,22 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// # use jotdown::Render;
 /// # let events = std::iter::empty();
 /// let mut out = std::io::BufWriter::new(std::io::stdout());
-/// let renderer = jotdown::html::Renderer::default();
-/// renderer.write(events, &mut out).unwrap();
+/// let mut renderer = jotdown::html::Renderer::default();
+/// renderer.write_events(events, &mut out).unwrap();
 /// # }
 /// ```
-pub trait Render {
-    /// Push owned [`Event`]s to a unicode-accepting buffer or stream.
-    fn push<'s, I, W>(&self, events: I, out: W) -> std::fmt::Result
+pub trait Render<'s> {
+    /// Push a single owned [`Event`]s to a unicode-accepting buffer or stream.
+    fn push_event<W>(&mut self, event: Event<'s>, out: W) -> std::fmt::Result
     where
-        I: Iterator<Item = Event<'s>>,
         W: std::fmt::Write;
 
-    /// Write owned [`Event`]s to a byte sink, encoded as UTF-8.
+    /// Write a single owned [`Event`] to a byte sink, encoded as UTF-8.
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write<'s, I, W>(&self, events: I, out: W) -> std::io::Result<()>
+    fn write_event<W>(&mut self, event: Event<'s>, out: W) -> std::io::Result<()>
     where
-        I: Iterator<Item = Event<'s>>,
         W: std::io::Write,
     {
         struct WriteAdapter<T: std::io::Write> {
@@ -123,10 +121,32 @@ pub trait Render {
             error: Ok(()),
         };
 
-        self.push(events, &mut out).map_err(|_| match out.error {
-            Err(e) => e,
-            _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
-        })
+        self.push_event(event, &mut out)
+            .map_err(|_| match out.error {
+                Err(e) => e,
+                _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
+            })
+    }
+
+    /// Push a single owned [`Event`]s to a unicode-accepting buffer or stream.
+    fn push_events<I, W>(&mut self, mut events: I, mut out: W) -> std::fmt::Result
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: std::fmt::Write,
+    {
+        events.try_for_each(|e| self.push_event(e, &mut out))
+    }
+
+    /// Write owned [`Event`]s to a byte sink, encoded as UTF-8.
+    ///
+    /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
+    /// [`std::io::BufWriter`].
+    fn write_events<I, W>(&mut self, mut events: I, mut out: W) -> std::io::Result<()>
+    where
+        I: Iterator<Item = Event<'s>>,
+        W: std::io::Write,
+    {
+        events.try_for_each(|e| self.write_event(e, &mut out))
     }
 }
 

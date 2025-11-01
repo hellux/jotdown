@@ -13,8 +13,8 @@ use crate::SpanLinkType;
 
 /// Render events into a string.
 ///
-/// This is a convenience function for using [`Renderer::push`] with fewer imports and without an
-/// intermediate variable.
+/// This is a convenience function for using [`Renderer::push_events`] with fewer imports and
+/// without an intermediate variable.
 ///
 /// # Examples
 ///
@@ -27,7 +27,7 @@ where
     I: Iterator<Item = Event<'s>>,
 {
     let mut s = String::new();
-    Renderer::default().push(events, &mut s).unwrap();
+    Renderer::default().push_events(events, &mut s).unwrap();
     s
 }
 
@@ -49,8 +49,8 @@ pub struct Indentation {
     /// let events = Parser::new(src);
     ///
     /// let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -69,11 +69,11 @@ pub struct Indentation {
     /// # let src = "> a\n";
     /// # let events = Parser::new(src);
     /// # let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation {
+    /// let mut renderer = Renderer::indented(Indentation {
     ///     string: "    ".to_string(),
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -97,8 +97,8 @@ pub struct Indentation {
     /// let events = Parser::new(src);
     ///
     /// let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -117,11 +117,11 @@ pub struct Indentation {
     /// # let src = "> a\n";
     /// # let events = Parser::new(src);
     /// # let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation {
+    /// let mut renderer = Renderer::indented(Indentation {
     ///     initial_level: 2,
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -143,16 +143,7 @@ impl Default for Indentation {
     }
 }
 
-/// [`Render`] implementor that writes HTML output.
-///
-/// By default, block elements are placed on separate lines. To configure the formatting of the
-/// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
-#[derive(Clone)]
-pub struct Renderer {
-    indent: Option<Indentation>,
-}
-
-impl Renderer {
+impl<'s> Renderer<'s> {
     /// Create a renderer that emits no whitespace between elements.
     ///
     /// # Examples
@@ -168,15 +159,15 @@ impl Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::minified();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::minified();
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected =
     ///     "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li></ul>";
     /// assert_eq!(actual, expected);
     /// ```
     #[must_use]
     pub fn minified() -> Self {
-        Self { indent: None }
+        Self::new(None)
     }
 
     /// Create a renderer that indents lines based on their block element depth.
@@ -196,8 +187,8 @@ impl Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "\t<li>\n",
@@ -217,13 +208,11 @@ impl Renderer {
     /// ```
     #[must_use]
     pub fn indented(indent: Indentation) -> Self {
-        Self {
-            indent: Some(indent),
-        }
+        Self::new(Some(indent))
     }
 }
 
-impl Default for Renderer {
+impl<'s> Default for Renderer<'s> {
     /// Place block elements on separate lines.
     ///
     /// This is the default behavior and matches the reference implementation.
@@ -241,8 +230,8 @@ impl Default for Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::default();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::default();
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "<li>\n",
@@ -261,23 +250,19 @@ impl Default for Renderer {
     /// assert_eq!(actual, expected);
     /// ```
     fn default() -> Self {
-        Self {
-            indent: Some(Indentation {
-                string: String::new(),
-                initial_level: 0,
-            }),
-        }
+        Self::new(Some(Indentation {
+            string: String::new(),
+            initial_level: 0,
+        }))
     }
 }
 
-impl Render for Renderer {
-    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+impl<'s> Render<'s> for Renderer<'s> {
+    fn push_event<W>(&mut self, event: Event<'s>, mut out: W) -> std::fmt::Result
     where
-        I: Iterator<Item = Event<'s>>,
         W: std::fmt::Write,
     {
-        let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(e, &mut out))
+        self.render_event(event, &mut out)
     }
 }
 
@@ -293,8 +278,12 @@ impl Default for Raw {
     }
 }
 
-struct Writer<'s, 'f> {
-    indent: &'f Option<Indentation>,
+/// [`Render`] implementor that writes HTML output.
+///
+/// By default, block elements are placed on separate lines. To configure the formatting of the
+/// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
+pub struct Renderer<'s> {
+    indent: Option<Indentation>,
     depth: usize,
     raw: Raw,
     img_alt_text: usize,
@@ -304,9 +293,9 @@ struct Writer<'s, 'f> {
     footnotes: Footnotes<'s>,
 }
 
-impl<'s, 'f> Writer<'s, 'f> {
-    fn new(indent: &'f Option<Indentation>) -> Self {
-        let depth = if let Some(indent) = indent {
+impl<'s> Renderer<'s> {
+    fn new(indent: Option<Indentation>) -> Self {
+        let depth = if let Some(indent) = &indent {
             indent.initial_level
         } else {
             0
@@ -351,7 +340,7 @@ impl<'s, 'f> Writer<'s, 'f> {
     where
         W: std::fmt::Write,
     {
-        if let Some(indent) = self.indent {
+        if let Some(indent) = &self.indent {
             if !indent.string.is_empty() {
                 for _ in 0..self.depth {
                     out.write_str(&indent.string)?;
