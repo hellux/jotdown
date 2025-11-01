@@ -38,7 +38,7 @@ fn write_events() {
     use jotdown::Render;
     let mut bytes = Vec::new();
     jotdown::html::Renderer::default()
-        .write(
+        .write_events(
             jotdown::Parser::new("para"),
             &mut std::io::BufWriter::new(std::io::Cursor::new(&mut bytes)),
         )
@@ -68,7 +68,7 @@ fn write_events_error() {
         format!(
             "{:?}",
             jotdown::html::Renderer::default()
-                .write(jotdown::Parser::new("para"), &mut FailingWriter)
+                .write_events(jotdown::Parser::new("para"), &mut FailingWriter)
         ),
         r#"Err(Custom { kind: Other, error: "some io error" })"#,
     );
