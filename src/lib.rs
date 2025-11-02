@@ -43,8 +43,6 @@
 
 #![allow(clippy::blocks_in_conditions)]
 
-use std::ops::Range;
-
 #[cfg(feature = "html")]
 pub mod html;
 
@@ -2012,7 +2010,7 @@ pub struct Parser<'s> {
     pre_pass: PrePass<'s>,
 
     /// Last parsed block attributes, and its span.
-    block_attributes: Option<(Attributes<'s>, Range<usize>)>,
+    block_attributes: Option<(Attributes<'s>, std::ops::Range<usize>)>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -2059,7 +2057,7 @@ impl<'s> PrePass<'s> {
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<String> = Set::new();
 
-        let mut attr_prev: Vec<Range<usize>> = Vec::new();
+        let mut attr_prev: Vec<std::ops::Range<usize>> = Vec::new();
         while let Some(e) = blocks.next() {
             match e.kind {
                 block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
@@ -2254,7 +2252,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Turn the [`Parser`] into an iterator of tuples, each with an [`Event`] and a start/end byte
-    /// offset for its corresponding input (as a [`Range<usize>`]).
+    /// offset for its corresponding input (as a [`std::ops::Range<usize>`]).
     ///
     /// Generally, the range of each event does not overlap with any other event and the ranges are
     /// in same order as the events are emitted, i.e. the start offset of an event must be greater
@@ -2361,7 +2359,7 @@ impl<'s> Parser<'s> {
         OffsetIter { parser: self }
     }
 
-    fn inline(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+    fn inline(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
         let next = self.inline_parser.next()?;
 
         let (inline, mut attributes) = match next {
@@ -2482,7 +2480,7 @@ impl<'s> Parser<'s> {
         event
     }
 
-    fn block(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+    fn block(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
         while let Some(ev) = self.blocks.peek() {
             let mut ev_span = ev.span.clone();
             let mut pop = true;
@@ -2668,7 +2666,7 @@ impl<'s> Parser<'s> {
         None
     }
 
-    fn next_span(&mut self) -> Option<(Event<'s>, Range<usize>)> {
+    fn next_span(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
         self.inline().or_else(|| self.block()).or_else(|| {
             self.block_attributes
                 .take()
@@ -2694,7 +2692,7 @@ pub struct OffsetIter<'s> {
 }
 
 impl<'s> Iterator for OffsetIter<'s> {
-    type Item = (Event<'s>, Range<usize>);
+    type Item = (Event<'s>, std::ops::Range<usize>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.parser.next_span()
