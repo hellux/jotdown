@@ -41,8 +41,6 @@
 //! # }
 //! ```
 
-#![allow(clippy::blocks_in_conditions)]
-
 #[cfg(feature = "html")]
 pub mod html;
 
