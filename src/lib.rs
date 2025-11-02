@@ -43,7 +43,6 @@
 
 #![allow(clippy::blocks_in_conditions)]
 
-use std::fmt;
 use std::io;
 use std::ops::Range;
 
@@ -94,10 +93,10 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// ```
 pub trait Render {
     /// Push owned [`Event`]s to a unicode-accepting buffer or stream.
-    fn push<'s, I, W>(&self, events: I, out: W) -> fmt::Result
+    fn push<'s, I, W>(&self, events: I, out: W) -> std::fmt::Result
     where
         I: Iterator<Item = Event<'s>>,
-        W: fmt::Write;
+        W: std::fmt::Write;
 
     /// Write owned [`Event`]s to a byte sink, encoded as UTF-8.
     ///
@@ -125,11 +124,11 @@ struct WriteAdapter<T: io::Write> {
     error: io::Result<()>,
 }
 
-impl<T: io::Write> fmt::Write for WriteAdapter<T> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
+impl<T: io::Write> std::fmt::Write for WriteAdapter<T> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
         self.inner.write_all(s.as_bytes()).map_err(|e| {
             self.error = Err(e);
-            fmt::Error
+            std::fmt::Error
         })
     }
 }
