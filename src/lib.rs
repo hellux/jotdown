@@ -44,7 +44,6 @@
 #![allow(clippy::blocks_in_conditions)]
 
 use std::fmt;
-use std::fmt::Write as FmtWrite;
 use std::io;
 use std::ops::Range;
 
@@ -2057,6 +2056,7 @@ impl<'s> PrePass<'s> {
         mut blocks: std::slice::Iter<block::Event<'s>>,
         inline_parser: &mut inline::Parser<'s>,
     ) -> Self {
+        use std::fmt::Write;
         let mut link_definitions = Map::new();
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<String> = Set::new();
