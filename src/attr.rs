@@ -486,17 +486,6 @@ impl std::ops::DerefMut for Attributes<'_> {
     }
 }
 
-#[cfg(test)]
-impl<'s> FromIterator<(AttributeKind<'s>, &'s str)> for Attributes<'s> {
-    fn from_iter<I: IntoIterator<Item = (AttributeKind<'s>, &'s str)>>(iter: I) -> Self {
-        let attrs = iter
-            .into_iter()
-            .map(|(a, v)| (a, v.into()))
-            .collect::<Vec<_>>();
-        Attributes(attrs)
-    }
-}
-
 impl<'s> FromIterator<AttributeElem<'s>> for Attributes<'s> {
     /// Create `Attributes` from an iterator of elements.
     ///

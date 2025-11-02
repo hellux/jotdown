@@ -2712,6 +2712,12 @@ mod test {
     use super::OrderedListStyle::*;
     use super::SpanLinkType;
 
+    macro_rules! attrs {
+        ($(($kind:expr, $val:expr)),* $(,)?) => {
+            [$(($kind, $val.into())),*].into_iter().collect::<super::Attributes>()
+        };
+    }
+
     macro_rules! test_parse {
         ($src:expr $(,$($token:expr),* $(,)?)?) => {
             #[allow(unused)]
@@ -2870,9 +2876,7 @@ mod test {
             (
                 Start(
                     Section { id: "def".into() },
-                    [(AttributeKind::Pair { key: "a".into() }, "b")]
-                        .into_iter()
-                        .collect(),
+                    attrs![(AttributeKind::Pair { key: "a".into() }, "b")],
                 ),
                 "{a=b}\n",
             ),
@@ -3626,12 +3630,10 @@ mod test {
             (
                 Start(
                     Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
-                    [
+                    attrs![
                         (AttributeKind::Pair { key: "a".into() }, "b"),
                         (AttributeKind::Pair { key: "b".into() }, "c"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "[",
             ),
@@ -3647,9 +3649,7 @@ mod test {
                     LinkDefinition {
                         label: "tag".into()
                     },
-                    [(AttributeKind::Pair { key: "a".into() }, "b")]
-                        .into_iter()
-                        .collect(),
+                    attrs![(AttributeKind::Pair { key: "a".into() }, "b")],
                 ),
                 "{a=b}\n[tag]:",
             ),
@@ -3680,12 +3680,10 @@ mod test {
             (
                 Start(
                     Link("url".into(), LinkType::Span(SpanLinkType::Reference)),
-                    [
+                    attrs![
                         (AttributeKind::Class, "def"),
                         (AttributeKind::Class, "link"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "[",
             ),
@@ -3701,7 +3699,7 @@ mod test {
                     LinkDefinition {
                         label: "tag".into()
                     },
-                    [(AttributeKind::Class, "def")].into_iter().collect(),
+                    attrs![(AttributeKind::Class, "def")],
                 ),
                 "{.def}\n[tag]:",
             ),
@@ -3873,10 +3871,7 @@ mod test {
         test_parse!(
             "{.some_class}\npara\n",
             (
-                Start(
-                    Paragraph,
-                    [(AttributeKind::Class, "some_class")].into_iter().collect(),
-                ),
+                Start(Paragraph, attrs![(AttributeKind::Class, "some_class")]),
                 "{.some_class}\n",
             ),
             (Str("para".into()), "para"),
@@ -3891,9 +3886,7 @@ mod test {
             (
                 Start(
                     Paragraph,
-                    [(AttributeKind::Class, "a"), (AttributeKind::Id, "b")]
-                        .into_iter()
-                        .collect(),
+                    attrs![(AttributeKind::Class, "a"), (AttributeKind::Id, "b")],
                 ),
                 "{.a}\n{#b}\n",
             ),
@@ -3906,10 +3899,7 @@ mod test {
     fn attr_block_dangling() {
         test_parse!(
             "{.a}",
-            (
-                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
-                "{.a}",
-            ),
+            (Attributes(attrs![(AttributeKind::Class, "a")]), "{.a}"),
         );
         test_parse!(
             "para\n\n{.a}",
@@ -3917,19 +3907,15 @@ mod test {
             (Str("para".into()), "para"),
             (End(Paragraph), ""),
             (Blankline, "\n"),
-            (
-                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
-                "{.a}",
-            ),
+            (Attributes(attrs![(AttributeKind::Class, "a")]), "{.a}"),
         );
         test_parse!(
             "{.a}\n{.b}\n",
             (
-                Attributes(
-                    [(AttributeKind::Class, "a"), (AttributeKind::Class, "b")]
-                        .into_iter()
-                        .collect()
-                ),
+                Attributes(attrs![
+                    (AttributeKind::Class, "a"),
+                    (AttributeKind::Class, "b")
+                ]),
                 "{.a}\n{.b}\n",
             ),
         );
@@ -3966,8 +3952,8 @@ mod test {
             ),
             (Blankline, "\n"),
             (
-                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
-                "{%cmt}"
+                Attributes(attrs![(AttributeKind::Comment, "cmt")]),
+                "{%cmt}",
             ),
             (End(Section { id: "h".into() }), ""),
         );
@@ -3979,7 +3965,7 @@ mod test {
             ),
             (Start(Div { class: "".into() }, Attributes::new()), ":::\n"),
             (
-                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                Attributes(attrs![(AttributeKind::Comment, "cmt")]),
                 "{%cmt}\n"
             ),
             (End(Div { class: "".into() }), ":::\n"),
@@ -3990,21 +3976,12 @@ mod test {
     fn attr_block_blankline() {
         test_parse!(
             "{.a}\n\n{.b}\n\n{.c}\npara",
-            (
-                Attributes([(AttributeKind::Class, "a")].into_iter().collect()),
-                "{.a}\n",
-            ),
+            (Attributes(attrs![(AttributeKind::Class, "a")]), "{.a}\n"),
+            (Blankline, "\n"),
+            (Attributes(attrs![(AttributeKind::Class, "b")]), "{.b}\n"),
             (Blankline, "\n"),
             (
-                Attributes([(AttributeKind::Class, "b")].into_iter().collect()),
-                "{.b}\n",
-            ),
-            (Blankline, "\n"),
-            (
-                Start(
-                    Paragraph,
-                    [(AttributeKind::Class, "c")].into_iter().collect(),
-                ),
+                Start(Paragraph, attrs![(AttributeKind::Class, "c")]),
                 "{.c}\n",
             ),
             (Str("para".into()), "para"),
@@ -4018,13 +3995,7 @@ mod test {
             "abc _def_{.ghi}",
             (Start(Paragraph, Attributes::new()), ""),
             (Str("abc ".into()), "abc "),
-            (
-                Start(
-                    Emphasis,
-                    [(AttributeKind::Class, "ghi")].into_iter().collect(),
-                ),
-                "_",
-            ),
+            (Start(Emphasis, attrs![(AttributeKind::Class, "ghi")],), "_"),
             (Str("def".into()), "def"),
             (End(Emphasis), "_{.ghi}"),
             (End(Paragraph), ""),
@@ -4039,13 +4010,11 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4059,14 +4028,12 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Comment, ""),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4084,13 +4051,11 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4105,14 +4070,12 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
                         (AttributeKind::Comment, ""),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4127,14 +4090,12 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Class, "a"),
                         (AttributeKind::Class, "b"),
                         (AttributeKind::Id, "i"),
                         (AttributeKind::Comment, ""),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4159,12 +4120,10 @@ mod test {
             (
                 Start(
                     Emphasis,
-                    [
+                    attrs![
                         (AttributeKind::Pair { key: "a".into() }, "b"),
                         (AttributeKind::Pair { key: "c".into() }, "d"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "_",
             ),
@@ -4184,12 +4143,10 @@ mod test {
             (
                 Start(
                     Span,
-                    [
+                    attrs![
                         (AttributeKind::Comment, ""),
                         (AttributeKind::Pair { key: "a".into() }, "a"),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    ],
                 ),
                 "",
             ),
@@ -4209,9 +4166,7 @@ mod test {
             (
                 Start(
                     Span,
-                    [(AttributeKind::Pair { key: "a".into() }, "a b c")]
-                        .into_iter()
-                        .collect(),
+                    attrs![(AttributeKind::Pair { key: "a".into() }, "a b c")],
                 ),
                 "",
             ),
@@ -4228,12 +4183,7 @@ mod test {
             (Start(Blockquote, Attributes::new()), ">"),
             (Start(Paragraph, Attributes::new()), ""),
             (
-                Start(
-                    Span,
-                    [(AttributeKind::Pair { key: "a".into() }, "b")]
-                        .into_iter()
-                        .collect(),
-                ),
+                Start(Span, attrs![(AttributeKind::Pair { key: "a".into() }, "b")]),
                 "",
             ),
             (Str("a".into()), "a"),
@@ -4252,13 +4202,7 @@ mod test {
                 "c%}\n",  //
             ),
             (Start(Paragraph, Attributes::new()), ""),
-            (
-                Start(
-                    Span,
-                    [(AttributeKind::Comment, "a\nb\nc")].into_iter().collect(),
-                ),
-                "",
-            ),
+            (Start(Span, attrs![(AttributeKind::Comment, "a\nb\nc")]), "",),
             (Str("a".into()), "a"),
             (End(Span), "{%a\nb\nc%}"),
             (End(Paragraph), ""),
@@ -4305,20 +4249,14 @@ mod test {
             (Start(Paragraph, Attributes::new()), ""),
             (Str("*a".into()), "*a"),
             (Softbreak, "\n"),
-            (
-                Attributes([(AttributeKind::Comment, "")].into_iter().collect()),
-                "{%}",
-            ),
+            (Attributes(attrs![(AttributeKind::Comment, "")]), "{%}"),
             (End(Paragraph), ""),
         );
         test_parse!(
             "a {.b} c",
             (Start(Paragraph, Attributes::new()), ""),
             (Str("a ".into()), "a "),
-            (
-                Attributes([(AttributeKind::Class, "b")].into_iter().collect()),
-                "{.b}",
-            ),
+            (Attributes(attrs![(AttributeKind::Class, "b")]), "{.b}"),
             (Str(" c".into()), " c"),
             (End(Paragraph), ""),
         );
@@ -4327,7 +4265,7 @@ mod test {
             (Start(Paragraph, Attributes::new()), ""),
             (Str("a ".into()), "a "),
             (
-                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                Attributes(attrs![(AttributeKind::Comment, "cmt")]),
                 "{%cmt}",
             ),
             (Str(" c".into()), " c"),
@@ -4338,7 +4276,7 @@ mod test {
             (Start(Paragraph, Attributes::new()), ""),
             (Str("a ".into()), "a "),
             (
-                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                Attributes(attrs![(AttributeKind::Comment, "cmt")]),
                 "{%cmt}",
             ),
             (End(Paragraph), ""),
@@ -4347,7 +4285,7 @@ mod test {
             "{%cmt} a",
             (Start(Paragraph, Attributes::new()), ""),
             (
-                Attributes([(AttributeKind::Comment, "cmt")].into_iter().collect()),
+                Attributes(attrs![(AttributeKind::Comment, "cmt")]),
                 "{%cmt}",
             ),
             (Str(" a".into()), " a"),
