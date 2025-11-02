@@ -43,7 +43,6 @@
 
 #![allow(clippy::blocks_in_conditions)]
 
-use std::io;
 use std::ops::Range;
 
 #[cfg(feature = "html")]
@@ -102,10 +101,10 @@ pub trait Render {
     ///
     /// NOTE: This performs many small writes, so IO writes should be buffered with e.g.
     /// [`std::io::BufWriter`].
-    fn write<'s, I, W>(&self, events: I, out: W) -> io::Result<()>
+    fn write<'s, I, W>(&self, events: I, out: W) -> std::io::Result<()>
     where
         I: Iterator<Item = Event<'s>>,
-        W: io::Write,
+        W: std::io::Write,
     {
         let mut out = WriteAdapter {
             inner: out,
@@ -114,17 +113,17 @@ pub trait Render {
 
         self.push(events, &mut out).map_err(|_| match out.error {
             Err(e) => e,
-            _ => io::Error::new(io::ErrorKind::Other, "formatter error"),
+            _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
         })
     }
 }
 
-struct WriteAdapter<T: io::Write> {
+struct WriteAdapter<T: std::io::Write> {
     inner: T,
-    error: io::Result<()>,
+    error: std::io::Result<()>,
 }
 
-impl<T: io::Write> std::fmt::Write for WriteAdapter<T> {
+impl<T: std::io::Write> std::fmt::Write for WriteAdapter<T> {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         self.inner.write_all(s.as_bytes()).map_err(|e| {
             self.error = Err(e);
