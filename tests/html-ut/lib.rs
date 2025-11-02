@@ -4,14 +4,10 @@ mod ut;
 #[macro_export]
 macro_rules! compare {
     ($src:expr, $expected:expr) => {
-        use jotdown::Render;
         let src = $src;
         let expected = $expected;
         let p = jotdown::Parser::new(src);
-        let mut actual = String::new();
-        jotdown::html::Renderer::default()
-            .push(p, &mut actual)
-            .unwrap();
+        let actual = jotdown::html::render_to_string(p);
         assert_eq!(
             actual.trim(),
             expected.trim(),
