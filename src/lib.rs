@@ -88,7 +88,7 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 /// renderer.write_events(events, &mut out).unwrap();
 /// # }
 /// ```
-pub trait Render<'s> {
+pub trait Render<'s>: Sized {
     /// Push a single owned [`Event`]s to a unicode-accepting buffer or stream.
     fn push_event<W>(&mut self, event: Event<'s>, out: W) -> std::fmt::Result
     where
@@ -147,6 +147,38 @@ pub trait Render<'s> {
         W: std::io::Write,
     {
         events.try_for_each(|e| self.write_event(e, &mut out))
+    }
+
+    fn with_filter<F>(self, filter: F) -> FilteredRenderer<F, Self> {
+        FilteredRenderer {
+            filter,
+            renderer: self,
+        }
+    }
+}
+
+pub trait Filter<'s> {
+    fn push_event<P>(&mut self, event: Event<'s>, push: &mut P) -> std::fmt::Result
+    where
+        P: FnMut(Event<'s>) -> std::fmt::Result;
+}
+
+pub struct FilteredRenderer<F, R> {
+    filter: F,
+    renderer: R,
+}
+
+impl<'s, F, R> Render<'s> for FilteredRenderer<F, R>
+where
+    F: Filter<'s>,
+    R: Render<'s>,
+{
+    fn push_event<W>(&mut self, event: Event<'s>, mut out: W) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        self.filter
+            .push_event(event, &mut |e| self.renderer.push_event(e, &mut out))
     }
 }
 
