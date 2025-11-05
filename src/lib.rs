@@ -104,6 +104,20 @@ pub trait Render {
         I: Iterator<Item = Event<'s>>,
         W: std::io::Write,
     {
+        struct WriteAdapter<T: std::io::Write> {
+            inner: T,
+            error: std::io::Result<()>,
+        }
+
+        impl<T: std::io::Write> std::fmt::Write for WriteAdapter<T> {
+            fn write_str(&mut self, s: &str) -> std::fmt::Result {
+                self.inner.write_all(s.as_bytes()).map_err(|e| {
+                    self.error = Err(e);
+                    std::fmt::Error
+                })
+            }
+        }
+
         let mut out = WriteAdapter {
             inner: out,
             error: Ok(()),
@@ -112,20 +126,6 @@ pub trait Render {
         self.push(events, &mut out).map_err(|_| match out.error {
             Err(e) => e,
             _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
-        })
-    }
-}
-
-struct WriteAdapter<T: std::io::Write> {
-    inner: T,
-    error: std::io::Result<()>,
-}
-
-impl<T: std::io::Write> std::fmt::Write for WriteAdapter<T> {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.inner.write_all(s.as_bytes()).map_err(|e| {
-            self.error = Err(e);
-            std::fmt::Error
         })
     }
 }
