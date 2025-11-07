@@ -49,9 +49,11 @@ mod block;
 mod inline;
 mod lex;
 
-pub use attr::{
-    AttributeKind, AttributeValue, AttributeValueParts, Attributes, ParseAttributesError,
-};
+pub use attr::AttributeKind;
+pub use attr::AttributeValue;
+pub use attr::AttributeValueParts;
+pub use attr::Attributes;
+pub use attr::ParseAttributesError;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
