@@ -1,5 +1,4 @@
 use crate::CowStr;
-use std::fmt;
 
 pub(crate) fn valid(src: &str) -> usize {
     use State::*;
@@ -93,8 +92,8 @@ impl From<String> for AttributeValue<'_> {
     }
 }
 
-impl fmt::Display for AttributeValue<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for AttributeValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.parts().try_for_each(|part| f.write_str(part))
     }
 }
