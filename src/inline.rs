@@ -800,7 +800,7 @@ impl<'s> Parser<'s> {
                                         spec.push_str(s);
                                         first_part = false;
                                     }
-                                })
+                                });
                             };
 
                             for ev in self.events.iter().skip(e_opener + 1) {
