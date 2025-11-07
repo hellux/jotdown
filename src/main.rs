@@ -1,10 +1,7 @@
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::Read;
 use std::process::exit;
-
-use jotdown::Render;
 
 #[derive(Default)]
 struct App {
@@ -87,6 +84,9 @@ fn parse_args() -> App {
 }
 
 fn run() -> Result<(), std::io::Error> {
+    use jotdown::Render;
+    use std::io::Read;
+
     let app = parse_args();
 
     let content = match app.input {
