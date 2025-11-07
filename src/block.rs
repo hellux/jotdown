@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use crate::Alignment;
 use crate::OrderedListNumbering::*;
 use crate::OrderedListStyle::*;
@@ -15,7 +13,7 @@ use ListType::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event<'s> {
     pub kind: EventKind<'s>,
-    pub span: Range<usize>,
+    pub span: std::ops::Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -245,14 +243,14 @@ impl<'s> TreeParser<'s> {
         self.events
     }
 
-    fn inline(&mut self, span: Range<usize>) {
+    fn inline(&mut self, span: std::ops::Range<usize>) {
         self.events.push(Event {
             kind: EventKind::Inline,
             span,
         });
     }
 
-    fn enter(&mut self, node: Node<'s>, span: Range<usize>) -> usize {
+    fn enter(&mut self, node: Node<'s>, span: std::ops::Range<usize>) -> usize {
         let i = self.events.len();
         self.open.push(i);
         self.events.push(Event {
@@ -262,7 +260,7 @@ impl<'s> TreeParser<'s> {
         i
     }
 
-    fn exit(&mut self, span: Range<usize>) -> usize {
+    fn exit(&mut self, span: std::ops::Range<usize>) -> usize {
         let i = self.events.len();
         let node = if let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind {
             node
@@ -277,7 +275,7 @@ impl<'s> TreeParser<'s> {
     }
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
-    fn parse_block(&mut self, lines: &mut [Range<usize>], top_level: bool) -> usize {
+    fn parse_block(&mut self, lines: &mut [std::ops::Range<usize>], top_level: bool) -> usize {
         if let Some(MeteredBlock {
             kind,
             span: span_start,
@@ -439,9 +437,9 @@ impl<'s> TreeParser<'s> {
         &mut self,
         leaf: Leaf<'s>,
         k: &Kind,
-        span_start: Range<usize>,
-        span_end: Range<usize>,
-        mut lines: &mut [Range<usize>],
+        span_start: std::ops::Range<usize>,
+        span_end: std::ops::Range<usize>,
+        mut lines: &mut [std::ops::Range<usize>],
     ) {
         if let Kind::Fenced { indent, spec, .. } = k {
             for line in lines.iter_mut() {
@@ -546,10 +544,10 @@ impl<'s> TreeParser<'s> {
         &mut self,
         c: Container<'s>,
         k: &Kind,
-        mut span_start: Range<usize>,
-        span_end: Range<usize>,
+        mut span_start: std::ops::Range<usize>,
+        span_end: std::ops::Range<usize>,
         outer_len: usize,
-        lines: &mut [Range<usize>],
+        lines: &mut [std::ops::Range<usize>],
     ) {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|sp| {
@@ -680,9 +678,9 @@ impl<'s> TreeParser<'s> {
 
     fn parse_table(
         &mut self,
-        lines: &mut [Range<usize>],
-        span_start: Range<usize>,
-        span_end: Range<usize>,
+        lines: &mut [std::ops::Range<usize>],
+        span_start: std::ops::Range<usize>,
+        span_end: std::ops::Range<usize>,
     ) {
         self.alignments.clear();
         self.enter(Node::Container(Table), span_start.clone());
@@ -851,19 +849,19 @@ impl<'s> TreeParser<'s> {
         self.exit(pos..pos); // list
     }
 
-    fn trim_start(&self, sp: Range<usize>) -> Range<usize> {
+    fn trim_start(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
         let s = self.src[sp].trim_start_matches(|c: char| c.is_ascii_whitespace());
         (s.as_ptr() as usize - self.src.as_ptr() as usize)
             ..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
     }
 
-    fn trim_end(&self, sp: Range<usize>) -> Range<usize> {
+    fn trim_end(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
         let s = self.src[sp].trim_end_matches(|c: char| c.is_ascii_whitespace());
         (s.as_ptr() as usize - self.src.as_ptr() as usize)
             ..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
     }
 
-    fn trim(&self, sp: Range<usize>) -> Range<usize> {
+    fn trim(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
         self.trim_end(self.trim_start(sp))
     }
 }
@@ -871,7 +869,7 @@ impl<'s> TreeParser<'s> {
 /// Parser for a single block.
 struct MeteredBlock<'s> {
     kind: Kind<'s>,
-    span: Range<usize>,
+    span: std::ops::Range<usize>,
     line_count: usize,
 }
 
@@ -931,7 +929,7 @@ enum Kind<'s> {
 
 struct IdentifiedBlock<'s> {
     kind: Kind<'s>,
-    span: Range<usize>,
+    span: std::ops::Range<usize>,
 }
 
 impl<'s> IdentifiedBlock<'s> {
@@ -1280,7 +1278,7 @@ impl<'s> Kind<'s> {
 }
 
 /// Similar to `std::str::split('\n')` but newline is included and spans are used instead of `str`.
-fn lines(src: &str) -> impl Iterator<Item = Range<usize>> + '_ {
+fn lines(src: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
     let mut chars = src.chars();
     std::iter::from_fn(move || {
         if chars.as_str().is_empty() {
