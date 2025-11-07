@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use crate::attr;
 use crate::lex;
 use crate::CowStr;
@@ -74,7 +72,7 @@ type AttributesIndex = u32;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event<'s> {
     pub kind: EventKind<'s>,
-    pub span: Range<usize>,
+    pub span: std::ops::Range<usize>,
 }
 
 #[derive(Clone)]
@@ -85,11 +83,11 @@ struct Input<'s> {
     /// The block is complete, the final line has been provided.
     complete: bool,
     /// Span of current line.
-    span_line: Range<usize>,
+    span_line: std::ops::Range<usize>,
     /// Upcoming lines within the current block.
-    ahead: std::collections::VecDeque<Range<usize>>,
+    ahead: std::collections::VecDeque<std::ops::Range<usize>>,
     /// Span of current event.
-    span: Range<usize>,
+    span: std::ops::Range<usize>,
 }
 
 impl<'s> Input<'s> {
@@ -104,7 +102,7 @@ impl<'s> Input<'s> {
         }
     }
 
-    fn feed_line(&mut self, line: Range<usize>, last: bool) {
+    fn feed_line(&mut self, line: std::ops::Range<usize>, last: bool) {
         debug_assert!(!self.complete);
         self.complete = last;
         if self.lexer.ahead().is_empty() {
@@ -119,7 +117,7 @@ impl<'s> Input<'s> {
         }
     }
 
-    fn set_current_line(&mut self, line: Range<usize>) {
+    fn set_current_line(&mut self, line: std::ops::Range<usize>) {
         self.lexer = lex::Lexer::new(&self.src.as_bytes()[line.clone()]);
         self.span = line.start..line.start;
         self.span_line = line;
@@ -151,7 +149,7 @@ impl<'s> Input<'s> {
         self.span.start = self.span.end;
     }
 
-    fn ahead_raw_format(&mut self) -> Option<Range<usize>> {
+    fn ahead_raw_format(&mut self) -> Option<std::ops::Range<usize>> {
         if matches!(
             self.lexer.peek().map(|t| &t.kind),
             Some(lex::Kind::Open(Delimiter::BraceEqual))
@@ -255,7 +253,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn feed_line(&mut self, line: Range<usize>, last: bool) {
+    pub fn feed_line(&mut self, line: std::ops::Range<usize>, last: bool) {
         self.input.feed_line(line, last);
     }
 
@@ -269,7 +267,11 @@ impl<'s> Parser<'s> {
         self.store_attributes.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind<'s>, span: Range<usize>) -> Option<ControlFlow> {
+    fn push_sp(
+        &mut self,
+        kind: EventKind<'s>,
+        span: std::ops::Range<usize>,
+    ) -> Option<ControlFlow> {
         self.events.push_back(Event { kind, span });
         Some(Continue)
     }
@@ -789,7 +791,7 @@ impl<'s> Parser<'s> {
                             let mut span =
                                 self.events[e_opener].span.end..self.events[e_opener].span.end;
 
-                            let mut append = |span: Range<usize>| {
+                            let mut append = |span: std::ops::Range<usize>| {
                                 self.input.src[span].split('\n').for_each(|s| {
                                     if !s.is_empty() {
                                         if !inline && !first_part {
@@ -958,9 +960,9 @@ impl<'s> Parser<'s> {
         self.push(EventKind::Atom(atom))
     }
 
-    fn merge_str_events(&mut self, span_str: Range<usize>) -> Event<'s> {
+    fn merge_str_events(&mut self, span_str: std::ops::Range<usize>) -> Event<'s> {
         let mut span = span_str;
-        let should_merge = |e: &Event, span: Range<usize>| {
+        let should_merge = |e: &Event, span: std::ops::Range<usize>| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder) && span.end == e.span.start
         };
         while self
@@ -988,7 +990,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: Range<usize>) -> Event<'s> {
+    fn apply_word_attributes(&mut self, span_str: std::ops::Range<usize>) -> Event<'s> {
         if let Some(i) = self.input.src[span_str.clone()]
             .bytes()
             .rposition(|c| c.is_ascii_whitespace())
