@@ -1,12 +1,7 @@
-use std::ffi::OsString;
-use std::fs::File;
-use std::io::BufWriter;
-use std::process::exit;
-
 #[derive(Default)]
 struct App {
-    input: Option<OsString>,
-    output: Option<OsString>,
+    input: Option<std::ffi::OsString>,
+    output: Option<std::ffi::OsString>,
     minified: bool,
     start_indent: usize,
     indent_string: String,
@@ -21,11 +16,11 @@ fn parse_args() -> App {
         match (arg.to_string_lossy().as_ref(), args.peek()) {
             ("-h" | "--help", _) => {
                 eprint!("{}", include_str!("./help.txt"));
-                exit(0);
+                std::process::exit(0);
             }
             ("-v" | "--version", _) => {
                 eprintln!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-                exit(0);
+                std::process::exit(0);
             }
             (flag @ ("-o" | "--output"), o) => match o {
                 Some(o) => {
@@ -34,7 +29,7 @@ fn parse_args() -> App {
                 }
                 None => {
                     eprintln!("please supply an argument to {}", flag);
-                    exit(1);
+                    std::process::exit(1);
                 }
             },
             ("--minified", _) => app.minified = true,
@@ -44,7 +39,7 @@ fn parse_args() -> App {
                     args.next();
                 } else {
                     eprintln!("please supply an argument to {}", flag);
-                    exit(1);
+                    std::process::exit(1);
                 }
             }
             (flag @ "--start-indent", s) => {
@@ -57,25 +52,25 @@ fn parse_args() -> App {
                             flag,
                             s.to_string_lossy(),
                         );
-                        exit(1);
+                        std::process::exit(1);
                     }
                     args.next();
                 } else {
                     eprintln!("please supply an argument to {}", flag);
-                    exit(1);
+                    std::process::exit(1);
                 }
             }
             ("-", _) => {}
             (file, _) if !file.starts_with('-') => {
                 if app.input.is_some() {
                     eprint!("too many arguments\n\n{}", include_str!("./help.txt"));
-                    exit(1)
+                    std::process::exit(1)
                 }
                 app.input = Some(file.into());
             }
             (flag, _) => {
                 eprint!("unknown flag: {}\n\n{}", flag, include_str!("./help.txt"));
-                exit(1)
+                std::process::exit(1)
             }
         }
     }
@@ -109,8 +104,8 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     match app.output {
-        Some(path) => renderer.write(parser, File::create(path)?)?,
-        None => renderer.write(parser, BufWriter::new(std::io::stdout()))?,
+        Some(path) => renderer.write(parser, std::fs::File::create(path)?)?,
+        None => renderer.write(parser, std::io::BufWriter::new(std::io::stdout()))?,
     }
 
     Ok(())
@@ -121,7 +116,7 @@ fn main() {
         Ok(()) => {}
         Err(e) => {
             eprintln!("{}", e);
-            exit(1);
+            std::process::exit(1);
         }
     }
 }
