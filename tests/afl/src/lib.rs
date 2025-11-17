@@ -63,7 +63,7 @@ pub fn html(data: &[u8]) {
             let p = jotdown::Parser::new(s);
             let mut html = "<!DOCTYPE html>\n".to_string();
             jotdown::html::Renderer::default()
-                .push(p, &mut html)
+                .push_events(p, &mut html)
                 .unwrap();
             validate_html(&html);
         }
