@@ -1,3 +1,5 @@
+use jotdown::RenderExt as _;
+
 #[derive(Default)]
 struct App {
     input: Option<std::ffi::OsString>,
@@ -79,7 +81,6 @@ fn parse_args() -> App {
 }
 
 fn run() -> Result<(), std::io::Error> {
-    use jotdown::Render;
     use std::io::Read;
 
     let app = parse_args();
@@ -93,7 +94,6 @@ fn run() -> Result<(), std::io::Error> {
         }
     };
 
-    let parser = jotdown::Parser::new(&content);
     let renderer = if app.minified {
         jotdown::html::Renderer::minified()
     } else {
@@ -104,8 +104,12 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     match app.output {
-        Some(path) => renderer.write(parser, std::fs::File::create(path)?)?,
-        None => renderer.write(parser, std::io::BufWriter::new(std::io::stdout()))?,
+        Some(path) => renderer
+            .with_io_writer(&mut std::fs::File::create(path)?)
+            .render_document(&content)?,
+        None => renderer
+            .with_io_writer(std::io::BufWriter::new(std::io::stdout()))
+            .render_document(&content)?,
     }
 
     Ok(())

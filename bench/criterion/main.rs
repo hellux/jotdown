@@ -1,5 +1,6 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
+use jotdown::RenderExt;
 
 fn gen_block(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("block");
@@ -47,7 +48,7 @@ fn gen_html(c: &mut criterion::Criterion) {
             |b, &input| {
                 b.iter_batched(
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| jotdown::html::render_to_string(p.into_iter()),
+                    |p| jotdown::html::Renderer::default().render_events(p.into_iter()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -68,7 +69,7 @@ fn gen_html_clone(c: &mut criterion::Criterion) {
             |b, &input| {
                 b.iter_batched(
                     || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| jotdown::html::render_to_string(p.iter().cloned()),
+                    |p| jotdown::html::Renderer::default().render_events(p.into_iter()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -85,9 +86,7 @@ fn gen_full(c: &mut criterion::Criterion) {
             criterion::BenchmarkId::from_parameter(name),
             input,
             |b, &input| {
-                b.iter_with_large_drop(|| {
-                    jotdown::html::render_to_string(jotdown::Parser::new(input))
-                });
+                b.iter_with_large_drop(|| jotdown::html::render_to_string(input));
             },
         );
     }
