@@ -22,7 +22,11 @@ macro_rules! test_parse {
             .into_offset_iter()
             .map(|(e, r)| (e, &$src[r]))
             .collect::<Vec<_>>();
-        let expected = &[$($($token),*,)?];
+        let expected = &[
+            (Start(Document, Attributes::new()), ""),
+            $($($token),*,)?
+            (End(Document), ""),
+        ];
         assert_eq!(
             actual,
             expected,

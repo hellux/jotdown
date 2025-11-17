@@ -8,7 +8,7 @@ macro_rules! test_html {
         $(renderer = jotdown::html::Renderer::indented($indent);)?
         let mut actual = String::new();
         renderer
-            .push(jotdown::Parser::new($src), &mut actual)
+            .push_events(jotdown::Parser::new($src), &mut actual)
             .unwrap();
         assert_eq!(actual, $expected);
     };

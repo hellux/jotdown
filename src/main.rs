@@ -94,7 +94,7 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     let parser = jotdown::Parser::new(&content);
-    let renderer = if app.minified {
+    let mut renderer = if app.minified {
         jotdown::html::Renderer::minified()
     } else {
         jotdown::html::Renderer::indented(jotdown::html::Indentation {
@@ -104,8 +104,8 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     match app.output {
-        Some(path) => renderer.write(parser, std::fs::File::create(path)?)?,
-        None => renderer.write(parser, std::io::BufWriter::new(std::io::stdout()))?,
+        Some(path) => renderer.write_events(parser, std::fs::File::create(path)?)?,
+        None => renderer.write_events(parser, std::io::BufWriter::new(std::io::stdout()))?,
     }
 
     Ok(())
