@@ -137,7 +137,7 @@ impl<'a> tree_builder::TreeSink for Dom<'a> {
         x == y
     }
 
-    fn elem_name(&self, i: &usize) -> html5ever::ExpandedName {
+    fn elem_name(&self, i: &usize) -> html5ever::ExpandedName<'_> {
         self.names[i - 1].expanded()
     }
 
