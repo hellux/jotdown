@@ -13,22 +13,20 @@ use crate::SpanLinkType;
 
 /// Render events into a string.
 ///
-/// This is a convenience function for using [`Renderer::push`] with fewer imports and without an
-/// intermediate variable.
+/// This is a convenience function for rendering documents whole without any customizations.
 ///
 /// # Examples
 ///
 /// ```
-/// let events = jotdown::Parser::new("hello");
-/// assert_eq!(jotdown::html::render_to_string(events), "<p>hello</p>\n");
+/// assert_eq!(jotdown::html::render_to_string("hello"), "<p>hello</p>\n");
 /// ```
-pub fn render_to_string<'s, I>(events: I) -> String
-where
-    I: Iterator<Item = Event<'s>>,
-{
-    let mut s = String::new();
-    Renderer::default().push(events, &mut s).unwrap();
-    s
+pub fn render_to_string(doc: &str) -> String {
+    use crate::RenderExt;
+    let mut r = Renderer::default();
+
+    r.render_document(doc).unwrap();
+
+    r.into_inner()
 }
 
 #[derive(Clone)]
@@ -46,11 +44,9 @@ pub struct Indentation {
     /// # use jotdown::*;
     /// # use jotdown::html::*;
     /// let src = "> a\n";
-    /// let events = Parser::new(src);
     ///
-    /// let mut html = String::new();
     /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let html = renderer.render_to_string(src);
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -66,14 +62,12 @@ pub struct Indentation {
     /// ```
     /// # use jotdown::*;
     /// # use jotdown::html::*;
-    /// # let src = "> a\n";
-    /// # let events = Parser::new(src);
-    /// # let mut html = String::new();
+    /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     string: "    ".to_string(),
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let html = renderer.render_to_string(src);
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -94,11 +88,9 @@ pub struct Indentation {
     /// # use jotdown::*;
     /// # use jotdown::html::*;
     /// let src = "> a\n";
-    /// let events = Parser::new(src);
     ///
-    /// let mut html = String::new();
     /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let html = renderer.render_to_string(src);
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -114,14 +106,12 @@ pub struct Indentation {
     /// ```
     /// # use jotdown::*;
     /// # use jotdown::html::*;
-    /// # let src = "> a\n";
-    /// # let events = Parser::new(src);
-    /// # let mut html = String::new();
+    /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     initial_level: 2,
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let html = renderer.render_to_string(src);
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -147,12 +137,21 @@ impl Default for Indentation {
 ///
 /// By default, block elements are placed on separate lines. To configure the formatting of the
 /// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
-#[derive(Clone)]
-pub struct Renderer {
+pub struct Renderer<'s, W> {
     indent: Option<Indentation>,
+    writer: Writer<'s>,
+    output: W,
 }
 
-impl Renderer {
+impl<'s> Renderer<'s, String> {
+    fn new(indent: Option<Indentation>) -> Self {
+        Self {
+            writer: Writer::new(&indent),
+            indent,
+            output: String::new(),
+        }
+    }
+
     /// Create a renderer that emits no whitespace between elements.
     ///
     /// # Examples
@@ -167,16 +166,15 @@ impl Renderer {
     ///     "\n",
     ///     "  - c\n",
     /// );
-    /// let mut actual = String::new();
     /// let renderer = Renderer::minified();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let actual = renderer.render_to_string(src);
     /// let expected =
     ///     "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li></ul>";
     /// assert_eq!(actual, expected);
     /// ```
     #[must_use]
     pub fn minified() -> Self {
-        Self { indent: None }
+        Self::new(None)
     }
 
     /// Create a renderer that indents lines based on their block element depth.
@@ -195,9 +193,8 @@ impl Renderer {
     ///     "\n",
     ///     "  - c\n",
     /// );
-    /// let mut actual = String::new();
     /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let actual = renderer.render_to_string(src);
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "\t<li>\n",
@@ -217,13 +214,30 @@ impl Renderer {
     /// ```
     #[must_use]
     pub fn indented(indent: Indentation) -> Self {
-        Self {
-            indent: Some(indent),
-        }
+        Self::new(Some(indent))
+    }
+
+    pub fn render_to_string(self, input: &str) -> String {
+        use super::RenderExt;
+        let mut s = self.with_fmt_writer(String::new());
+        s.render_document(input).expect("Can't fail");
+
+        s.into_inner()
+    }
+
+    pub fn render_events_to_string<I>(self, events: I) -> String
+    where
+        I: Iterator<Item = Event<'s>>,
+    {
+        use super::RenderExt;
+        let mut s = self.with_fmt_writer(String::new());
+        s.render_events(events).expect("Can't fail");
+
+        s.into_inner()
     }
 }
 
-impl Default for Renderer {
+impl<'s> Default for Renderer<'s, String> {
     /// Place block elements on separate lines.
     ///
     /// This is the default behavior and matches the reference implementation.
@@ -240,9 +254,8 @@ impl Default for Renderer {
     ///     "\n",
     ///     "  - c\n",
     /// );
-    /// let mut actual = String::new();
     /// let renderer = Renderer::default();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let actual = renderer.render_to_string(src);
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "<li>\n",
@@ -261,24 +274,129 @@ impl Default for Renderer {
     /// assert_eq!(actual, expected);
     /// ```
     fn default() -> Self {
+        Renderer::new(Some(Indentation {
+            string: String::new(),
+            initial_level: 0,
+        }))
+    }
+}
+
+impl<'s, W> Renderer<'s, W> {
+    pub fn into_inner(self) -> W {
+        self.output
+    }
+}
+
+pub struct WriteAdapter<T: std::io::Write>(T);
+
+struct WriteAdapterInner<T: std::io::Write> {
+    inner: T,
+    error: std::io::Result<()>,
+}
+
+impl<T: std::io::Write> WriteAdapterInner<T> {
+    fn new(output: T) -> Self {
         Self {
-            indent: Some(Indentation {
-                string: String::new(),
-                initial_level: 0,
-            }),
+            inner: output,
+            error: Ok(()),
+        }
+    }
+}
+impl<T: std::io::Write> std::fmt::Write for WriteAdapterInner<T> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.inner.write_all(s.as_bytes()).map_err(|e| {
+            self.error = Err(e);
+            std::fmt::Error
+        })
+    }
+}
+
+impl<'s, W> Renderer<'s, W> {
+    pub fn with_io_writer<NewWriter>(
+        self,
+        output: NewWriter,
+    ) -> Renderer<'s, WriteAdapter<NewWriter>>
+    where
+        NewWriter: std::io::Write,
+    {
+        let Renderer {
+            indent,
+            writer,
+            output: _,
+        } = self;
+
+        let output = WriteAdapter(output);
+        Renderer {
+            indent,
+            writer,
+            output,
+        }
+    }
+
+    pub fn with_fmt_writer<NewWriter>(self, output: NewWriter) -> Renderer<'s, NewWriter>
+    where
+        NewWriter: std::fmt::Write,
+    {
+        let Renderer {
+            indent,
+            writer,
+            output: _,
+        } = self;
+
+        Renderer {
+            indent,
+            writer,
+            output,
         }
     }
 }
 
-impl Render for Renderer {
-    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
-    where
-        I: Iterator<Item = Event<'s>>,
-        W: std::fmt::Write,
-    {
-        let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(e, &mut out))?;
-        w.render_epilogue(&mut out)
+impl<'s, W> Render<'s> for Renderer<'s, W>
+where
+    W: std::fmt::Write,
+{
+    type Error = std::fmt::Error;
+
+    fn begin(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Called iteratively with every single event emitted by parsing djot document
+    fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
+        self.writer
+            .render_event(event, &mut self.output, &self.indent)
+    }
+
+    /// Called at the end of rendering a djot document
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        self.writer.render_epilogue(&mut self.output, &self.indent)
+    }
+}
+
+impl<'s, W> Render<'s> for Renderer<'s, WriteAdapter<W>>
+where
+    W: std::io::Write,
+{
+    type Error = std::io::Error;
+
+    fn begin(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Called iteratively with every single event emitted by parsing djot document
+    fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
+        let mut adapter = WriteAdapterInner::new(&mut self.output.0);
+        self.writer
+            .render_event(event, &mut adapter, &self.indent)
+            .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))
+    }
+
+    /// Called at the end of rendering a djot document
+    fn finish(&mut self) -> Result<(), Self::Error> {
+        let mut adapter = WriteAdapterInner::new(&mut self.output.0);
+        self.writer
+            .render_epilogue(&mut adapter, &self.indent)
+            .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))
     }
 }
 
@@ -294,8 +412,7 @@ impl Default for Raw {
     }
 }
 
-struct Writer<'s, 'f> {
-    indent: &'f Option<Indentation>,
+struct Writer<'s> {
     depth: usize,
     raw: Raw,
     img_alt_text: usize,
@@ -305,15 +422,14 @@ struct Writer<'s, 'f> {
     footnotes: Footnotes<'s>,
 }
 
-impl<'s, 'f> Writer<'s, 'f> {
-    fn new(indent: &'f Option<Indentation>) -> Self {
+impl<'s> Writer<'s> {
+    fn new(indent: &Option<Indentation>) -> Self {
         let depth = if let Some(indent) = indent {
             indent.initial_level
         } else {
             0
         };
         Self {
-            indent,
             depth,
             raw: Raw::default(),
             img_alt_text: 0,
@@ -324,11 +440,16 @@ impl<'s, 'f> Writer<'s, 'f> {
         }
     }
 
-    fn block<W>(&mut self, mut out: W, depth_change: isize) -> std::fmt::Result
+    fn block<W>(
+        &mut self,
+        mut out: W,
+        indent: &Option<Indentation>,
+        depth_change: isize,
+    ) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
-        if self.indent.is_none() {
+        if indent.is_none() {
             return Ok(());
         }
 
@@ -340,7 +461,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         if depth_change < 0 {
             self.depth = next_depth;
         }
-        self.indent(&mut out)?;
+        self.indent(&mut out, indent)?;
         if depth_change > 0 {
             self.depth = next_depth;
         }
@@ -348,11 +469,11 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn indent<W>(&self, mut out: W) -> std::fmt::Result
+    fn indent<W>(&self, mut out: W, indent: &Option<Indentation>) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
-        if let Some(indent) = self.indent {
+        if let Some(indent) = indent {
             if !indent.string.is_empty() {
                 for _ in 0..self.depth {
                     out.write_str(&indent.string)?;
@@ -362,7 +483,12 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_event<W>(&mut self, e: Event<'s>, mut out: W) -> std::fmt::Result
+    fn render_event<W>(
+        &mut self,
+        e: Event<'s>,
+        mut out: W,
+        indent: &Option<Indentation>,
+    ) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -395,7 +521,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         match e {
             Event::Start(c, attrs) => {
                 if c.is_block() {
-                    self.block(&mut out, c.is_block_container().into())?;
+                    self.block(&mut out, indent, c.is_block_container().into())?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -562,7 +688,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::TaskListItem { checked } => {
                         out.write_char('>')?;
-                        self.block(&mut out, 0)?;
+                        self.block(&mut out, indent, 0)?;
                         if checked {
                             out.write_str(r#"<input disabled="" type="checkbox" checked=""/>"#)?;
                         } else {
@@ -574,7 +700,7 @@ impl<'s, 'f> Writer<'s, 'f> {
             }
             Event::End(c) => {
                 if c.is_block_container() {
-                    self.block(&mut out, -1)?;
+                    self.block(&mut out, indent, -1)?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
@@ -670,15 +796,15 @@ impl<'s, 'f> Writer<'s, 'f> {
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
             Event::Hardbreak => {
                 out.write_str("<br>")?;
-                self.block(out, 0)?;
+                self.block(out, indent, 0)?;
             }
             Event::Softbreak => {
                 out.write_char('\n')?;
-                self.indent(&mut out)?;
+                self.indent(&mut out, indent)?;
             }
             Event::Escape | Event::Blankline | Event::Attributes(..) => {}
             Event::ThematicBreak(attrs) => {
-                self.block(&mut out, 0)?;
+                self.block(&mut out, indent, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
@@ -693,20 +819,20 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_epilogue<W>(&mut self, mut out: W) -> std::fmt::Result
+    fn render_epilogue<W>(&mut self, mut out: W, indent: &Option<Indentation>) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
         if self.footnotes.reference_encountered() {
-            self.block(&mut out, 0)?;
+            self.block(&mut out, indent, 0)?;
             out.write_str("<section role=\"doc-endnotes\">")?;
-            self.block(&mut out, 0)?;
+            self.block(&mut out, indent, 0)?;
             out.write_str("<hr>")?;
-            self.block(&mut out, 0)?;
+            self.block(&mut out, indent, 0)?;
             out.write_str("<ol>")?;
 
             while let Some((number, events)) = self.footnotes.next() {
-                self.block(&mut out, 0)?;
+                self.block(&mut out, indent, 0)?;
                 write!(out, "<li id=\"fn{}\">", number)?;
 
                 let mut unclosed_para = false;
@@ -718,13 +844,13 @@ impl<'s, 'f> Writer<'s, 'f> {
                         // not a footnote, so no need to add href before para close
                         out.write_str("</p>")?;
                     }
-                    self.render_event(e.clone(), &mut out)?;
+                    self.render_event(e.clone(), &mut out, indent)?;
                     unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
                         && !matches!(self.list_tightness.last(), Some(true));
                 }
                 if !unclosed_para {
                     // create a new paragraph
-                    self.block(&mut out, 0)?;
+                    self.block(&mut out, indent, 0)?;
                     out.write_str("<p>")?;
                 }
                 write!(
@@ -733,17 +859,17 @@ impl<'s, 'f> Writer<'s, 'f> {
                     number,
                 )?;
 
-                self.block(&mut out, 0)?;
+                self.block(&mut out, indent, 0)?;
                 out.write_str("</li>")?;
             }
 
-            self.block(&mut out, 0)?;
+            self.block(&mut out, indent, 0)?;
             out.write_str("</ol>")?;
-            self.block(&mut out, 0)?;
+            self.block(&mut out, indent, 0)?;
             out.write_str("</section>")?;
         }
 
-        if self.indent.is_some() {
+        if indent.is_some() {
             out.write_char('\n')?;
         }
 
