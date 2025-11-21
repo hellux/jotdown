@@ -373,7 +373,7 @@ impl<'s, 'f> Writer<'s, 'f> {
             if matches!(e, Event::End(Container::Footnote { .. })) {
                 self.footnotes.end();
             } else {
-                events.push(e.clone());
+                events.push(e);
             }
             return Ok(());
         }
