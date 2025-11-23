@@ -130,13 +130,6 @@ pub trait Render {
     }
 }
 
-// XXX why is this not a blanket implementation?
-impl<'s> AsRef<Event<'s>> for &Event<'s> {
-    fn as_ref(&self) -> &Event<'s> {
-        self
-    }
-}
-
 /// A Djot event.
 ///
 /// A Djot document is represented by a sequence of events. An element may consist of one or
