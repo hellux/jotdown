@@ -1,0 +1,23 @@
+Single quotations inside words are left-left
+
+```
+a'b'c
+.
+<p>a’b’c</p>
+```
+
+Double quotations inside words are left-right
+
+```
+a"b"c
+.
+<p>a“b”c</p>
+```
+
+Similarly for non-ascii text
+
+```
+これは"サンプル"です
+.
+<p>これは“サンプル”です</p>
+```

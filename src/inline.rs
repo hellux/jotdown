@@ -870,7 +870,7 @@ impl<'s> Parser<'s> {
                 } else {
                     false
                 };
-                if matches!(opener, Opener::SingleQuoted | Opener::DoubleQuoted)
+                if matches!(opener, Opener::SingleQuoted)
                     && self
                         .events
                         .back()
