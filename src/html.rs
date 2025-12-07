@@ -1,5 +1,8 @@
 //! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::Alignment;
 use crate::Container;
 use crate::CowStr;
@@ -31,7 +34,7 @@ where
     s
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 /// Options for indentation of HTML output.
 pub struct Indentation {
     /// String to use for each indentation level.
@@ -147,7 +150,7 @@ impl Default for Indentation {
 ///
 /// By default, block elements are placed on separate lines. To configure the formatting of the
 /// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Renderer {
     indent: Option<Indentation>,
 }

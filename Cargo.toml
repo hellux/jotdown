@@ -21,6 +21,9 @@ exclude = [
     "tests",
 ]
 
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
 [workspace]
 members = [
     "bench/criterion",
