@@ -5,7 +5,7 @@ edition = "2021"
 default-run = "main"
 
 [dependencies]
-afl = "0.11"
+afl = "0.17"
 jotdown = { path = "../../", features = ["deterministic"] }
 html5ever = "0.26"
 
