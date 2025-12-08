@@ -34,7 +34,7 @@ pub fn jotdown_parse_indent(djot: &str) -> String {
     let mut level = 0;
     let mut out = String::new();
     for e in jotdown::Parser::new(djot) {
-        if !matches!(e, jotdown::Event::End(..)) {
+        if !matches!(e, jotdown::Event::End) {
             // use non-breaking space for indent because normal spaces gets squeezed by browser
             let nbsp = '\u{00a0}';
             (0..4 * level).for_each(|_| out.push(nbsp));
@@ -58,7 +58,7 @@ pub fn jotdown_parse_indent(djot: &str) -> String {
                 }
                 out.push('\n');
             }
-            jotdown::Event::End(..) => {
+            jotdown::Event::End => {
                 level -= 1;
             }
             e => {

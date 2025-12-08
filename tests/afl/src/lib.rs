@@ -19,7 +19,7 @@ pub fn parse(data: &[u8]) {
                     matches!(
                         last.0,
                         jotdown::Event::Start(jotdown::Container::Caption, ..)
-                        | jotdown::Event::End(jotdown::Container::Caption)
+                        | jotdown::Event::End
                     )
                     && range.end <= last.1.start
                 ),
@@ -34,10 +34,6 @@ pub fn parse(data: &[u8]) {
             let _ = &s[range];
             match event {
                 jotdown::Event::Start(c, ..) => open.push(c.clone()),
-                jotdown::Event::End(c) => {
-                    // closes correct event
-                    assert_eq!(open.pop().unwrap(), c);
-                }
                 _ => {}
             }
         }

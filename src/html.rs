@@ -419,6 +419,7 @@ struct Writer<'s> {
     list_tightness: Vec<bool>,
     first_line: bool,
     ignore: bool,
+    containers: Vec<Container<'s>>,
     footnotes: Footnotes<'s>,
 }
 
@@ -436,6 +437,7 @@ impl<'s> Writer<'s> {
             list_tightness: Vec::new(),
             first_line: true,
             ignore: false,
+            containers: vec![],
             footnotes: Footnotes::default(),
         }
     }
@@ -486,6 +488,37 @@ impl<'s> Writer<'s> {
     fn render_event<W>(
         &mut self,
         e: Event<'s>,
+        out: W,
+        indent: &Option<Indentation>,
+    ) -> std::fmt::Result
+    where
+        W: std::fmt::Write,
+    {
+        let c = if e == Event::End {
+            self.containers.pop()
+        } else {
+            None
+        };
+
+        let push = if let Event::Start(c, ..) = &e {
+            Some(c.clone())
+        } else {
+            None
+        };
+
+        let res = self.render_event_inner(e, c, out, indent);
+
+        if let Some(p) = push {
+            self.containers.push(p);
+        }
+
+        res
+    }
+
+    fn render_event_inner<W>(
+        &mut self,
+        e: Event<'s>,
+        end_container: Option<Container>,
         mut out: W,
         indent: &Option<Indentation>,
     ) -> std::fmt::Result
@@ -493,10 +526,15 @@ impl<'s> Writer<'s> {
         W: std::fmt::Write,
     {
         if let Event::Start(Container::Footnote { label }, ..) = e {
-            self.footnotes.start(label, Vec::new());
+            self.footnotes.start(label.clone(), Vec::new());
             return Ok(());
         } else if let Some(events) = self.footnotes.current() {
-            if matches!(e, Event::End(Container::Footnote { .. })) {
+            if matches!(e, Event::End)
+                && matches!(
+                    end_container.as_ref().expect("Missing container"),
+                    Container::Footnote { .. }
+                )
+            {
                 self.footnotes.end();
             } else {
                 events.push(e.clone());
@@ -504,12 +542,17 @@ impl<'s> Writer<'s> {
             return Ok(());
         }
 
-        if matches!(&e, Event::Start(Container::LinkDefinition { .. }, ..)) {
+        if let Event::Start(Container::LinkDefinition { .. }, ..) = e {
             self.ignore = true;
             return Ok(());
         }
 
-        if matches!(&e, Event::End(Container::LinkDefinition { .. })) {
+        if matches!(e, Event::End)
+            && matches!(
+                end_container.as_ref().expect("Missing container"),
+                Container::LinkDefinition { .. }
+            )
+        {
             self.ignore = false;
             return Ok(());
         }
@@ -698,11 +741,12 @@ impl<'s> Writer<'s> {
                     _ => out.write_char('>')?,
                 }
             }
-            Event::End(c) => {
+            Event::End => {
+                let c = end_container.expect("Missing removed container");
                 if c.is_block_container() {
                     self.block(&mut out, indent, -1)?;
                 }
-                if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
+                if self.img_alt_text > 0 && !matches!(c, Container::Image { .. }) {
                     return Ok(());
                 }
                 match c {
@@ -741,8 +785,8 @@ impl<'s> Writer<'s> {
                     Container::DescriptionTerm => out.write_str("</dt>")?,
                     Container::CodeBlock { .. } => out.write_str("</code></pre>")?,
                     Container::Span => out.write_str("</span>")?,
-                    Container::Link(..) => out.write_str("</a>")?,
-                    Container::Image(src, ..) => {
+                    Container::Link { .. } => out.write_str("</a>")?,
+                    Container::Image(src, _) => {
                         if self.img_alt_text == 1 {
                             if !src.is_empty() {
                                 out.write_str(r#"" src=""#)?;
@@ -776,7 +820,7 @@ impl<'s> Writer<'s> {
                 Raw::Other => {}
             },
             Event::FootnoteReference(label) => {
-                let number = self.footnotes.reference(label);
+                let number = self.footnotes.reference(label.clone());
                 if self.img_alt_text == 0 {
                     write!(
                         out,
@@ -844,9 +888,11 @@ impl<'s> Writer<'s> {
                         // not a footnote, so no need to add href before para close
                         out.write_str("</p>")?;
                     }
-                    self.render_event(e.clone(), &mut out, indent)?;
-                    unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
-                        && !matches!(self.list_tightness.last(), Some(true));
+                    let is_end_paragraph = matches!(e, Event::End)
+                        && self.containers.last() == Some(&Container::Paragraph);
+                    self.render_event(e, &mut out, indent)?;
+                    unclosed_para =
+                        is_end_paragraph && !matches!(self.list_tightness.last(), Some(true));
                 }
                 if !unclosed_para {
                     // create a new paragraph
