@@ -6,7 +6,7 @@ fn main() -> std::io::Result<()> {
             let entry = entry.ok()?;
             if let Some(name) = entry.file_name().to_str() {
                 if let Some(name) = name.strip_suffix(".dj") {
-                    if entry.file_type().map_or(false, |ty| !ty.is_dir()) {
+                    if entry.file_type().is_ok_and(|ty| !ty.is_dir()) {
                         let input = std::fs::read_to_string(
                             std::path::Path::new(".").join(entry.file_name()),
                         )
