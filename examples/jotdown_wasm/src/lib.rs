@@ -11,7 +11,7 @@ pub fn jotdown_version() -> String {
 #[must_use]
 #[wasm_bindgen]
 pub fn jotdown_render(djot: &str) -> String {
-    jotdown::html::render_to_string(jotdown::Parser::new(djot))
+    jotdown::html::render_to_string(djot)
 }
 
 #[must_use]
