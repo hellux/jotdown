@@ -1,15 +1,14 @@
 use jotdown::html::Indentation;
-use jotdown::Render;
+use jotdown::RenderExt;
 
 macro_rules! test_html {
     ($src:expr, $expected:expr $(,$indent:expr)? $(,)?) => {
         #[allow(unused)]
         let mut renderer = jotdown::html::Renderer::minified();
         $(renderer = jotdown::html::Renderer::indented($indent);)?
-        let mut actual = String::new();
         renderer
-            .push(jotdown::Parser::new($src), &mut actual)
-            .unwrap();
+            .render_document($src).expect("Can't fail");
+        let actual = renderer.into_inner();
         assert_eq!(actual, $expected);
     };
     ($src:expr, $expected:expr, $(,)?) => {
