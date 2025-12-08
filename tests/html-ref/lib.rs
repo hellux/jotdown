@@ -10,7 +10,7 @@ macro_rules! compare {
         let p = jotdown::Parser::new(src);
         let mut actual = String::new();
         jotdown::html::Renderer::default()
-            .push(p, &mut actual)
+            .push_events(p, &mut actual)
             .unwrap();
         assert_eq!(actual, expected, "\n{}", {
             use std::io::Write;

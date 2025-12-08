@@ -63,7 +63,7 @@ pub fn html(data: &[u8]) {
             let p = jotdown::Parser::new(s);
             let mut html = "<!DOCTYPE html>\n".to_string();
             jotdown::html::Renderer::default()
-                .push(p, &mut html)
+                .push_events(p, &mut html)
                 .unwrap();
             validate_html(&html);
         }
@@ -137,7 +137,7 @@ impl<'a> tree_builder::TreeSink for Dom<'a> {
         x == y
     }
 
-    fn elem_name(&self, i: &usize) -> html5ever::ExpandedName {
+    fn elem_name(&self, i: &usize) -> html5ever::ExpandedName<'_> {
         self.names[i - 1].expanded()
     }
 

@@ -13,8 +13,8 @@ use crate::SpanLinkType;
 
 /// Render events into a string.
 ///
-/// This is a convenience function for using [`Renderer::push`] with fewer imports and without an
-/// intermediate variable.
+/// This is a convenience function for using [`Renderer::push_events`] with fewer imports and
+/// without an intermediate variable.
 ///
 /// # Examples
 ///
@@ -27,7 +27,7 @@ where
     I: Iterator<Item = Event<'s>>,
 {
     let mut s = String::new();
-    Renderer::default().push(events, &mut s).unwrap();
+    Renderer::default().push_events(events, &mut s).unwrap();
     s
 }
 
@@ -49,8 +49,8 @@ pub struct Indentation {
     /// let events = Parser::new(src);
     ///
     /// let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -69,11 +69,11 @@ pub struct Indentation {
     /// # let src = "> a\n";
     /// # let events = Parser::new(src);
     /// # let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation {
+    /// let mut renderer = Renderer::indented(Indentation {
     ///     string: "    ".to_string(),
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -97,8 +97,8 @@ pub struct Indentation {
     /// let events = Parser::new(src);
     ///
     /// let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -117,11 +117,11 @@ pub struct Indentation {
     /// # let src = "> a\n";
     /// # let events = Parser::new(src);
     /// # let mut html = String::new();
-    /// let renderer = Renderer::indented(Indentation {
+    /// let mut renderer = Renderer::indented(Indentation {
     ///     initial_level: 2,
     ///     ..Indentation::default()
     /// });
-    /// renderer.push(events.clone(), &mut html).unwrap();
+    /// renderer.push_events(events.clone(), &mut html).unwrap();
     /// assert_eq!(
     ///     html,
     ///     concat!(
@@ -143,16 +143,7 @@ impl Default for Indentation {
     }
 }
 
-/// [`Render`] implementor that writes HTML output.
-///
-/// By default, block elements are placed on separate lines. To configure the formatting of the
-/// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
-#[derive(Clone)]
-pub struct Renderer {
-    indent: Option<Indentation>,
-}
-
-impl Renderer {
+impl<'s> Renderer<'s> {
     /// Create a renderer that emits no whitespace between elements.
     ///
     /// # Examples
@@ -168,15 +159,15 @@ impl Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::minified();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::minified();
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected =
     ///     "<ul><li>a<ul><li><p>b</p></li><li><p>c</p></li></ul></li></ul>";
     /// assert_eq!(actual, expected);
     /// ```
     #[must_use]
     pub fn minified() -> Self {
-        Self { indent: None }
+        Self::new(None)
     }
 
     /// Create a renderer that indents lines based on their block element depth.
@@ -196,8 +187,8 @@ impl Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::indented(Indentation::default());
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::indented(Indentation::default());
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "\t<li>\n",
@@ -217,13 +208,11 @@ impl Renderer {
     /// ```
     #[must_use]
     pub fn indented(indent: Indentation) -> Self {
-        Self {
-            indent: Some(indent),
-        }
+        Self::new(Some(indent))
     }
 }
 
-impl Default for Renderer {
+impl<'s> Default for Renderer<'s> {
     /// Place block elements on separate lines.
     ///
     /// This is the default behavior and matches the reference implementation.
@@ -241,8 +230,8 @@ impl Default for Renderer {
     ///     "  - c\n",
     /// );
     /// let mut actual = String::new();
-    /// let renderer = Renderer::default();
-    /// renderer.push(Parser::new(src), &mut actual).unwrap();
+    /// let mut renderer = Renderer::default();
+    /// renderer.push_events(Parser::new(src), &mut actual).unwrap();
     /// let expected = concat!(
     ///     "<ul>\n",
     ///     "<li>\n",
@@ -261,24 +250,19 @@ impl Default for Renderer {
     /// assert_eq!(actual, expected);
     /// ```
     fn default() -> Self {
-        Self {
-            indent: Some(Indentation {
-                string: String::new(),
-                initial_level: 0,
-            }),
-        }
+        Self::new(Some(Indentation {
+            string: String::new(),
+            initial_level: 0,
+        }))
     }
 }
 
-impl Render for Renderer {
-    fn push<'s, I, W>(&self, mut events: I, mut out: W) -> std::fmt::Result
+impl<'s> Render<'s> for Renderer<'s> {
+    fn push_event<W>(&mut self, event: Event<'s>, mut out: W) -> std::fmt::Result
     where
-        I: Iterator<Item = Event<'s>>,
         W: std::fmt::Write,
     {
-        let mut w = Writer::new(&self.indent);
-        events.try_for_each(|e| w.render_event(e, &mut out))?;
-        w.render_epilogue(&mut out)
+        self.render_event(event, &mut out)
     }
 }
 
@@ -294,8 +278,12 @@ impl Default for Raw {
     }
 }
 
-struct Writer<'s, 'f> {
-    indent: &'f Option<Indentation>,
+/// [`Render`] implementor that writes HTML output.
+///
+/// By default, block elements are placed on separate lines. To configure the formatting of the
+/// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
+pub struct Renderer<'s> {
+    indent: Option<Indentation>,
     depth: usize,
     raw: Raw,
     img_alt_text: usize,
@@ -305,9 +293,9 @@ struct Writer<'s, 'f> {
     footnotes: Footnotes<'s>,
 }
 
-impl<'s, 'f> Writer<'s, 'f> {
-    fn new(indent: &'f Option<Indentation>) -> Self {
-        let depth = if let Some(indent) = indent {
+impl<'s> Renderer<'s> {
+    fn new(indent: Option<Indentation>) -> Self {
+        let depth = if let Some(indent) = &indent {
             indent.initial_level
         } else {
             0
@@ -324,7 +312,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         }
     }
 
-    fn block<W>(&mut self, mut out: W, depth_change: isize) -> std::fmt::Result
+    fn block<W>(&mut self, out: &mut W, depth_change: isize) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -340,7 +328,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         if depth_change < 0 {
             self.depth = next_depth;
         }
-        self.indent(&mut out)?;
+        self.indent(out)?;
         if depth_change > 0 {
             self.depth = next_depth;
         }
@@ -348,11 +336,11 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn indent<W>(&self, mut out: W) -> std::fmt::Result
+    fn indent<W>(&self, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
-        if let Some(indent) = self.indent {
+        if let Some(indent) = &self.indent {
             if !indent.string.is_empty() {
                 for _ in 0..self.depth {
                     out.write_str(&indent.string)?;
@@ -362,7 +350,7 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_event<W>(&mut self, e: Event<'s>, mut out: W) -> std::fmt::Result
+    fn render_event<W>(&mut self, e: Event<'s>, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
@@ -395,12 +383,13 @@ impl<'s, 'f> Writer<'s, 'f> {
         match e {
             Event::Start(c, attrs) => {
                 if c.is_block() {
-                    self.block(&mut out, c.is_block_container().into())?;
+                    self.block(out, c.is_block_container().into())?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
                 }
                 match &c {
+                    Container::Document => return Ok(()),
                     Container::Blockquote => out.write_str("<blockquote")?,
                     Container::List { kind, tight } => {
                         self.list_tightness.push(*tight);
@@ -456,7 +445,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             if matches!(ty, LinkType::Email) {
                                 out.write_str("mailto:")?;
                             }
-                            write_attr(dst, &mut out)?;
+                            write_attr(dst, out)?;
                             out.write_char('"')?;
                         }
                     }
@@ -491,11 +480,11 @@ impl<'s, 'f> Writer<'s, 'f> {
                 let mut class_written = false;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    v.parts().try_for_each(|part| write_attr(part, out))?;
                     match a {
                         "class" => {
                             class_written = true;
-                            write_class(&c, true, &mut out)?;
+                            write_class(&c, true, out)?;
                         }
                         "id" => id_written = true,
                         _ => {}
@@ -512,7 +501,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 {
                     if !id_written {
                         out.write_str(r#" id=""#)?;
-                        write_attr(id, &mut out)?;
+                        write_attr(id, out)?;
                         out.write_char('"')?;
                     }
                 } else if (matches!(c.clone(), Container::Div { class } if !class.is_empty())
@@ -527,7 +516,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     && !class_written
                 {
                     out.write_str(r#" class=""#)?;
-                    write_class(&c, false, &mut out)?;
+                    write_class(&c, false, out)?;
                     out.write_char('"')?;
                 }
 
@@ -548,7 +537,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             out.write_str("><code>")?;
                         } else {
                             out.write_str(r#"><code class="language-"#)?;
-                            write_attr(&language, &mut out)?;
+                            write_attr(&language, out)?;
                             out.write_str(r#"">"#)?;
                         }
                     }
@@ -562,7 +551,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     }
                     Container::TaskListItem { checked } => {
                         out.write_char('>')?;
-                        self.block(&mut out, 0)?;
+                        self.block(out, 0)?;
                         if checked {
                             out.write_str(r#"<input disabled="" type="checkbox" checked=""/>"#)?;
                         } else {
@@ -574,12 +563,13 @@ impl<'s, 'f> Writer<'s, 'f> {
             }
             Event::End(c) => {
                 if c.is_block_container() {
-                    self.block(&mut out, -1)?;
+                    self.block(out, -1)?;
                 }
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
                 }
                 match c {
+                    Container::Document => return self.render_epilogue(out),
                     Container::Blockquote => out.write_str("</blockquote>")?,
                     Container::List { kind, .. } => {
                         self.list_tightness.pop();
@@ -620,7 +610,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         if self.img_alt_text == 1 {
                             if !src.is_empty() {
                                 out.write_str(r#"" src=""#)?;
-                                write_attr(&src, &mut out)?;
+                                write_attr(&src, out)?;
                             }
                             out.write_str(r#"">"#)?;
                         }
@@ -644,8 +634,8 @@ impl<'s, 'f> Writer<'s, 'f> {
                 }
             }
             Event::Str(s) => match self.raw {
-                Raw::None if self.img_alt_text > 0 => write_attr(&s, &mut out)?,
-                Raw::None => write_text(&s, &mut out)?,
+                Raw::None if self.img_alt_text > 0 => write_attr(&s, out)?,
+                Raw::None => write_text(&s, out)?,
                 Raw::Html => out.write_str(&s)?,
                 Raw::Other => {}
             },
@@ -674,15 +664,15 @@ impl<'s, 'f> Writer<'s, 'f> {
             }
             Event::Softbreak => {
                 out.write_char('\n')?;
-                self.indent(&mut out)?;
+                self.indent(out)?;
             }
             Event::Escape | Event::Blankline | Event::Attributes(..) => {}
             Event::ThematicBreak(attrs) => {
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
                     write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    v.parts().try_for_each(|part| write_attr(part, out))?;
                     out.write_char('"')?;
                 }
                 out.write_str(">")?;
@@ -693,20 +683,20 @@ impl<'s, 'f> Writer<'s, 'f> {
         Ok(())
     }
 
-    fn render_epilogue<W>(&mut self, mut out: W) -> std::fmt::Result
+    fn render_epilogue<W>(&mut self, out: &mut W) -> std::fmt::Result
     where
         W: std::fmt::Write,
     {
         if self.footnotes.reference_encountered() {
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<section role=\"doc-endnotes\">")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<hr>")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("<ol>")?;
 
             while let Some((number, events)) = self.footnotes.next() {
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 write!(out, "<li id=\"fn{}\">", number)?;
 
                 let mut unclosed_para = false;
@@ -718,13 +708,13 @@ impl<'s, 'f> Writer<'s, 'f> {
                         // not a footnote, so no need to add href before para close
                         out.write_str("</p>")?;
                     }
-                    self.render_event(e.clone(), &mut out)?;
+                    self.render_event(e.clone(), out)?;
                     unclosed_para = matches!(e, Event::End(Container::Paragraph { .. }))
                         && !matches!(self.list_tightness.last(), Some(true));
                 }
                 if !unclosed_para {
                     // create a new paragraph
-                    self.block(&mut out, 0)?;
+                    self.block(out, 0)?;
                     out.write_str("<p>")?;
                 }
                 write!(
@@ -733,13 +723,13 @@ impl<'s, 'f> Writer<'s, 'f> {
                     number,
                 )?;
 
-                self.block(&mut out, 0)?;
+                self.block(out, 0)?;
                 out.write_str("</li>")?;
             }
 
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("</ol>")?;
-            self.block(&mut out, 0)?;
+            self.block(out, 0)?;
             out.write_str("</section>")?;
         }
 
@@ -778,21 +768,21 @@ where
     Ok(())
 }
 
-fn write_text<W>(s: &str, out: W) -> std::fmt::Result
+fn write_text<W>(s: &str, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
     write_escape(s, false, out)
 }
 
-fn write_attr<W>(s: &str, out: W) -> std::fmt::Result
+fn write_attr<W>(s: &str, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
     write_escape(s, true, out)
 }
 
-fn write_escape<W>(mut s: &str, escape_quotes: bool, mut out: W) -> std::fmt::Result
+fn write_escape<W>(mut s: &str, escape_quotes: bool, out: &mut W) -> std::fmt::Result
 where
     W: std::fmt::Write,
 {
