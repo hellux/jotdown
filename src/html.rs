@@ -1,5 +1,6 @@
 //! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
 
+pub mod filters;
 use crate::Alignment;
 use crate::Container;
 use crate::CowStr;
