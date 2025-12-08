@@ -74,6 +74,7 @@ pub trait Render<'s> {
     fn finish(&mut self) -> Result<(), Self::Error>;
 }
 
+/// Utility extensions method for [`Render`] trait
 pub trait RenderExt<'s>: Render<'s> {
     /// Parse and render the whole document with `renderer`
     fn render_document(&mut self, src: &'s str) -> Result<(), Self::Error> {
@@ -96,6 +97,28 @@ pub trait RenderExt<'s>: Render<'s> {
 }
 
 impl<'s, R> RenderExt<'s> for R where R: Render<'s> {}
+
+/// A `Render` that produces an output
+pub trait RenderOutput<'s>: Render<'s> {
+    type Output;
+    fn into_output(self) -> Self::Output;
+}
+
+/// Utility extension method for [`RenderOutput`] trait
+pub trait RenderOutputExt<'s>: RenderOutput<'s> {
+    fn render_into_document(
+        mut self,
+        input: &'s str,
+    ) -> Result<Self::Output, <Self as Render<'s>>::Error>
+    where
+        Self: Sized,
+    {
+        RenderExt::<'s>::render_document(&mut self, input)?;
+        Ok(self.into_output())
+    }
+}
+
+impl<'s, R> RenderOutputExt<'s> for R where R: RenderOutput<'s> {}
 
 /// A Djot event.
 ///

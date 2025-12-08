@@ -9,6 +9,7 @@ use crate::ListKind;
 use crate::Map;
 use crate::OrderedListNumbering::*;
 use crate::Render;
+use crate::RenderOutput;
 use crate::SpanLinkType;
 
 /// Render events into a string.
@@ -370,6 +371,17 @@ where
     /// Called at the end of rendering a djot document
     fn finish(&mut self) -> Result<(), Self::Error> {
         self.writer.render_epilogue(&mut self.output, &self.indent)
+    }
+}
+
+impl<'s, W> RenderOutput<'s> for Renderer<'s, W>
+where
+    W: std::fmt::Write,
+{
+    type Output = W;
+
+    fn into_output(self) -> Self::Output {
+        self.output
     }
 }
 

@@ -1,4 +1,4 @@
-use jotdown::{Container, Event, Render, RenderExt as _};
+use jotdown::{Container, Event, Render, RenderExt as _, RenderOutput};
 use std::borrow::Cow;
 
 struct RickrollRenderer<R>(R);
@@ -31,6 +31,17 @@ where
     }
 }
 
+impl<'s, R> RenderOutput<'s> for RickrollRenderer<R>
+where
+    R: RenderOutput<'s>,
+{
+    type Output = R::Output;
+
+    fn into_output(self) -> Self::Output {
+        self.0.into_output()
+    }
+}
+
 #[test]
 fn rickroll_me() {
     use jotdown::RenderOutputExt;
@@ -40,7 +51,7 @@ fn rickroll_me() {
         .unwrap();
 
     assert_eq!(
-        r.0.into_inner(),
+        out,
         "<p><a href=\"https://www.youtube.com/watch?v=E4WlUXrJgy4\">interesting link</a></p>"
     );
 }
