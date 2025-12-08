@@ -88,15 +88,8 @@ fn heading() {
             ),
             "#",
         ),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "s-1".into(),
-            }),
-            "",
-        ),
-        (End(Section { id: "s-1".into() }), ""),
+        (End, "",),
+        (End, ""),
     );
     test_parse!(
         "# abc\ndef\n",
@@ -123,20 +116,8 @@ fn heading() {
         (Str("abc".into()), "abc"),
         (Softbreak, "\n"),
         (Str("def".into()), "def"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "abc-def".into(),
-            }),
-            "",
-        ),
-        (
-            End(Section {
-                id: "abc-def".into(),
-            }),
-            "",
-        ),
+        (End, "",),
+        (End, "",),
     );
 }
 
@@ -161,15 +142,8 @@ fn heading_attr() {
             "#",
         ),
         (Str("abc".into()), "abc"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "abc".into(),
-            }),
-            "",
-        ),
-        (End(Section { id: "abc".into() }), ""),
+        (End, "",),
+        (End, ""),
         (
             Start(
                 Section { id: "def".into() },
@@ -189,15 +163,8 @@ fn heading_attr() {
             "#",
         ),
         (Str("def".into()), "def"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "def".into(),
-            }),
-            "",
-        ),
-        (End(Section { id: "def".into() }), ""),
+        (End, "",),
+        (End, ""),
     );
 }
 
@@ -222,15 +189,9 @@ fn heading_ref() {
             "[",
         ),
         (Str("link".into()), "link"),
-        (
-            End(Link(
-                "#Some-Section".into(),
-                LinkType::Span(SpanLinkType::Reference),
-            )),
-            "][Some Section]",
-        ),
+        (End, "][Some Section]",),
         (Str(" to another section.".into()), " to another section."),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -253,20 +214,8 @@ fn heading_ref() {
             "#",
         ),
         (Str("Some Section".into()), "Some Section"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "Some-Section".into(),
-            }),
-            "",
-        ),
-        (
-            End(Section {
-                id: "Some-Section".into(),
-            }),
-            "",
-        ),
+        (End, "",),
+        (End, "",),
     );
     test_parse!(
         concat!(
@@ -286,10 +235,7 @@ fn heading_ref() {
             "[",
         ),
         (Str("a".into()), "a"),
-        (
-            End(Link("#a".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][]",
-        ),
+        (End, "][]",),
         (Softbreak, "\n"),
         (
             Start(
@@ -299,11 +245,8 @@ fn heading_ref() {
             "[",
         ),
         (Str("b".into()), "b"),
-        (
-            End(Link("#b".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][]",
-        ),
-        (End(Paragraph), ""),
+        (End, "][]",),
+        (End, ""),
         (Blankline, "\n"),
         (Start(Section { id: "b".into() }, Attributes::new()), ""),
         (
@@ -318,16 +261,9 @@ fn heading_ref() {
             "#",
         ),
         (Str("b".into()), "b"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "b".into(),
-            }),
-            "",
-        ),
+        (End, "",),
         (Blankline, "\n"),
-        (End(Section { id: "b".into() }), ""),
+        (End, ""),
         (Start(Section { id: "a".into() }, Attributes::new()), ""),
         (
             Start(
@@ -341,15 +277,8 @@ fn heading_ref() {
             "#",
         ),
         (Str("a".into()), "a"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "a".into(),
-            }),
-            "",
-        ),
-        (End(Section { id: "a".into() }), ""),
+        (End, "",),
+        (End, ""),
     );
 }
 
@@ -359,7 +288,7 @@ fn blockquote() {
         ">\n",
         (Start(Blockquote, Attributes::new()), ">"),
         (Blankline, "\n"),
-        (End(Blockquote), ""),
+        (End, ""),
     );
 }
 
@@ -369,23 +298,23 @@ fn para() {
         "para",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "pa     ra",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("pa     ra".into()), "pa     ra"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "para0\n\npara1",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para0".into()), "para0"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para1".into()), "para1"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -396,8 +325,8 @@ fn verbatim() {
         (Start(Paragraph, Attributes::new()), ""),
         (Start(Verbatim, Attributes::new()), "`"),
         (Str("abc\ndef".into()), "abc\ndef"),
-        (End(Verbatim), ""),
-        (End(Paragraph), ""),
+        (End, ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -409,9 +338,9 @@ fn verbatim() {
         (Start(Verbatim, Attributes::new()), "`"),
         (Str("abc\n".into()), "abc\n"),
         (Str("def".into()), "def"),
-        (End(Verbatim), ""),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, ""),
+        (End, ""),
+        (End, ""),
     );
 }
 
@@ -430,13 +359,8 @@ fn raw_inline() {
             "``",
         ),
         (Str("raw\nraw".into()), "raw\nraw"),
-        (
-            End(RawInline {
-                format: "format".into()
-            }),
-            "``{=format}"
-        ),
-        (End(Paragraph), ""),
+        (End, "``{=format}"),
+        (End, ""),
     );
 }
 
@@ -454,12 +378,7 @@ fn raw_block() {
             "``` =html\n",
         ),
         (Str("<table>".into()), "<table>"),
-        (
-            End(RawBlock {
-                format: "html".into()
-            }),
-            "```"
-        ),
+        (End, "```"),
     );
 }
 
@@ -490,16 +409,11 @@ fn raw_block_whitespace() {
         ),
         (Str("<tag1>\n".into()), "<tag1>\n"),
         (Str("<tag2>".into()), "<tag2>"),
-        (
-            End(RawBlock {
-                format: "html".into()
-            }),
-            "```\n"
-        ),
+        (End, "```\n"),
         (Blankline, "\n"),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("paragraph".into()), "paragraph"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -512,12 +426,7 @@ fn raw_block_whitespace() {
         ),
         (Str("</tag2>\n".into()), "</tag2>\n"),
         (Str("</tag1>".into()), "</tag1>"),
-        (
-            End(RawBlock {
-                format: "html".into()
-            }),
-            "```\n"
-        ),
+        (End, "```\n"),
     );
 }
 
@@ -529,7 +438,7 @@ fn symbol() {
         (Str("abc ".into()), "abc "),
         (Symbol("+1".into()), ":+1:"),
         (Str(" def".into()), " def"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -546,11 +455,8 @@ fn link_inline() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Inline))),
-            "](url)",
-        ),
-        (End(Paragraph), ""),
+        (End, "](url)",),
+        (End, ""),
     );
 }
 
@@ -571,12 +477,9 @@ fn link_inline_multi_line() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("urlurl".into(), LinkType::Span(SpanLinkType::Inline))),
-            "](url\n> url)",
-        ),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "](url\n> url)",),
+        (End, ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -594,12 +497,9 @@ fn link_inline_multi_line() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("abcdef".into(), LinkType::Span(SpanLinkType::Inline))),
-            "](a\n> bc\n> def)",
-        ),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "](a\n> bc\n> def)",),
+        (End, ""),
+        (End, ""),
     );
 }
 
@@ -620,11 +520,8 @@ fn link_reference() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]",),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -636,12 +533,7 @@ fn link_reference() {
             "[tag]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -658,8 +550,8 @@ fn link_reference() {
             "![",
         ),
         (Str("text".into()), "text"),
-        (End(Image("url".into(), SpanLinkType::Reference)), "][tag]"),
-        (End(Paragraph), ""),
+        (End, "][tag]"),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -671,12 +563,7 @@ fn link_reference() {
             "[tag]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
 }
 
@@ -693,11 +580,8 @@ fn link_reference_unresolved() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("tag".into(), LinkType::Span(SpanLinkType::Unresolved))),
-            "][tag]",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]",),
+        (End, ""),
     );
     test_parse!(
         "![text][tag]",
@@ -710,8 +594,8 @@ fn link_reference_unresolved() {
             "![",
         ),
         (Str("text".into()), "text"),
-        (End(Image("tag".into(), SpanLinkType::Unresolved)), "][tag]"),
-        (End(Paragraph), ""),
+        (End, "][tag]"),
+        (End, ""),
     );
 }
 
@@ -734,12 +618,9 @@ fn link_reference_multiline() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][a\n> b]",
-        ),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "][a\n> b]",),
+        (End, ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -751,12 +632,7 @@ fn link_reference_multiline() {
             "[a b]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "a b".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
 }
 
@@ -783,10 +659,7 @@ fn link_reference_multiline_empty() {
         (Str("a".into()), "a"),
         (Softbreak, "\n"),
         (Str("b".into()), "b"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][]",
-        ),
+        (End, "][]",),
         (Softbreak, "\n"),
         (
             Start(
@@ -799,12 +672,9 @@ fn link_reference_multiline_empty() {
         (Escape, "\\"),
         (Hardbreak, "\n"),
         (Str("b".into()), "b"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][]",
-        ),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "][]",),
+        (End, ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -816,12 +686,7 @@ fn link_reference_multiline_empty() {
             "[a b]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "a b".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
 }
 
@@ -843,11 +708,8 @@ fn link_definition_multiline() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]",),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -860,12 +722,7 @@ fn link_definition_multiline() {
         ),
         (Str("u".into()), "u"),
         (Str("rl".into()), "rl"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -884,14 +741,8 @@ fn link_definition_multiline() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link(
-                "urlcont".into(),
-                LinkType::Span(SpanLinkType::Reference),
-            )),
-            "][tag]",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]",),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -904,12 +755,7 @@ fn link_definition_multiline() {
         ),
         (Str("url".into()), "url"),
         (Str("cont".into()), "cont"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
     );
 }
 
@@ -935,11 +781,8 @@ fn link_reference_attrs() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]{b=c}",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]{b=c}",),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -951,15 +794,10 @@ fn link_reference_attrs() {
             "{a=b}\n[tag]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -985,11 +823,8 @@ fn link_reference_attrs_class() {
             "[",
         ),
         (Str("text".into()), "text"),
-        (
-            End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]{.link}",
-        ),
-        (End(Paragraph), ""),
+        (End, "][tag]{.link}",),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(
@@ -1001,15 +836,10 @@ fn link_reference_attrs_class() {
             "{.def}\n[tag]:",
         ),
         (Str("url".into()), "url"),
-        (
-            End(LinkDefinition {
-                label: "tag".into()
-            }),
-            ""
-        ),
+        (End, ""),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1026,8 +856,8 @@ fn autolink() {
             "<",
         ),
         (Str("proto:url".into()), "proto:url"),
-        (End(Link("proto:url".into(), LinkType::AutoLink)), ">"),
-        (End(Paragraph), ""),
+        (End, ">"),
+        (End, ""),
     );
 }
 
@@ -1044,8 +874,8 @@ fn email() {
             "<",
         ),
         (Str("name@domain".into()), "name@domain"),
-        (End(Link("name@domain".into(), LinkType::Email)), ">"),
-        (End(Paragraph), ""),
+        (End, ">"),
+        (End, ""),
     );
 }
 
@@ -1057,7 +887,7 @@ fn footnote_references() {
         (FootnoteReference("a".into()), "[^a]"),
         (FootnoteReference("b".into()), "[^b]"),
         (FootnoteReference("c".into()), "[^c]"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1067,7 +897,7 @@ fn footnote() {
         "[^a]\n\n[^a]: a\n",
         (Start(Paragraph, Attributes::new()), ""),
         (FootnoteReference("a".into()), "[^a]"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(Footnote { label: "a".into() }, Attributes::new()),
@@ -1075,8 +905,8 @@ fn footnote() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("a".into()), "a"),
-        (End(Paragraph), ""),
-        (End(Footnote { label: "a".into() }), ""),
+        (End, ""),
+        (End, ""),
     );
 }
 
@@ -1092,7 +922,7 @@ fn footnote_multiblock() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (FootnoteReference("a".into()), "[^a]"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(Footnote { label: "a".into() }, Attributes::new()),
@@ -1100,12 +930,12 @@ fn footnote_multiblock() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("abc".into()), "abc"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("def".into()), "def"),
-        (End(Paragraph), ""),
-        (End(Footnote { label: "a".into() }), ""),
+        (End, ""),
+        (End, ""),
     );
 }
 
@@ -1122,7 +952,7 @@ fn footnote_post() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (FootnoteReference("a".into()), "[^a]"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(Footnote { label: "a".into() }, Attributes::new()),
@@ -1132,12 +962,12 @@ fn footnote_post() {
         (Str("note".into()), "note"),
         (Softbreak, "\n"),
         (Str("cont".into()), "cont"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
-        (End(Footnote { label: "a".into() }), ""),
+        (End, ""),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1148,7 +978,7 @@ fn footnote_post() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (FootnoteReference("a".into()), "[^a]"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (
             Start(Footnote { label: "a".into() }, Attributes::new()),
@@ -1156,10 +986,10 @@ fn footnote_post() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("note".into()), "note"),
-        (End(Paragraph), ""),
-        (End(Footnote { label: "a".into() }), ""),
+        (End, ""),
+        (End, ""),
         (Start(Div { class: "".into() }, Attributes::new()), ":::\n"),
-        (End(Div { class: "".into() }), ""),
+        (End, ""),
     );
 }
 
@@ -1172,7 +1002,7 @@ fn attr_block() {
             "{.some_class}\n",
         ),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1188,7 +1018,7 @@ fn attr_block() {
             "{.a}\n{#b}\n",
         ),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1202,7 +1032,7 @@ fn attr_block_dangling() {
         "para\n\n{.a}",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
         (Blankline, "\n"),
         (Attributes(attrs![(AttributeKind::Class, "a")]), "{.a}"),
     );
@@ -1239,20 +1069,13 @@ fn attr_block_dangling_end_of_block() {
             "#"
         ),
         (Str("h".into()), "h"),
-        (
-            End(Heading {
-                level: 1,
-                has_section: true,
-                id: "h".into(),
-            }),
-            ""
-        ),
+        (End, ""),
         (Blankline, "\n"),
         (
             Attributes(attrs![(AttributeKind::Comment, "cmt")]),
             "{%cmt}",
         ),
-        (End(Section { id: "h".into() }), ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1265,7 +1088,7 @@ fn attr_block_dangling_end_of_block() {
             Attributes(attrs![(AttributeKind::Comment, "cmt")]),
             "{%cmt}\n"
         ),
-        (End(Div { class: "".into() }), ":::\n"),
+        (End, ":::\n"),
     );
 }
 
@@ -1282,7 +1105,7 @@ fn attr_block_blankline() {
             "{.c}\n",
         ),
         (Str("para".into()), "para"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1294,8 +1117,8 @@ fn attr_inline() {
         (Str("abc ".into()), "abc "),
         (Start(Emphasis, attrs![(AttributeKind::Class, "ghi")],), "_"),
         (Str("def".into()), "def"),
-        (End(Emphasis), "_{.ghi}"),
-        (End(Paragraph), ""),
+        (End, "_{.ghi}"),
+        (End, ""),
     );
 }
 
@@ -1316,8 +1139,8 @@ fn attr_inline_consecutive() {
             "_",
         ),
         (Str("abc def".into()), "abc def"),
-        (End(Emphasis), "_{.a}{.b #i}"),
-        (End(Paragraph), ""),
+        (End, "_{.a}{.b #i}"),
+        (End, ""),
     );
     test_parse!(
         "_abc def_{.a}{%%}{.b #i}",
@@ -1335,8 +1158,8 @@ fn attr_inline_consecutive() {
             "_",
         ),
         (Str("abc def".into()), "abc def"),
-        (End(Emphasis), "_{.a}{%%}{.b #i}"),
-        (End(Paragraph), ""),
+        (End, "_{.a}{%%}{.b #i}"),
+        (End, ""),
     );
 }
 
@@ -1357,9 +1180,9 @@ fn attr_inline_consecutive_invalid() {
             "_",
         ),
         (Str("abc def".into()), "abc def"),
-        (End(Emphasis), "_{.a}{.b #i}"),
+        (End, "_{.a}{.b #i}"),
         (Str("{.c invalid}".into()), "{.c invalid}"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "_abc def_{.a}{.b #i}{%%}{.c invalid}",
@@ -1377,9 +1200,9 @@ fn attr_inline_consecutive_invalid() {
             "_",
         ),
         (Str("abc def".into()), "abc def"),
-        (End(Emphasis), "_{.a}{.b #i}{%%}"),
+        (End, "_{.a}{.b #i}{%%}"),
         (Str("{.c invalid}".into()), "{.c invalid}"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         concat!("_abc def_{.a}{.b #i}{%%}{.c\n", "invalid}\n"),
@@ -1397,11 +1220,11 @@ fn attr_inline_consecutive_invalid() {
             "_",
         ),
         (Str("abc def".into()), "abc def"),
-        (End(Emphasis), "_{.a}{.b #i}{%%}"),
+        (End, "_{.a}{.b #i}{%%}"),
         (Str("{.c".into()), "{.c"),
         (Softbreak, "\n"),
         (Str("invalid}".into()), "invalid}"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1425,9 +1248,9 @@ fn attr_inline_multiline() {
             "_",
         ),
         (Str("abc".into()), "abc"),
-        (End(Emphasis), "_{a=b\n> c=d}"),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "_{a=b\n> c=d}"),
+        (End, ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1448,9 +1271,9 @@ fn attr_inline_multiline() {
             "",
         ),
         (Str("a".into()), "a"),
-        (End(Span), "{\n> %%\n> a=a}"),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "{\n> %%\n> a=a}"),
+        (End, ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1468,9 +1291,9 @@ fn attr_inline_multiline() {
             "",
         ),
         (Str("a".into()), "a"),
-        (End(Span), "{a=\"a\n> b\n> c\"}"),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "{a=\"a\n> b\n> c\"}"),
+        (End, ""),
+        (End, ""),
     );
     test_parse!(
         concat!(
@@ -1484,9 +1307,9 @@ fn attr_inline_multiline() {
             "",
         ),
         (Str("a".into()), "a"),
-        (End(Span), "{a=\"\n> b\"}"),
-        (End(Paragraph), ""),
-        (End(Blockquote), ""),
+        (End, "{a=\"\n> b\"}"),
+        (End, ""),
+        (End, ""),
     );
 }
 
@@ -1501,8 +1324,8 @@ fn attr_inline_multiline_comment() {
         (Start(Paragraph, Attributes::new()), ""),
         (Start(Span, attrs![(AttributeKind::Comment, "a\nb\nc")]), "",),
         (Str("a".into()), "a"),
-        (End(Span), "{%a\nb\nc%}"),
-        (End(Paragraph), ""),
+        (End, "{%a\nb\nc%}"),
+        (End, ""),
     );
 }
 
@@ -1517,7 +1340,7 @@ fn attr_inline_multiline_unclosed() {
         (Str("a{".into()), "a{"),
         (Softbreak, "\n"),
         (Str("b".into()), "b"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1535,7 +1358,7 @@ fn attr_inline_multiline_invalid() {
         (Str("b".into()), "b"),
         (Softbreak, "\n"),
         (Str("}".into()), "}"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1547,7 +1370,7 @@ fn attr_inline_dangling() {
         (Str("*a".into()), "*a"),
         (Softbreak, "\n"),
         (Attributes(attrs![(AttributeKind::Comment, "")]), "{%}"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "a {.b} c",
@@ -1555,7 +1378,7 @@ fn attr_inline_dangling() {
         (Str("a ".into()), "a "),
         (Attributes(attrs![(AttributeKind::Class, "b")]), "{.b}"),
         (Str(" c".into()), " c"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "a {%cmt} c",
@@ -1566,7 +1389,7 @@ fn attr_inline_dangling() {
             "{%cmt}",
         ),
         (Str(" c".into()), " c"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "a {%cmt}",
@@ -1576,7 +1399,7 @@ fn attr_inline_dangling() {
             Attributes(attrs![(AttributeKind::Comment, "cmt")]),
             "{%cmt}",
         ),
-        (End(Paragraph), ""),
+        (End, ""),
     );
     test_parse!(
         "{%cmt} a",
@@ -1586,7 +1409,7 @@ fn attr_inline_dangling() {
             "{%cmt}",
         ),
         (Str(" a".into()), " a"),
-        (End(Paragraph), ""),
+        (End, ""),
     );
 }
 
@@ -1607,15 +1430,9 @@ fn list_item_unordered() {
         (Start(ListItem, Attributes::new()), "-"),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("abc".into()), "abc"),
-        (End(Paragraph), ""),
-        (End(ListItem), ""),
-        (
-            End(List {
-                kind: ListKind::Unordered(Dash),
-                tight: true,
-            }),
-            "",
-        ),
+        (End, ""),
+        (End, ""),
+        (End, "",),
     );
 }
 
@@ -1640,19 +1457,9 @@ fn list_item_ordered_decimal() {
         (Start(ListItem, Attributes::new()), "123."),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("abc".into()), "abc"),
-        (End(Paragraph), ""),
-        (End(ListItem), ""),
-        (
-            End(List {
-                kind: ListKind::Ordered {
-                    numbering: Decimal,
-                    style: Period,
-                    start: 123,
-                },
-                tight: true,
-            }),
-            "",
-        ),
+        (End, ""),
+        (End, ""),
+        (End, "",),
     );
 }
 
@@ -1680,30 +1487,24 @@ fn list_task() {
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("a".into()), "a"),
-        (End(Paragraph), ""),
-        (End(TaskListItem { checked: false }), ""),
+        (End, ""),
+        (End, ""),
         (
             Start(TaskListItem { checked: true }, Attributes::new()),
             "- [x]",
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("b".into()), "b"),
-        (End(Paragraph), ""),
-        (End(TaskListItem { checked: true }), ""),
+        (End, ""),
+        (End, ""),
         (
             Start(TaskListItem { checked: true }, Attributes::new()),
             "- [X]",
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (Str("c".into()), "c"),
-        (End(Paragraph), ""),
-        (End(TaskListItem { checked: true }), ""),
-        (
-            End(List {
-                kind: ListKind::Task(Dash),
-                tight: true,
-            }),
-            "",
-        ),
+        (End, ""),
+        (End, ""),
+        (End, "",),
     );
 }
