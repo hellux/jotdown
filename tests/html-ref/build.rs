@@ -1,9 +1,9 @@
 fn main() {
     let has_dj = std::fs::read_dir(".").unwrap().any(|e| {
-        e.map_or(false, |e| {
+        e.is_ok_and(|e| {
             e.path()
                 .extension()
-                .map_or(false, |ext| ext.to_str() == Some("dj"))
+                .is_some_and(|ext| ext.to_str() == Some("dj"))
         })
     });
     if has_dj {
