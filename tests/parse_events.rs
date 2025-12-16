@@ -1,3 +1,4 @@
+use jotdown::Alignment;
 use jotdown::AttributeKind;
 use jotdown::Attributes;
 use jotdown::Container::*;
@@ -1705,5 +1706,68 @@ fn list_task() {
             }),
             "",
         ),
+    );
+}
+
+#[test]
+fn table_consecutive() {
+    test_parse!(
+        concat!(
+            "|a|\n", //
+            "\n",    //
+            "\n",    //
+            "\n",    //
+            "|b|\n", //
+        ),
+        (Start(Table, Attributes::new()), "".into()),
+        (
+            Start(TableRow { head: false }, Attributes::new()),
+            "|".into(),
+        ),
+        (
+            Start(
+                TableCell {
+                    alignment: Alignment::Unspecified,
+                    head: false
+                },
+                Attributes::new(),
+            ),
+            "".into(),
+        ),
+        (Str("a".into()), "a".into()),
+        (
+            End(TableCell {
+                alignment: Alignment::Unspecified,
+                head: false
+            }),
+            "|".into(),
+        ),
+        (End(TableRow { head: false }), "".into()),
+        (End(Table), "".into()),
+        (Start(Table, Attributes::new()), "".into()),
+        (
+            Start(TableRow { head: false }, Attributes::new()),
+            "|".into(),
+        ),
+        (
+            Start(
+                TableCell {
+                    alignment: Alignment::Unspecified,
+                    head: false
+                },
+                Attributes::new()
+            ),
+            "".into(),
+        ),
+        (Str("b".into()), "b".into()),
+        (
+            End(TableCell {
+                alignment: Alignment::Unspecified,
+                head: false
+            }),
+            "|".into(),
+        ),
+        (End(TableRow { head: false }), "".into()),
+        (End(Table), "".into()),
     );
 }

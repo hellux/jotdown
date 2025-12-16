@@ -1,0 +1,18 @@
+regression test: bug caused consecutive table to disappear
+
+```
+|a|
+
+|b|
+.
+<table>
+<tr>
+<td>a</td>
+</tr>
+</table>
+<table>
+<tr>
+<td>b</td>
+</tr>
+</table>
+```
