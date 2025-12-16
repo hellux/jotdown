@@ -284,6 +284,30 @@ impl<'s> TreeParser<'s> {
         {
             let lines = &mut lines[..line_count];
             let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
+
+            // ignore trailing blanklines after tables if any
+            let (lines, line_count) = if matches!(
+                kind,
+                Kind::Table {
+                    caption: false,
+                    blankline: true,
+                }
+            ) {
+                let lc = line_count
+                    - lines
+                        .iter()
+                        .rev()
+                        .take_while(|l| {
+                            self.src[(*l).clone()]
+                                .trim_matches(|c: char| c.is_ascii_whitespace())
+                                .is_empty()
+                        })
+                        .count();
+                (&mut lines[..lc], lc)
+            } else {
+                (lines, line_count)
+            };
+
             let end_line = lines[lines.len() - 1].clone();
             let span_end = match kind {
                 Kind::Fenced {
