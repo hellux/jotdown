@@ -1744,6 +1744,9 @@ fn table_consecutive() {
         ),
         (End(TableRow { head: false }), "".into()),
         (End(Table), "".into()),
+        (Blankline, "\n".into()),
+        (Blankline, "\n".into()),
+        (Blankline, "\n".into()),
         (Start(Table, Attributes::new()), "".into()),
         (
             Start(TableRow { head: false }, Attributes::new()),
