@@ -12,9 +12,6 @@ macro_rules! test_html {
             .unwrap();
         assert_eq!(actual, $expected);
     };
-    ($src:expr, $expected:expr, $(,)?) => {
-        test_html!($src, $expected, Newlines)
-    };
 }
 
 #[test]
