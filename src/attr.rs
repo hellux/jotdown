@@ -685,24 +685,24 @@ impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
 }
 
 #[derive(Clone)]
-pub struct Validator {
+pub(crate) struct Validator {
     state: State,
 }
 
 impl Validator {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             state: State::Start,
         }
     }
 
-    pub fn restart(&mut self) {
+    pub(crate) fn restart(&mut self) {
         self.state = State::Start;
     }
 
     /// Returns number of valid bytes parsed (0 means invalid) if finished, otherwise more input is
     /// needed.
-    pub fn parse(&mut self, input: &str) -> Option<usize> {
+    pub(crate) fn parse(&mut self, input: &str) -> Option<usize> {
         let mut bytes = input.bytes();
         for c in &mut bytes {
             self.state = self.state.step(c);
@@ -718,13 +718,13 @@ impl Validator {
 
 /// Attributes parser, take input of one or more consecutive attributes and create an `Attributes`
 /// object.
-pub struct Parser<'s> {
+pub(crate) struct Parser<'s> {
     attrs: Attributes<'s>,
     state: State,
 }
 
 impl<'s> Parser<'s> {
-    pub fn new(attrs: Attributes<'s>) -> Self {
+    pub(crate) fn new(attrs: Attributes<'s>) -> Self {
         Self {
             attrs,
             state: State::Start,
@@ -733,7 +733,7 @@ impl<'s> Parser<'s> {
 
     /// Return value indicates the number of bytes parsed if finished. If None, more input is
     /// required to finish the attributes.
-    pub fn parse(&mut self, input: &'s str) -> Result<(), usize> {
+    pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         use State::*;
 
         let mut pos_prev = 0;
@@ -792,7 +792,7 @@ impl<'s> Parser<'s> {
         Ok(())
     }
 
-    pub fn finish(self) -> Attributes<'s> {
+    pub(crate) fn finish(self) -> Attributes<'s> {
         self.attrs
     }
 }
@@ -863,7 +863,7 @@ impl State {
     }
 }
 
-pub fn is_name(c: u8) -> bool {
+pub(crate) fn is_name(c: u8) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, b':' | b'_' | b'-')
 }
 
