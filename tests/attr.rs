@@ -193,6 +193,8 @@ macro_rules! test_invalid {
 
 #[test]
 fn invalid_no_brace() {
+    test_invalid!("" "");
+    test_invalid!("{.a" "");
     test_invalid!("" ".a}");
     test_invalid!("" " {.a}");
 }

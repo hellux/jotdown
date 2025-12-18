@@ -293,8 +293,12 @@ impl<'s> Attributes<'s> {
     pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         let mut parser = Parser::new(self.take());
         parser.parse(input)?;
-        *self = parser.finish();
-        Ok(())
+        if matches!(parser.state, State::Done) {
+            *self = parser.finish();
+            Ok(())
+        } else {
+            Err(input.len())
+        }
     }
 
     /// Returns whether the specified key exists in the set.
