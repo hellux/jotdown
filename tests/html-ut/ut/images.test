@@ -1,0 +1,31 @@
+anything except text in alt text is ignored for html
+
+```
+![[`some` _alt_ {+text+}]{#x}](photo.jpg)
+.
+<p><img alt="some alt text" src="photo.jpg"></p>
+```
+
+only alt text of nested images should remain
+
+```
+![img2 ![img1 ![img0](0.png)](1.png)](2.png)
+.
+<p><img alt="img2 img1 img0" src="2.png"></p>
+```
+
+smart quotes in alt text is okay
+
+```
+![some "alt" text](img.png)
+.
+<p><img alt="some “alt” text" src="img.png"></p>
+```
+
+quotes in raw alt text should be escaped
+
+```
+![`let x = "x";`](img.png)
+.
+<p><img alt="let x = &quot;x&quot;;" src="img.png"></p>
+```
