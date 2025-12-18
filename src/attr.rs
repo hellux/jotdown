@@ -344,21 +344,18 @@ impl<'s> Attributes<'s> {
     /// ```
     #[must_use]
     pub fn get_value(&self, key: &str) -> Option<AttributeValue<'_>> {
-        if key == "class"
-            && self
-                .0
-                .iter()
-                .filter(|(k, _)| k.key() == Some("class"))
-                .count()
-                > 1
-        {
+        if key == "class" {
             let mut value = AttributeValue::new();
             for (k, v) in &self.0 {
                 if k.key() == Some("class") {
                     value.extend(&v.raw);
                 }
             }
-            Some(value)
+            if value.raw.is_empty() {
+                None
+            } else {
+                Some(value)
+            }
         } else {
             self.0
                 .iter()
