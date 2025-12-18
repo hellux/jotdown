@@ -16,3 +16,178 @@ Automatic and explicit classes should be merged correctly
 <div class="a b">
 </div>
 ```
+
+classes, identifiers and keys can contain ':', '_', '-' and alphanumeric
+characters.
+
+```
+a{.-}
+a{.0}
+a{.:}
+a{._}
+a{.a}
+.
+<p><span class="-">a</span>
+<span class="0">a</span>
+<span class=":">a</span>
+<span class="_">a</span>
+<span class="a">a</span></p>
+```
+
+```
+a{#-}
+a{#0}
+a{#:}
+a{#_}
+a{#a}
+.
+<p><span id="-">a</span>
+<span id="0">a</span>
+<span id=":">a</span>
+<span id="_">a</span>
+<span id="a">a</span></p>
+```
+
+Any other characters will invalidate the whole attribute set
+
+```
+a{.!}
+a{."}
+a{.#}
+a{.$}
+a{.%}
+a{.&}
+a{.'}
+a{.(}
+a{.)}
+a{.*}
+a{.+}
+a{.,}
+a{..}
+a{./}
+a{.;}
+a{.<}
+a{.=}
+a{.>}
+a{.?}
+a{.@}
+a{.[}
+a{.\\}
+a{.]}
+a{.^}
+a{.`}
+a{.|}
+a{.~}
+.
+<p>a{.!}
+a{.”
+a{.#}
+a{.$}
+a{.%}
+a{.&amp;}
+a{.’
+a{.(}
+a{.)}
+a{.*}
+a{.+}
+a{.,}
+a{..}
+a{./}
+a{.;}
+a{.&lt;}
+a{.=}
+a{.&gt;}
+a{.?}
+a{.@}
+a{.[}
+a{.\}
+a{.]}
+a{.^}
+a{.<code>}
+a{.|}
+a{.~}</code></p>
+```
+
+```
+a{#!}
+a{#"}
+a{##}
+a{#$}
+a{#%}
+a{#&}
+a{#'}
+a{#(}
+a{#)}
+a{#*}
+a{#+}
+a{#,}
+a{#.}
+a{#/}
+a{#;}
+a{#<}
+a{#=}
+a{#>}
+a{#?}
+a{#@}
+a{#[}
+a{#\\}
+a{#]}
+a{#^}
+a{#`}
+a{#|}
+a{#~}
+.
+<p>a{#!}
+a{#”
+a{##}
+a{#$}
+a{#%}
+a{#&amp;}
+a{#’
+a{#(}
+a{#)}
+a{#*}
+a{#+}
+a{#,}
+a{#.}
+a{#/}
+a{#;}
+a{#&lt;}
+a{#=}
+a{#&gt;}
+a{#?}
+a{#@}
+a{#[}
+a{#\}
+a{#]}
+a{#^}
+a{#<code>}
+a{#|}
+a{#~}</code></p>
+```
+
+Keys must be followed by '='
+
+```
+a{a=a}
+a{a.a}
+a{a#a}
+.
+<p><span a="a">a</span>
+a{a.a}
+a{a#a}</p>
+```
+
+Values cannot start with other symbols unless quoted
+
+```
+a{a=aa}
+a{a=:a}
+a{a=?a}
+a{a="?a"}
+.
+<p><span a="aa">a</span>
+<span a=":a">a</span>
+a{a=?a}
+<span a="?a">a</span></p>
+```
