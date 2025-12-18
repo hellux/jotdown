@@ -46,3 +46,29 @@ fifth
 </li>
 </ol>
 ```
+
+Numbered lists can use roman numerals
+
+```
+mdclxvi) 1666
+mdclxvii) 1667
+MDCLXVIII) 1668
+MDCLXVIX) 1669
+.
+<ol start="1666" type="i">
+<li>
+1666
+</li>
+<li>
+1667
+</li>
+</ol>
+<ol start="1668" type="I">
+<li>
+1668
+</li>
+<li>
+1669
+</li>
+</ol>
+```
