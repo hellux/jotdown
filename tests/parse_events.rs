@@ -1592,6 +1592,83 @@ fn attr_inline_dangling() {
 }
 
 #[test]
+fn list_bullet_types() {
+    test_parse!(
+        concat!(
+            "- dash\n", //
+            "* star\n", //
+            "+ plus\n", //
+        ),
+        (
+            Start(
+                List {
+                    kind: ListKind::Unordered(Dash),
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (Start(ListItem, Attributes::new()), "-"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("dash".into()), "dash"),
+        (End(Paragraph), ""),
+        (End(ListItem), ""),
+        (
+            End(List {
+                kind: ListKind::Unordered(Dash),
+                tight: true,
+            }),
+            "",
+        ),
+        (
+            Start(
+                List {
+                    kind: ListKind::Unordered(Star),
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (Start(ListItem, Attributes::new()), "*"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("star".into()), "star"),
+        (End(Paragraph), ""),
+        (End(ListItem), ""),
+        (
+            End(List {
+                kind: ListKind::Unordered(Star),
+                tight: true,
+            }),
+            "",
+        ),
+        (
+            Start(
+                List {
+                    kind: ListKind::Unordered(Plus),
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (Start(ListItem, Attributes::new()), "+"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("plus".into()), "plus"),
+        (End(Paragraph), ""),
+        (End(ListItem), ""),
+        (
+            End(List {
+                kind: ListKind::Unordered(Plus),
+                tight: true,
+            }),
+            "",
+        ),
+    );
+}
+
+#[test]
 fn list_item_unordered() {
     test_parse!(
         "- abc",
