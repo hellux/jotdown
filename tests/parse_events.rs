@@ -1541,6 +1541,22 @@ fn attr_inline_multiline_invalid() {
 }
 
 #[test]
+fn attr_inline_multiline_parallel() {
+    test_parse!(
+        concat!(
+            "{%{\n",  //
+            "%0}%\n", //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Start(Span, attrs![(AttributeKind::Comment, "0")]), ""),
+        (Str("{%".into()), "{%"),
+        (End(Span), "{\n%0}"),
+        (Str("%".into()), "%"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn attr_inline_dangling() {
     test_parse!(
         "*a\n{%}",
