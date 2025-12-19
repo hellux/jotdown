@@ -535,6 +535,16 @@ fn symbol() {
 }
 
 #[test]
+fn symbol_eof() {
+    test_parse!(
+        ":valid-symbo",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str(":valid-symbo".into()), ":valid-symbo"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn link_inline() {
     test_parse!(
         "[text](url)",
