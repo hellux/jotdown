@@ -1,0 +1,21 @@
+```
+_emph_ {_emph_}
+*strong* {*strong*}
+{=highlight=}
+{^super^}
+{~sub~}
+{+insert+}
+{-delete-}
+'single' {'quotes'}
+"double" {"quotes"}
+.
+<p><em>emph</em> <em>emph</em>
+<strong>strong</strong> <strong>strong</strong>
+<mark>highlight</mark>
+<sup>super</sup>
+<sub>sub</sub>
+<ins>insert</ins>
+<del>delete</del>
+‘single’ ‘quotes’
+“double” “quotes”</p>
+```
