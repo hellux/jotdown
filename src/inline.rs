@@ -711,11 +711,12 @@ impl<'s> Parser<'s> {
                     // empty container
                     return None;
                 }
-                let whitespace_before = if 0 < self.input.span.start {
-                    self.input.src.as_bytes()[self.input.span.start - 1].is_ascii_whitespace()
-                } else {
-                    false
-                };
+                let whitespace_before = self
+                    .input
+                    .src
+                    .as_bytes()
+                    .get(self.input.span.start.saturating_sub(1))
+                    .map_or(false, u8::is_ascii_whitespace);
                 if opener.bidirectional() && whitespace_before {
                     return None;
                 }
