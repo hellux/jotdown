@@ -33,3 +33,11 @@ Backslash should not escape in verbatim inside tables
 </tr>
 </table>
 ```
+
+Inline verbatim with empty raw format is verbatim
+
+```
+`verbatim`{=}
+.
+<p><code>verbatim</code>{=}</p>
+```
