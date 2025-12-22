@@ -599,6 +599,61 @@ fn ellipsis() {
 }
 
 #[test]
+fn dash() {
+    test_parse!(
+        concat!(
+            "-\n",         //
+            "--\n",        //
+            "---\n",       //
+            "----\n",      //
+            "-----\n",     //
+            "------\n",    //
+            "-------\n",   //
+            "--------\n",  //
+            "---------\n", //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        // 1
+        (Str("-".into()), "-"),
+        (Softbreak, "\n"),
+        // 2
+        (EnDash, "--"),
+        (Softbreak, "\n"),
+        // 3
+        (EmDash, "---"),
+        (Softbreak, "\n"),
+        // 4
+        (EnDash, "--"),
+        (EnDash, "--"),
+        (Softbreak, "\n"),
+        // 5
+        (EmDash, "---"),
+        (EnDash, "--"),
+        (Softbreak, "\n"),
+        // 6
+        (EmDash, "---"),
+        (EmDash, "---"),
+        (Softbreak, "\n"),
+        // 7
+        (EmDash, "---"),
+        (EnDash, "--"),
+        (EnDash, "--"),
+        (Softbreak, "\n"),
+        // 8
+        (EnDash, "--"),
+        (EnDash, "--"),
+        (EnDash, "--"),
+        (EnDash, "--"),
+        (Softbreak, "\n"),
+        // 9
+        (EmDash, "---"),
+        (EmDash, "---"),
+        (EmDash, "---"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn link_inline() {
     test_parse!(
         "[text](url)",
