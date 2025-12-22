@@ -495,6 +495,31 @@ fn verbatim() {
 }
 
 #[test]
+fn verbatim_block_empty() {
+    test_parse!(
+        concat!(
+            " ``` \n", //
+            " ",       //
+        ),
+        (
+            Start(
+                CodeBlock {
+                    language: "".into()
+                },
+                Attributes::new(),
+            ),
+            "``` \n"
+        ),
+        (
+            End(CodeBlock {
+                language: "".into()
+            }),
+            ""
+        ),
+    );
+}
+
+#[test]
 fn raw_inline() {
     test_parse!(
         "``raw\nraw``{=format}",
