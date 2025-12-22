@@ -476,9 +476,8 @@ impl<'s> TreeParser<'s> {
 
             // trim ending whitespace of raw block
             if spec.starts_with('=') {
-                let l = lines.len();
-                if l > 0 {
-                    lines[l - 1] = self.trim_end(lines[l - 1].clone());
+                if let Some(last) = lines.len().checked_sub(1) {
+                    lines[last] = self.trim_end(lines[last].clone());
                 }
             }
         } else {
