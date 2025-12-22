@@ -21,3 +21,13 @@ Similarly for non-ascii text
 .
 <p>これは“サンプル”です</p>
 ```
+
+Quote direction can be specified explicitly
+
+```
+'}single{'
+"}double{"
+.
+<p>’single‘
+”double“</p>
+```
