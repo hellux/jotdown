@@ -447,7 +447,7 @@ impl<'s> TreeParser<'s> {
 
             if matches!(kind, Kind::Atom(Attributes)) {
                 self.attr_start = self.attr_start.or_else(|| Some(self.events.len() - 1));
-            } else if !matches!(kind, Kind::Atom(Blankline)) {
+            } else {
                 self.attr_start = None;
             }
 
