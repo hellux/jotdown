@@ -1293,7 +1293,7 @@ fn attr_inline() {
         "abc _def_{.ghi}",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("abc ".into()), "abc "),
-        (Start(Emphasis, attrs![(AttributeKind::Class, "ghi")],), "_"),
+        (Start(Emphasis, attrs![(AttributeKind::Class, "ghi")]), "_"),
         (Str("def".into()), "def"),
         (End(Emphasis), "_{.ghi}"),
         (End(Paragraph), ""),
@@ -1500,7 +1500,7 @@ fn attr_inline_multiline_comment() {
             "c%}\n",  //
         ),
         (Start(Paragraph, Attributes::new()), ""),
-        (Start(Span, attrs![(AttributeKind::Comment, "a\nb\nc")]), "",),
+        (Start(Span, attrs![(AttributeKind::Comment, "a\nb\nc")]), ""),
         (Str("a".into()), "a"),
         (End(Span), "{%a\nb\nc%}"),
         (End(Paragraph), ""),
