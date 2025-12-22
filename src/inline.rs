@@ -907,17 +907,13 @@ impl<'s> Parser<'s> {
             lex::Kind::Hardbreak => Hardbreak,
             lex::Kind::Escape => Escape,
             lex::Kind::Nbsp => Nbsp,
-            lex::Kind::Seq(Sequence::Period) if first.len >= 3 => {
-                while self.input.span.len() > 3 {
+            lex::Kind::Seq(Sequence::Period) => {
+                while self.input.span.len() >= 3 {
                     let end = self.input.span.start + 3;
                     self.push_sp(EventKind::Atom(Ellipsis), self.input.span.start..end);
                     self.input.span.start = end;
                 }
-                if self.input.span.len() == 3 {
-                    Ellipsis
-                } else {
-                    return self.push(EventKind::Str);
-                }
+                return None;
             }
             lex::Kind::Seq(Sequence::Hyphen) if first.len >= 2 => {
                 let (m, n) = if first.len % 3 == 0 {
