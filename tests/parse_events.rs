@@ -203,6 +203,84 @@ fn heading_attr() {
 }
 
 #[test]
+fn heading_attr_multiple_sections() {
+    test_parse!(
+        concat!(
+            "#\n",    //
+            "##\n",   //
+            "{#1}\n", //
+            "#\n",    //
+        ),
+        (Start(Section { id: "s-1".into() }, Attributes::new()), ""),
+        (
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "s-1".into(),
+                },
+                Attributes::new(),
+            ),
+            "#"
+        ),
+        (
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "s-1".into(),
+            }),
+            ""
+        ),
+        (Start(Section { id: "s-2".into() }, Attributes::new()), ""),
+        (
+            Start(
+                Heading {
+                    level: 2,
+                    has_section: true,
+                    id: "s-2".into(),
+                },
+                Attributes::new(),
+            ),
+            "##"
+        ),
+        (
+            End(Heading {
+                level: 2,
+                has_section: true,
+                id: "s-2".into(),
+            }),
+            ""
+        ),
+        (End(Section { id: "s-2".into() }), ""),
+        (End(Section { id: "s-1".into() }), ""),
+        (
+            Start(Section { id: "1".into() }, attrs![(AttributeKind::Id, "1")]),
+            "{#1}\n",
+        ),
+        (
+            Start(
+                Heading {
+                    level: 1,
+                    has_section: true,
+                    id: "1".into()
+                },
+                Attributes::new(),
+            ),
+            "#"
+        ),
+        (
+            End(Heading {
+                level: 1,
+                has_section: true,
+                id: "1".into()
+            }),
+            ""
+        ),
+        (End(Section { id: "1".into() }), ""),
+    );
+}
+
+#[test]
 fn heading_ref() {
     test_parse!(
         concat!(
@@ -1666,8 +1744,8 @@ fn attr_inline_multiline_parallel() {
             "{%{\n",  //
             "%0}%\n", //
         ),
-        (Start(Paragraph, Attributes::new()), ""),
-        (Start(Span, attrs![(AttributeKind::Comment, "0")]), ""),
+        (Start(Paragraph, Attributes::new()), "",),
+        (Start(Span, attrs![(AttributeKind::Comment, "0")]), "",),
         (Str("{%".into()), "{%"),
         (End(Span), "{\n%0}"),
         (Str("%".into()), "%"),
