@@ -2633,7 +2633,12 @@ impl<'s> Parser<'s> {
                 }
                 block::EventKind::Inline => {
                     if self.verbatim {
-                        Event::Str(self.src[ev_span.clone()].into())
+                        if ev_span.is_empty() {
+                            self.blocks.next().unwrap();
+                            continue;
+                        } else {
+                            Event::Str(self.src[ev_span.clone()].into())
+                        }
                     } else {
                         self.blocks.next().unwrap();
                         self.inline_parser.feed_line(

@@ -12,6 +12,7 @@ pub fn parse(data: &[u8]) {
         let mut open = Vec::new();
         let mut last = (jotdown::Event::Str("".into()), 0..0);
         for (event, range) in jotdown::Parser::new(s).into_offset_iter() {
+            assert!(!matches!(event, jotdown::Event::Str(ref s) if s == ""));
             // no overlap, out of order
             assert!(
                 last.1.end <= range.start
