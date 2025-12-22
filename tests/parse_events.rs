@@ -545,6 +545,60 @@ fn symbol_eof() {
 }
 
 #[test]
+fn ellipsis() {
+    test_parse!(
+        concat!(
+            ".\n",         //
+            "..\n",        //
+            "...\n",       //
+            "....\n",      //
+            ".....\n",     //
+            "......\n",    //
+            ".......\n",   //
+            "........\n",  //
+            ".........\n", //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        // 1
+        (Str(".".into()), "."),
+        (Softbreak, "\n"),
+        // 2
+        (Str("..".into()), ".."),
+        (Softbreak, "\n"),
+        // 3
+        (Ellipsis, "..."),
+        (Softbreak, "\n"),
+        // 4
+        (Ellipsis, "..."),
+        (Str(".".into()), "."),
+        (Softbreak, "\n"),
+        // 5
+        (Ellipsis, "..."),
+        (Str("..".into()), ".."),
+        (Softbreak, "\n"),
+        // 6
+        (Ellipsis, "..."),
+        (Ellipsis, "..."),
+        (Softbreak, "\n"),
+        // 7
+        (Ellipsis, "..."),
+        (Ellipsis, "..."),
+        (Str(".".into()), "."),
+        (Softbreak, "\n"),
+        // 8
+        (Ellipsis, "..."),
+        (Ellipsis, "..."),
+        (Str("..".into()), ".."),
+        (Softbreak, "\n"),
+        // 9
+        (Ellipsis, "..."),
+        (Ellipsis, "..."),
+        (Ellipsis, "..."),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn link_inline() {
     test_parse!(
         "[text](url)",
