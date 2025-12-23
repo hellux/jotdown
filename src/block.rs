@@ -558,7 +558,7 @@ impl<'s> TreeParser<'s> {
         self.enter(Node::Leaf(leaf), span_start);
         lines
             .iter()
-            .filter(|l| !matches!(k, Kind::Heading { .. }) || !l.is_empty())
+            .filter(|l| !l.is_empty())
             .for_each(|line| self.inline(line.clone()));
         self.exit(span_end);
     }
