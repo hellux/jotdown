@@ -72,3 +72,32 @@ MDCLXVIX) 1669
 </li>
 </ol>
 ```
+
+An ordered list with a style change should be split in two
+
+```
+i. a
+j. b
+
+i. a
+j) d
+.
+<ol start="9" type="a">
+<li>
+a
+</li>
+<li>
+b
+</li>
+</ol>
+<ol type="i">
+<li>
+a
+</li>
+</ol>
+<ol start="10" type="a">
+<li>
+d
+</li>
+</ol>
+```
