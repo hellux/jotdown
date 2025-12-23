@@ -584,7 +584,7 @@ impl<'s> TreeParser<'s> {
                     } else if src_t.starts_with('>')
                         && src_t[1..].starts_with(|c: char| c.is_ascii_whitespace())
                     {
-                        whitespace + 1 + usize::from(src_t.len() > 1)
+                        whitespace + 2
                     } else {
                         0
                     }
