@@ -16,3 +16,71 @@ regression test: bug caused consecutive table to disappear
 </tr>
 </table>
 ```
+
+Leading/trailing whitespace in separator line is ignored
+
+```
+| :-: |
+|a|
+.
+<table>
+<tr>
+<td style="text-align: center;">a</td>
+</tr>
+</table>
+```
+
+Separator line may not contain other characters
+
+```
+|:--------------.|
+|a|
+.
+<table>
+<tr>
+<td>:–––––––.</td>
+</tr>
+<tr>
+<td>a</td>
+</tr>
+</table>
+```
+
+
+```
+|:--------------.:|
+|a|
+.
+<table>
+<tr>
+<td>:–––––––.:</td>
+</tr>
+<tr>
+<td>a</td>
+</tr>
+</table>
+```
+
+Tables can be interrupted if end pipe is escaped
+
+```
+|a|
+|b\|
+.
+<table>
+<tr>
+<td>a</td>
+</tr>
+</table>
+<p>|b|</p>
+```
+
+```
+| ``` `` ``` |
+.
+<table>
+<tr>
+<td><code>``</code></td>
+</tr>
+</table>
+```
