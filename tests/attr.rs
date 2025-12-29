@@ -21,6 +21,7 @@ macro_rules! test_attr {
 #[test]
 fn empty() {
     test_attr!("{}", [], []);
+    test_attr!("{ \n }", [], []);
 }
 
 #[test]
@@ -89,6 +90,18 @@ fn value_quoted() {
             ),
         ],
         [("id", "id"), ("class", "class"), ("style", "color:red")]
+    );
+    test_attr!(
+        r#"{a="б"}"#,
+        [
+            (
+                Pair {
+                    key: "a".into()
+                },
+                "б",
+            ),
+        ],
+        [("a", "б")],
     );
 }
 
