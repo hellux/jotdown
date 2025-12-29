@@ -2123,7 +2123,7 @@ impl<'s> PrePass<'s> {
                             }
                         });
                         inline_parser.feed_line(
-                            span_inline.as_ref().cloned().unwrap_or(last_end..last_end),
+                            span_inline.clone().unwrap_or(last_end..last_end),
                             span_inline.is_none(),
                         );
                         inline_parser.for_each(|ev| match ev.kind {
