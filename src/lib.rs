@@ -2642,9 +2642,8 @@ impl<'s> Parser<'s> {
                         if ev_span.is_empty() {
                             self.blocks.next().unwrap();
                             continue;
-                        } else {
-                            Event::Str(self.src[ev_span.clone()].into())
                         }
+                        Event::Str(self.src[ev_span.clone()].into())
                     } else {
                         self.blocks.next().unwrap();
                         self.inline_parser.feed_line(
