@@ -731,8 +731,6 @@ impl<'s> Parser<'s> {
         }
     }
 
-    /// Return value indicates the number of bytes parsed if finished. If None, more input is
-    /// required to finish the attributes.
     pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         use State::*;
 
