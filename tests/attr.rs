@@ -179,6 +179,31 @@ fn only_escape_punctuation() {
     );
 }
 
+macro_rules! test_invalid {
+    ($src_valid:literal $src_invalid:literal $(,)?) => {
+        let src = concat!($src_valid, $src_invalid);
+        match Attributes::try_from(src) {
+            Ok(a) => panic!("{:?}", a),
+            Err(jotdown::ParseAttributesError { pos }) => {
+                assert_eq!($src_valid, &src[..pos]);
+            }
+        }
+    };
+}
+
+#[test]
+fn invalid_no_brace() {
+    test_invalid!("" ".a}");
+    test_invalid!("" " {.a}");
+}
+
+#[test]
+fn invalid_element() {
+    test_invalid!("{.a invalid" "}");
+    test_invalid!("{.a" ".}");
+    test_invalid!("{a=" "&}");
+}
+
 #[test]
 fn get_value_named() {
     assert_eq!(

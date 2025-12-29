@@ -908,12 +908,4 @@ mod test {
         let src_valid = "{.class}";
         assert_eq!(super::valid(src), src_valid.len());
     }
-
-    #[test]
-    fn valid_invalid() {
-        assert_eq!(super::valid(" {.valid}"), 0);
-        assert_eq!(super::valid("{.class invalid}"), 0);
-        assert_eq!(super::valid("abc"), 0);
-        assert_eq!(super::valid("{.abc.}"), 0);
-    }
 }
