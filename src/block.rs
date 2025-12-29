@@ -1328,11 +1328,7 @@ fn lines(src: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
             let start = src.len() - chars.as_str().len();
             chars.find(|c| *c == '\n');
             let end = src.len() - chars.as_str().len();
-            if start == end {
-                None
-            } else {
-                Some(start..end)
-            }
+            if start == end { None } else { Some(start..end) }
         }
     })
 }

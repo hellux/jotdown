@@ -1,6 +1,6 @@
+use crate::CowStr;
 use crate::attr;
 use crate::lex;
-use crate::CowStr;
 
 use lex::Delimiter;
 use lex::Sequence;
