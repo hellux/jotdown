@@ -292,12 +292,13 @@ impl<'s> Attributes<'s> {
     /// Parse and append attributes.
     pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
         let mut parser = Parser::new(self.take());
-        parser.parse(input)?;
-        if matches!(parser.state, State::Done) {
+        let input = input.trim_end_matches(|c: char| c.is_ascii_whitespace());
+        let n = parser.parse(input)?;
+        if n == input.len() && matches!(parser.state, State::Done) {
             *self = parser.finish();
             Ok(())
         } else {
-            Err(input.len())
+            Err(n)
         }
     }
 
@@ -735,7 +736,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub(crate) fn parse(&mut self, input: &'s str) -> Result<(), usize> {
+    pub(crate) fn parse(&mut self, input: &'s str) -> Result<usize, usize> {
         use State::*;
 
         let mut pos_prev = 0;
@@ -786,12 +787,12 @@ impl<'s> Parser<'s> {
                 if input[pos + 1..].starts_with('{') {
                     self.state = Start;
                 } else {
-                    return Ok(());
+                    return Ok(pos + 1);
                 }
             }
         }
 
-        Ok(())
+        Ok(input.len())
     }
 
     pub(crate) fn finish(self) -> Attributes<'s> {

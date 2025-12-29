@@ -220,6 +220,11 @@ fn invalid_element() {
 }
 
 #[test]
+fn invalid_trailing() {
+    test_invalid!("{.a}" "x");
+}
+
+#[test]
 fn get_value_named() {
     assert_eq!(
         Attributes::try_from("{x=a}").unwrap().get_value("x"),
