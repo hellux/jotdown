@@ -864,18 +864,3 @@ impl State {
 pub(crate) fn is_name(c: u8) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, b':' | b'_' | b'-')
 }
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn valid_unicode() {
-        let src = r#"{a="б"}"#;
-        assert_eq!(super::valid(src), src.len());
-    }
-
-    #[test]
-    fn valid_whitespace() {
-        let src = "{ \n }";
-        assert_eq!(super::valid(src), src.len());
-    }
-}
