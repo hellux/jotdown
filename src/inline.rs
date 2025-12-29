@@ -379,14 +379,14 @@ impl<'s> Parser<'s> {
                         && sp
                             .end
                             .checked_sub(2)
-                            .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                            .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
                 }) {
                 let (ty, num_dollar) = if sp.len() > 1
                     && self.input.src.as_bytes()[sp.start + sp.len() - 2] == b'$'
                     && sp
                         .end
                         .checked_sub(3)
-                        .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                        .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
                 {
                     (DisplayMath, 2)
                 } else {
@@ -860,7 +860,7 @@ impl<'s> Parser<'s> {
                     .ahead()
                     .iter()
                     .next()
-                    .map_or(true, u8::is_ascii_whitespace);
+                    .is_none_or(u8::is_ascii_whitespace);
                 if opener.bidirectional() && whitespace_after {
                     return None;
                 }

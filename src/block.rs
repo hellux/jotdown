@@ -983,13 +983,13 @@ impl<'s> IdentifiedBlock<'s> {
             '\n' => Some((Kind::Atom(Blankline), indent..(indent + 1))),
             '#' => chars
                 .find(|c| *c != '#')
-                .map_or(true, |c| c.is_ascii_whitespace())
+                .is_none_or(|c| c.is_ascii_whitespace())
                 .then(|| {
                     let level = line.bytes().take_while(|c| *c == b'#').count();
                     (Kind::Heading { level }, indent..(indent + level))
                 }),
             '>' => {
-                if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
+                if chars.next().is_none_or(|c| c.is_ascii_whitespace()) {
                     Some((Kind::Blockquote, indent..(indent + 1)))
                 } else {
                     None
@@ -1031,11 +1031,11 @@ impl<'s> IdentifiedBlock<'s> {
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
                 Some((Kind::Atom(ThematicBreak), indent..(indent + lt)))
             }
-            b @ ('-' | '*' | '+') => chars.next().map_or(true, |c| c == ' ').then(|| {
+            b @ ('-' | '*' | '+') => chars.next().is_none_or(|c| c == ' ').then(|| {
                 let task_list = chars.next() == Some('[')
                     && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
-                    && chars.next().map_or(true, |c| c.is_ascii_whitespace());
+                    && chars.next().is_none_or(|c| c.is_ascii_whitespace());
                 if task_list {
                     (
                         Kind::ListItem {
@@ -1056,20 +1056,14 @@ impl<'s> IdentifiedBlock<'s> {
                     )
                 }
             }),
-            ':' if chars
-                .clone()
-                .next()
-                .map_or(true, |c| c.is_ascii_whitespace()) =>
-            {
-                Some((
-                    Kind::ListItem {
-                        indent,
-                        ty: Description,
-                        last_blankline: false,
-                    },
-                    indent..(indent + 1),
-                ))
-            }
+            ':' if chars.clone().next().is_none_or(|c| c.is_ascii_whitespace()) => Some((
+                Kind::ListItem {
+                    indent,
+                    ty: Description,
+                    last_blankline: false,
+                },
+                indent..(indent + 1),
+            )),
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
                 let spec =
@@ -1194,7 +1188,7 @@ impl<'s> IdentifiedBlock<'s> {
         };
         let len_style = usize::from(start_paren) + 1;
 
-        if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
+        if chars.next().is_none_or(|c| c.is_ascii_whitespace()) {
             let len = len_num + len_style;
             Some((
                 ListNumber {
