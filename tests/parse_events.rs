@@ -145,10 +145,10 @@ fn heading() {
 fn heading_attr() {
     test_parse!(
         concat!(
-                "# abc\n",
-                "{a=b}\n",
-                "# def\n", //
-            ),
+            "# abc\n", //
+            "{a=b}\n", //
+            "# def\n", //
+        ),
         (Start(Section { id: "abc".into() }, Attributes::new()), ""),
         (
             Start(
@@ -480,9 +480,9 @@ fn verbatim() {
     );
     test_parse!(
         concat!(
-                "> `abc\n",
-                "> def\n", //
-            ),
+            "> `abc\n", //
+            "> def\n",  //
+        ),
         (Start(Blockquote, Attributes::new()), ">"),
         (Start(Paragraph, Attributes::new()), ""),
         (Start(Verbatim, Attributes::new()), "`"),
@@ -1399,10 +1399,10 @@ fn attr_block() {
     );
     test_parse!(
         concat!(
-                "{.a}\n",
-                "{#b}\n",
-                "para\n", //
-            ),
+            "{.a}\n", //
+            "{#b}\n", //
+            "para\n", //
+        ),
         (
             Start(
                 Paragraph,
