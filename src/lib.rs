@@ -2131,9 +2131,7 @@ impl<'s> PrePass<'s> {
                                 let mut chars = src[ev.span].chars().peekable();
                                 while let Some(c) = chars.next() {
                                     if c.is_ascii_whitespace() {
-                                        while chars
-                                            .peek()
-                                            .map_or(false, |c| c.is_ascii_whitespace())
+                                        while chars.peek().map_or(false, char::is_ascii_whitespace)
                                         {
                                             chars.next();
                                         }
