@@ -680,13 +680,11 @@ impl<'s> TreeParser<'s> {
                     let first_detail = self.events[exit_term + 1..]
                         .iter()
                         .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
-                        .map(|i| exit_term + 1 + i)
-                        .unwrap_or(self.events.len());
+                        .map_or(self.events.len(), |i| exit_term + 1 + i);
                     let detail_pos = self
                         .events
                         .get(first_detail)
-                        .map(|e| e.span.start)
-                        .unwrap_or_else(|| self.events.last().unwrap().span.end);
+                        .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
                     for (i, j) in (enter_term..first_detail).enumerate() {
                         self.events[enter_detail + i] = self.events[j].clone();
                     }
