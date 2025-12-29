@@ -267,17 +267,13 @@ impl<'s> Parser<'s> {
         self.store_attributes.clear();
     }
 
-    fn push_sp(
-        &mut self,
-        kind: EventKind<'s>,
-        span: std::ops::Range<usize>,
-    ) -> Option<ControlFlow> {
+    fn push_sp(&mut self, kind: EventKind<'s>, span: std::ops::Range<usize>) {
         self.events.push_back(Event { kind, span });
-        Some(Continue)
     }
 
-    fn push(&mut self, kind: EventKind<'s>) -> Option<ControlFlow> {
-        self.push_sp(kind, self.input.span.clone())
+    fn push(&mut self, kind: EventKind<'s>) -> ControlFlow {
+        self.push_sp(kind, self.input.span.clone());
+        Continue
     }
 
     fn parse_event(&mut self) -> ControlFlow {
@@ -291,7 +287,7 @@ impl<'s> Parser<'s> {
                 .or_else(|| self.parse_footnote_reference(&first))
                 .or_else(|| self.parse_container(&first))
                 .or_else(|| self.parse_atom(&first))
-                .unwrap_or_else(|| self.push(EventKind::Str).unwrap())
+                .unwrap_or_else(|| self.push(EventKind::Str))
         } else if self.input.last() {
             Done
         } else {
@@ -416,7 +412,7 @@ impl<'s> Parser<'s> {
                 non_whitespace_last: None,
             });
             self.attributes = None;
-            self.push(EventKind::Enter(ty))
+            Some(self.push(EventKind::Enter(ty)))
         } else {
             None
         }
@@ -614,7 +610,7 @@ impl<'s> Parser<'s> {
                 self.input.span = span_url;
                 self.push(EventKind::Str);
                 self.input.span = self.input.span.end..(self.input.span.end + 1);
-                return self.push(EventKind::Exit(Autolink(url)));
+                return Some(self.push(EventKind::Exit(Autolink(url))));
             }
         }
         None
@@ -642,7 +638,9 @@ impl<'s> Parser<'s> {
                 self.input.lexer.skip_ahead(len + 1);
                 let span_symbol = self.input.span.end..(self.input.span.end + len);
                 self.input.span.end = span_symbol.end + 1;
-                return self.push(EventKind::Atom(Atom::Symbol(&self.input.src[span_symbol])));
+                return Some(
+                    self.push(EventKind::Atom(Atom::Symbol(&self.input.src[span_symbol]))),
+                );
             }
         }
         None
@@ -687,7 +685,7 @@ impl<'s> Parser<'s> {
                 let span_label = self.input.span.end..(self.input.span.end + len);
                 let label = &self.input.src[span_label.clone()];
                 self.input.span.end = span_label.end + 1;
-                return self.push(EventKind::Atom(FootnoteReference { label }));
+                return Some(self.push(EventKind::Atom(FootnoteReference { label })));
             }
         }
         None
@@ -725,11 +723,11 @@ impl<'s> Parser<'s> {
                 let closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
                         self.events[e_opener].kind = EventKind::Enter(cont);
-                        self.push(EventKind::Exit(cont))
+                        Some(self.push(EventKind::Exit(cont)))
                     }
                     DelimEventKind::Quote(ty) => {
                         self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
-                        self.push(EventKind::Atom(Quote { ty, left: false }))
+                        Some(self.push(EventKind::Atom(Quote { ty, left: false })))
                     }
                     DelimEventKind::Span(ty) => {
                         if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
@@ -746,9 +744,9 @@ impl<'s> Parser<'s> {
                             ));
                             self.input.reset_span();
                             self.input.eat(); // [ or (
-                            return self.push(EventKind::Str);
+                            return Some(self.push(EventKind::Str));
                         } else {
-                            self.push(EventKind::Str) // ]
+                            Some(self.push(EventKind::Str)) // ]
                         }
                     }
                     DelimEventKind::Link {
@@ -887,7 +885,7 @@ impl<'s> Parser<'s> {
                     self.input.span.start..self.input.span.start,
                 );
                 // use non-opener for now, replace if closed later
-                self.push(match opener {
+                Some(self.push(match opener {
                     Opener::SingleQuoted => EventKind::Atom(Quote {
                         ty: QuoteType::Single,
                         left: false,
@@ -897,7 +895,7 @@ impl<'s> Parser<'s> {
                         left: true,
                     }),
                     _ => EventKind::Str,
-                })
+                }))
             })
     }
 
@@ -954,7 +952,7 @@ impl<'s> Parser<'s> {
             _ => return None,
         };
 
-        self.push(EventKind::Atom(atom))
+        Some(self.push(EventKind::Atom(atom)))
     }
 
     fn merge_str_events(&mut self, span_str: std::ops::Range<usize>) -> Event<'s> {
