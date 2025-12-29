@@ -512,7 +512,7 @@ impl<'s> TreeParser<'s> {
             // skip first inline if empty
             if lines.first().map_or(false, |l| l.is_empty()) {
                 lines = &mut lines[1..];
-            };
+            }
 
             if matches!(leaf, LinkDefinition { .. }) {
                 // trim ending whitespace of each inline
