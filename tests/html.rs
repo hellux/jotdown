@@ -1,5 +1,5 @@
-use jotdown::html::Indentation;
 use jotdown::Render;
+use jotdown::html::Indentation;
 
 macro_rules! test_html {
     ($src:expr, $expected:expr $(,$indent:expr)? $(,)?) => {

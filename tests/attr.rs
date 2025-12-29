@@ -93,7 +93,7 @@ fn value_quoted() {
     );
     test_attr!(
         r#"{a="б"}"#,
-        [(Pair { key: "a".into() }, "б",),],
+        [(Pair { key: "a".into() }, "б")],
         [("a", "б")],
     );
 }

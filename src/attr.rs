@@ -14,11 +14,7 @@ pub(crate) fn valid(src: &str) -> usize {
         }
     }
 
-    if matches!(state, Done) {
-        n
-    } else {
-        0
-    }
+    if matches!(state, Done) { n } else { 0 }
 }
 
 /// Stores an attribute value that supports backslash escapes of ASCII punctuation upon displaying,

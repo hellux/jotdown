@@ -82,7 +82,7 @@ fn parse_para_multiline() {
 fn parse_heading() {
     test_parse!(
         concat!(
-            "# a\n",
+            "# a\n",  //
             "## b\n", //
         ),
         (Enter(Container(Section { pos: 0 })), ""),
@@ -213,8 +213,8 @@ fn parse_heading_multi() {
 fn parse_heading_multi_repeat() {
     test_parse!(
         concat!(
-            "# a\n",
-            "# b\n",
+            "# a\n", //
+            "# b\n", //
             "c\n",   //
         ),
         (Enter(Container(Section { pos: 0 })), ""),
