@@ -1,6 +1,12 @@
 use crate::Alignment;
-use crate::OrderedListNumbering::*;
-use crate::OrderedListStyle::*;
+use crate::OrderedListNumbering::AlphaLower;
+use crate::OrderedListNumbering::AlphaUpper;
+use crate::OrderedListNumbering::Decimal;
+use crate::OrderedListNumbering::RomanLower;
+use crate::OrderedListNumbering::RomanUpper;
+use crate::OrderedListStyle::Paren;
+use crate::OrderedListStyle::ParenParen;
+use crate::OrderedListStyle::Period;
 
 use crate::attr;
 use crate::lex;
