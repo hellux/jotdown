@@ -9,7 +9,7 @@ env:
 
 jobs:
   test_unit:
-    name: Unit test main crate (1.56)
+    name: Unit test main crate (1.88)
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
@@ -18,8 +18,8 @@ jobs:
           persist-credentials: false
       - name: "Setup toolchain"
         run: |
-          rustup update 1.56
-          rustup default 1.56
+          rustup update 1.88
+          rustup default 1.88
       - name: "Build"
         run: |
           cargo build -p jotdown
@@ -50,7 +50,7 @@ jobs:
         run: |
           make check
   test_html:
-    name: Build and run HTML tests (1.56)
+    name: Build and run HTML tests (1.88)
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repo"
@@ -59,8 +59,8 @@ jobs:
           persist-credentials: false
       - name: "Setup toolchain"
         run: |
-          rustup update 1.56
-          rustup default 1.56
+          rustup update 1.88
+          rustup default 1.88
       - name: "Run HTML unit tests"
         run: make test_html_ut
       - name: "Setup node"
