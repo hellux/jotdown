@@ -126,7 +126,7 @@ pub trait Render {
 
         self.push(events, &mut out).map_err(|_| match out.error {
             Err(e) => e,
-            _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
+            _ => std::io::Error::other("formatter error"),
         })
     }
 }
