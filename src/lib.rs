@@ -2172,11 +2172,11 @@ impl<'s> PrePass<'s> {
                         let mut num = 1;
                         id_auto.push('-');
                         let i_num = id_auto.len();
-                        write!(id_auto, "{}", num).unwrap();
+                        write!(id_auto, "{num}").unwrap();
                         while used_ids.contains::<str>(&id_auto) {
                             num += 1;
                             id_auto.drain(i_num..);
-                            write!(id_auto, "{}", num).unwrap();
+                            write!(id_auto, "{num}").unwrap();
                         }
                     }
 
@@ -2414,7 +2414,7 @@ impl<'s> Parser<'s> {
                             } else {
                                 self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
                                     || (tag.clone(), SpanLinkType::Unresolved),
-                                    |id| (format!("#{}", id).into(), SpanLinkType::Reference),
+                                    |id| (format!("#{id}").into(), SpanLinkType::Reference),
                                 )
                             };
 
@@ -2464,7 +2464,7 @@ impl<'s> Parser<'s> {
                 }
                 inline::EventKind::Str => Event::Str(self.src[inline.span.clone()].into()),
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
-                    panic!("{:?}", inline)
+                    panic!("{inline:?}")
                 }
             };
             (event, inline.span)
@@ -2472,8 +2472,7 @@ impl<'s> Parser<'s> {
 
         debug_assert!(
             attributes.is_empty(),
-            "unhandled attributes: {:?}",
-            attributes
+            "unhandled attributes: {attributes:?}",
         );
 
         event
