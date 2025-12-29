@@ -650,11 +650,7 @@ impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((key, value)) = self.attrs[self.pos..].first() {
             self.pos += 1;
-            let key = if let Some(k) = key.key() {
-                k
-            } else {
-                continue; // ignore comments
-            };
+            let Some(key) = key.key() else { continue };
 
             if self.attrs[..self.pos - 1]
                 .iter()

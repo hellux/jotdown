@@ -268,9 +268,7 @@ impl<'s> TreeParser<'s> {
 
     fn exit(&mut self, span: std::ops::Range<usize>) -> usize {
         let i = self.events.len();
-        let node = if let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind {
-            node
-        } else {
+        let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
             panic!();
         };
         self.events.push(Event {
@@ -541,11 +539,7 @@ impl<'s> TreeParser<'s> {
                     .map_or(0, |i| i + 1);
                 let pos = span_start.start as u32;
                 for i in 0..(self.open_sections.len() - first_close) {
-                    let node = if let EventKind::Enter(node) =
-                        self.events[self.open.pop().unwrap()].kind
-                    {
-                        node
-                    } else {
+                    let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
                         panic!();
                     };
                     let end = self
@@ -657,14 +651,13 @@ impl<'s> TreeParser<'s> {
                 if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
                     // convert paragraph into description term
                     *l = DescriptionTerm;
-                    let exit_term = if let Some(i) = self.events[enter_term + 1..]
+                    let Some(inner) = self.events[enter_term + 1..]
                         .iter_mut()
                         .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
-                    {
-                        enter_term + 1 + i
-                    } else {
+                    else {
                         panic!()
                     };
+                    let exit_term = enter_term + 1 + inner;
                     if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
                         *l = DescriptionTerm;
                     } else {
@@ -979,9 +972,7 @@ impl<'s> IdentifiedBlock<'s> {
         let lt = line_t.len();
         let mut chars = line.chars();
 
-        let first = if let Some(c) = chars.next() {
-            c
-        } else {
+        let Some(first) = chars.next() else {
             return Self {
                 kind: Kind::Atom(Blankline),
                 span: indent..indent,
