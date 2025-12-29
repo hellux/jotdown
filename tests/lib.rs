@@ -1,4 +1,5 @@
 mod attr;
+mod cli;
 mod html;
 mod parse_events;
 
