@@ -2058,9 +2058,12 @@ impl<'s> PrePass<'s> {
                 })) => {
                     // All link definition tags have to be obtained initially, as references can
                     // appear before the definition.
-                    let attrs = Attributes::from_iter(attr_prev.iter().flat_map(|sp| {
-                        Attributes::try_from(&src[sp.clone()]).expect("should be valid")
-                    }));
+                    let attrs = attr_prev
+                        .iter()
+                        .flat_map(|sp| {
+                            Attributes::try_from(&src[sp.clone()]).expect("should be valid")
+                        })
+                        .collect::<Attributes>();
                     let url = if let Some(block::Event {
                         kind: block::EventKind::Inline,
                         span,
@@ -2102,9 +2105,12 @@ impl<'s> PrePass<'s> {
                     // as formatting must be removed.
                     //
                     // We choose to parse all headers twice instead of caching them.
-                    let attrs = Attributes::from_iter(attr_prev.iter().flat_map(|sp| {
-                        Attributes::try_from(&src[sp.clone()]).expect("should be valid")
-                    }));
+                    let attrs = attr_prev
+                        .iter()
+                        .flat_map(|sp| {
+                            Attributes::try_from(&src[sp.clone()]).expect("should be valid")
+                        })
+                        .collect::<Attributes>();
                     let id_override = attrs.get_value("id").map(|s| s.to_string());
 
                     let mut id_auto = String::new();
