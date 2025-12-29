@@ -1,3 +1,12 @@
+## [0.9.1](https://github.com/hellux/jotdown/releases/tag/0.9.1) - 2025-12-29
+
+### Fixed
+
+- Disappearing consecutive tables.
+- Missing blankline events after tables.
+- Mismatches with reference implementation for intraword double quotes (#102).
+- Mismatches with reference implementation for multi-line headings.
+
 ## [0.9.0](https://github.com/hellux/jotdown/releases/tag/0.9.0) - 2025-10-30
 
 ### Changed
