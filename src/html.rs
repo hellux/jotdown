@@ -804,7 +804,7 @@ where
             '"' if escape_quotes => Some("&quot;"),
             _ => None,
         }
-        .map_or(false, |s| {
+        .is_some_and(|s| {
             ent = s;
             true
         })

@@ -508,7 +508,7 @@ impl<'s> TreeParser<'s> {
             }
 
             // skip first inline if empty
-            if lines.first().map_or(false, std::ops::Range::is_empty) {
+            if lines.first().is_some_and(std::ops::Range::is_empty) {
                 lines = &mut lines[1..];
             }
 
