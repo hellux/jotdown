@@ -166,7 +166,7 @@ impl<'s> Input<'s> {
                     }
                     if **c == b'}' {
                         end = true;
-                    };
+                    }
                     !end && !c.is_ascii_whitespace()
                 })
                 .count();
@@ -314,7 +314,7 @@ impl<'s> Parser<'s> {
                         format: &self.input.src[span_format.clone()],
                     });
                     self.input.span.end = span_format.end + 1;
-                };
+                }
                 let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
                     debug_assert!(matches!(
                         ty,
@@ -366,7 +366,7 @@ impl<'s> Parser<'s> {
                     *non_whitespace_last = Some((first.kind, self.events.len() + 1));
                 }
                 self.push(EventKind::Str);
-            };
+            }
             Some(Continue)
         } else if matches!(first.kind, lex::Kind::Seq(Sequence::Backtick)) {
             let len_opener = u8::try_from(first.len).ok()?;
@@ -595,7 +595,7 @@ impl<'s> Parser<'s> {
                     }
                     if **c == b'>' {
                         end = true;
-                    };
+                    }
                     if matches!(*c, b':' | b'@') {
                         is_url = true;
                     }
@@ -676,7 +676,7 @@ impl<'s> Parser<'s> {
                     }
                     if **c == b']' {
                         end = true;
-                    };
+                    }
                     !end && **c != b'\n'
                 })
                 .count();

@@ -780,7 +780,7 @@ impl<'s> Parser<'s> {
                     CommentFirst => self.attrs.push((AttributeKind::Comment, "".into())),
                     _ => {}
                 }
-            };
+            }
 
             debug_assert!(!matches!(self.state, Invalid));
 
