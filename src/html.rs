@@ -286,16 +286,12 @@ impl Render for Renderer {
     }
 }
 
+#[derive(Default)]
 enum Raw {
+    #[default]
     None,
     Html,
     Other,
-}
-
-impl Default for Raw {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 struct Writer<'s, 'f> {
