@@ -352,11 +352,11 @@ impl<'s, 'f> Writer<'s, 'f> {
     where
         W: std::fmt::Write,
     {
-        if let Some(indent) = self.indent {
-            if !indent.string.is_empty() {
-                for _ in 0..self.depth {
-                    out.write_str(&indent.string)?;
-                }
+        if let Some(indent) = self.indent
+            && !indent.string.is_empty()
+        {
+            for _ in 0..self.depth {
+                out.write_str(&indent.string)?;
             }
         }
         Ok(())
@@ -766,13 +766,13 @@ where
         first_written = true;
         out.write_str(cls)?;
     }
-    if let Container::Div { class } = c {
-        if !class.is_empty() {
-            if first_written {
-                out.write_char(' ')?;
-            }
-            out.write_str(class)?;
+    if let Container::Div { class } = c
+        && !class.is_empty()
+    {
+        if first_written {
+            out.write_char(' ')?;
         }
+        out.write_str(class)?;
     }
     Ok(())
 }

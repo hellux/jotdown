@@ -396,21 +396,16 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = true;
             } else {
                 self.prev_loose = false;
-                if self.prev_blankline {
-                    if let Some(OpenList { event, depth, .. }) = self.open_lists.last() {
-                        if usize::from(*depth) >= self.open.len()
-                            || !matches!(kind, Kind::ListItem { .. })
-                        {
-                            if let EventKind::Enter(Node::Container(List { tight, .. })) =
-                                &mut self.events[*event].kind
-                            {
-                                if *tight {
-                                    self.prev_loose = true;
-                                    *tight = false;
-                                }
-                            }
-                        }
-                    }
+                if self.prev_blankline
+                    && let Some(OpenList { event, depth, .. }) = self.open_lists.last()
+                    && (usize::from(*depth) >= self.open.len()
+                        || !matches!(kind, Kind::ListItem { .. }))
+                    && let EventKind::Enter(Node::Container(List { tight, .. })) =
+                        &mut self.events[*event].kind
+                    && *tight
+                {
+                    self.prev_loose = true;
+                    *tight = false;
                 }
                 self.prev_blankline = false;
             }
@@ -496,10 +491,10 @@ impl<'s> TreeParser<'s> {
             }
 
             // trim ending whitespace of raw block
-            if spec.starts_with('=') {
-                if let Some(last) = lines.len().checked_sub(1) {
-                    lines[last] = self.trim_end(lines[last].clone());
-                }
+            if spec.starts_with('=')
+                && let Some(last) = lines.len().checked_sub(1)
+            {
+                lines[last] = self.trim_end(lines[last].clone());
             }
         } else {
             // trim starting whitespace of each inline
@@ -526,40 +521,38 @@ impl<'s> TreeParser<'s> {
             }
         }
 
-        if let Kind::Heading { level, .. } = k {
-            // open and close sections
-            if let Leaf::Heading {
+        if let Kind::Heading { level, .. } = k
+            && let Leaf::Heading {
                 has_section: true, ..
             } = leaf
-            {
-                let first_close = self
-                    .open_sections
-                    .iter()
-                    .rposition(|l| l < level)
-                    .map_or(0, |i| i + 1);
-                let pos = span_start.start as u32;
-                for i in 0..(self.open_sections.len() - first_close) {
-                    let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
-                        panic!();
-                    };
-                    let end = self
-                        .attr_start
-                        .map_or(span_start.start, |a| self.events[a].span.start);
-                    self.events.insert(
-                        self.attr_start.map_or(self.events.len(), |a| a + i),
-                        Event {
-                            kind: EventKind::Exit(node),
-                            span: end..end,
-                        },
-                    );
-                }
-                self.open_sections.drain(first_close..);
-                self.open_sections.push(*level);
-                self.enter(
-                    Node::Container(Section { pos }),
-                    span_start.start..span_start.start,
+        {
+            let first_close = self
+                .open_sections
+                .iter()
+                .rposition(|l| l < level)
+                .map_or(0, |i| i + 1);
+            let pos = span_start.start as u32;
+            for i in 0..(self.open_sections.len() - first_close) {
+                let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
+                    panic!();
+                };
+                let end = self
+                    .attr_start
+                    .map_or(span_start.start, |a| self.events[a].span.start);
+                self.events.insert(
+                    self.attr_start.map_or(self.events.len(), |a| a + i),
+                    Event {
+                        kind: EventKind::Exit(node),
+                        span: end..end,
+                    },
                 );
             }
+            self.open_sections.drain(first_close..);
+            self.open_sections.push(*level);
+            self.enter(
+                Node::Container(Section { pos }),
+                span_start.start..span_start.start,
+            );
         }
 
         self.enter(Node::Leaf(leaf), span_start);
@@ -607,24 +600,23 @@ impl<'s> TreeParser<'s> {
             sp.start += skip.min(len);
         });
 
-        if let Kind::ListItem { ty, .. } = k {
-            let same_depth = self
+        if let Kind::ListItem { ty, .. } = k
+            && self
                 .open_lists
                 .last()
-                .is_none_or(|OpenList { depth, .. }| usize::from(*depth) < self.open.len());
-            if same_depth {
-                let tight = true;
-                let event = self.enter(
-                    Node::Container(Container::List { ty: *ty, tight }),
-                    span_start.start..span_start.start,
-                );
-                self.open_lists.push(OpenList {
-                    ty_start: *ty,
-                    ty_prev: *ty,
-                    depth: self.open.len().try_into().unwrap(),
-                    event,
-                });
-            }
+                .is_none_or(|OpenList { depth, .. }| usize::from(*depth) < self.open.len())
+        {
+            let tight = true;
+            let event = self.enter(
+                Node::Container(Container::List { ty: *ty, tight }),
+                span_start.start..span_start.start,
+            );
+            self.open_lists.push(OpenList {
+                ty_start: *ty,
+                ty_prev: *ty,
+                depth: self.open.len().try_into().unwrap(),
+                event,
+            });
         }
 
         let dt = if let ListItem(ListItemKind::Description) = c {
@@ -643,49 +635,47 @@ impl<'s> TreeParser<'s> {
             l += self.parse_block(&mut lines[l..], false);
         }
 
-        if let Some((empty_term, enter_detail, open_detail)) = dt {
-            let enter_term = enter_detail + 1;
-            if let Some(first_child) = self.events.get_mut(enter_term) {
-                if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
-                    // convert paragraph into description term
-                    *l = DescriptionTerm;
-                    let Some(inner) = self.events[enter_term + 1..]
-                        .iter_mut()
-                        .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
-                    else {
-                        panic!()
-                    };
-                    let exit_term = enter_term + 1 + inner;
-                    if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
-                        *l = DescriptionTerm;
-                    } else {
-                        panic!()
-                    }
-
-                    // remove empty description term
-                    self.events[empty_term].kind = EventKind::Stale;
-                    self.events[empty_term + 1].kind = EventKind::Stale;
-
-                    // move out term before detail
-                    self.events[enter_term].span = self.events[empty_term].span.clone();
-                    let first_detail = self.events[exit_term + 1..]
-                        .iter()
-                        .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
-                        .map_or(self.events.len(), |i| exit_term + 1 + i);
-                    let detail_pos = self
-                        .events
-                        .get(first_detail)
-                        .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
-                    for (i, j) in (enter_term..first_detail).enumerate() {
-                        self.events[enter_detail + i] = self.events[j].clone();
-                    }
-                    self.events[first_detail - 1] = Event {
-                        kind: EventKind::Enter(Node::Container(c)),
-                        span: detail_pos..detail_pos,
-                    };
-                    self.open[open_detail] = first_detail - 1;
-                }
+        if let Some((empty_term, enter_detail, open_detail)) = dt
+            && let Some(first_child) = self.events.get_mut(enter_detail + 1)
+            && let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind
+        {
+            // convert paragraph into description term
+            *l = DescriptionTerm;
+            let Some(inner) = self.events[enter_detail + 2..]
+                .iter_mut()
+                .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
+            else {
+                panic!()
+            };
+            let exit_term = enter_detail + 2 + inner;
+            if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
+                *l = DescriptionTerm;
+            } else {
+                panic!()
             }
+
+            // remove empty description term
+            self.events[empty_term].kind = EventKind::Stale;
+            self.events[empty_term + 1].kind = EventKind::Stale;
+
+            // move out term before detail
+            self.events[enter_detail + 1].span = self.events[empty_term].span.clone();
+            let first_detail = self.events[exit_term + 1..]
+                .iter()
+                .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
+                .map_or(self.events.len(), |i| exit_term + 1 + i);
+            let detail_pos = self
+                .events
+                .get(first_detail)
+                .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
+            for (i, j) in (enter_detail + 1..first_detail).enumerate() {
+                self.events[enter_detail + i] = self.events[j].clone();
+            }
+            self.events[first_detail - 1] = Event {
+                kind: EventKind::Enter(Node::Container(c)),
+                span: detail_pos..detail_pos,
+            };
+            self.open[open_detail] = first_detail - 1;
         }
 
         if let Some(OpenList { depth, .. }) = self.open_lists.last() {
@@ -1274,10 +1264,10 @@ impl<'s> Kind<'s> {
                         }
                     } else if k == *kind {
                         *has_closing_fence = l >= *fence_length && spec.is_empty();
-                    } else if *kind == FenceKind::Div {
-                        if let FenceKind::CodeBlock(c) = k {
-                            *nested_raw = Some((c, l));
-                        }
+                    } else if *kind == FenceKind::Div
+                        && let FenceKind::CodeBlock(c) = k
+                    {
+                        *nested_raw = Some((c, l));
                     }
                 }
                 true
