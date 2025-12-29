@@ -922,9 +922,8 @@ impl<'s> Parser<'s> {
                     let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
                     ((first.len - 2 * n) / 3, n)
                 };
-                std::iter::repeat(EmDash)
-                    .take(m)
-                    .chain(std::iter::repeat(EnDash).take(n))
+                std::iter::repeat_n(EmDash, m)
+                    .chain(std::iter::repeat_n(EnDash, n))
                     .for_each(|atom| {
                         let end =
                             self.input.span.start + if matches!(atom, EnDash) { 2 } else { 3 };
