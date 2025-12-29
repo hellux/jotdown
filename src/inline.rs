@@ -745,9 +745,8 @@ impl<'s> Parser<'s> {
                             self.input.reset_span();
                             self.input.eat(); // [ or (
                             return Some(self.push(EventKind::Str));
-                        } else {
-                            Some(self.push(EventKind::Str)) // ]
                         }
+                        Some(self.push(EventKind::Str)) // ]
                     }
                     DelimEventKind::Link {
                         event_span,
