@@ -243,3 +243,23 @@ fn from_to_vec() {
     let v1: Vec<(AttributeKind, AttributeValue)> = a.into();
     assert_eq!(v0, v1);
 }
+
+#[test]
+fn value_from_str() {
+    assert_eq!(
+        AttributeValue::from("value").parts().collect::<Vec<_>>(),
+        vec!["value"],
+    );
+    assert_eq!(
+        AttributeValue::from(String::from("value"))
+            .parts()
+            .collect::<Vec<_>>(),
+        vec!["value"],
+    );
+    assert_eq!(
+        AttributeValue::from(std::borrow::Cow::from("value"))
+            .parts()
+            .collect::<Vec<_>>(),
+        vec!["value"],
+    );
+}
