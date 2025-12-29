@@ -349,7 +349,7 @@ impl<'s> Parser<'s> {
                 // continue verbatim
                 let is_whitespace = self.input.src.as_bytes()[self.input.span.clone()]
                     .iter()
-                    .all(|b| b.is_ascii_whitespace());
+                    .all(u8::is_ascii_whitespace);
                 if is_whitespace {
                     if !*non_whitespace_encountered
                         && self.input.peek().map_or(false, |t| {
@@ -860,7 +860,7 @@ impl<'s> Parser<'s> {
                     .ahead()
                     .iter()
                     .next()
-                    .map_or(true, |c| c.is_ascii_whitespace());
+                    .map_or(true, u8::is_ascii_whitespace);
                 if opener.bidirectional() && whitespace_after {
                     return None;
                 }
