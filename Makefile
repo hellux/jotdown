@@ -7,7 +7,7 @@ jotdown: target/release/jotdown
 	cp $< $@
 
 target/release/jotdown:
-	cargo build --release
+	cargo build --release --all-features
 
 .PHONY:
 docs:

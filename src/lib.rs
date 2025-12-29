@@ -6,7 +6,8 @@
 //!
 //! # Feature flags
 //!
-//! - `html` (default): build the html module and a binary that converts djot to HTML.
+//! - `html` (default): build the [HTML renderer][html::Renderer],
+//! - `cli`: build a CLI binary that renders to HTML.
 //!
 //! # Examples
 //!
