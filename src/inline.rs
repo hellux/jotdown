@@ -315,15 +315,13 @@ impl<'s> Parser<'s> {
                     });
                     self.input.span.end = span_format.end + 1;
                 }
-                let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
-                    debug_assert!(matches!(
-                        ty,
-                        Verbatim | RawFormat { .. } | InlineMath | DisplayMath
-                    ));
-                    ty
-                } else {
+                let EventKind::Enter(ty_opener) = self.events[event_opener].kind else {
                     panic!()
                 };
+                debug_assert!(matches!(
+                    ty_opener,
+                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
+                ));
                 if let Some((lex::Kind::Seq(Sequence::Backtick), event_skip)) = non_whitespace_last
                 {
                     self.events.drain(*event_skip..);
@@ -1192,15 +1190,13 @@ impl<'s> Iterator for Parser<'s> {
         // automatically close unclosed verbatim
         if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
             self.input.lexer.verbatim = false;
-            let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
-                debug_assert!(matches!(
-                    ty,
-                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
-                ));
-                ty
-            } else {
+            let EventKind::Enter(ty_opener) = self.events[event_opener].kind else {
                 panic!()
             };
+            debug_assert!(matches!(
+                ty_opener,
+                Verbatim | RawFormat { .. } | InlineMath | DisplayMath
+            ));
             self.push(EventKind::Exit(ty_opener));
         }
 
