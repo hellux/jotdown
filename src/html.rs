@@ -7,7 +7,11 @@ use crate::Event;
 use crate::LinkType;
 use crate::ListKind;
 use crate::Map;
-use crate::OrderedListNumbering::*;
+use crate::OrderedListNumbering::AlphaLower;
+use crate::OrderedListNumbering::AlphaUpper;
+use crate::OrderedListNumbering::Decimal;
+use crate::OrderedListNumbering::RomanLower;
+use crate::OrderedListNumbering::RomanUpper;
 use crate::Render;
 use crate::SpanLinkType;
 
