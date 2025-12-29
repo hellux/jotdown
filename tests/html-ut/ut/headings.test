@@ -1,0 +1,55 @@
+```
+#   #
+.
+<section id="s-1">
+<h1>#</h1>
+</section>
+```
+
+```
+#
+        #  #
+.
+<section id="s-1">
+<h1>#</h1>
+</section>
+```
+
+```
+#
+#
+.
+<section id="s-1">
+<h1></h1>
+</section>
+```
+
+```
+#
+      #
+.
+<section id="s-1">
+<h1></h1>
+</section>
+```
+
+```
+#
+##a
+.
+<section id="a">
+<h1>##a</h1>
+</section>
+```
+
+```
+#
+## a
+.
+<section id="s-1">
+<h1></h1>
+<section id="a">
+<h2>a</h2>
+</section>
+</section>
+```

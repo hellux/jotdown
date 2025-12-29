@@ -322,11 +322,28 @@ impl<'s> TreeParser<'s> {
 
             // skip outer block part for inner content
             lines[0].start += outer_len;
-            if matches!(kind, Kind::Blockquote)
-                && lines[0].start < lines[0].end
-                && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ')
-            {
-                lines[0].start += 1;
+            match kind {
+                Kind::Blockquote
+                    if lines[0].start < lines[0].end
+                        && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ') =>
+                {
+                    lines[0].start += 1;
+                }
+                Kind::Heading { level, .. } => {
+                    for line in lines.iter_mut().skip(1) {
+                        let l = &self.src.as_bytes()[line.clone()];
+                        let l = &l[l.iter().take_while(|c| c.is_ascii_whitespace()).count()..];
+                        let hash = l.iter().take_while(|c| **c == b'#').count();
+                        let l = &l[hash..];
+                        let post_ws = l.iter().take_while(|c| c.is_ascii_whitespace()).count();
+                        let l = &l[post_ws..];
+                        if post_ws > 0 {
+                            debug_assert_eq!(level, hash);
+                            line.start += line.len() - l.len();
+                        }
+                    }
+                }
+                _ => {}
             }
 
             // skip opening and closing fence of code block / div
@@ -542,16 +559,6 @@ impl<'s> TreeParser<'s> {
                     Node::Container(Section { pos }),
                     span_start.start..span_start.start,
                 );
-            }
-
-            // trim '#' characters
-            for line in lines.iter_mut().skip(1) {
-                let start = line.start
-                    + self.src.as_bytes()[line.clone()]
-                        .iter()
-                        .take_while(|c| **c == b'#' || c.is_ascii_whitespace())
-                        .count();
-                line.start = start;
             }
         }
 
