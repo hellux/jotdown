@@ -239,7 +239,7 @@ impl<'s> TreeParser<'s> {
             line_pos += line_count;
         }
         while let Some(l) = self.open_lists.pop() {
-            self.close_list(l, self.src.len());
+            self.close_list(&l, self.src.len());
         }
 
         for _ in std::mem::take(&mut self.open_sections).drain(..) {
@@ -388,7 +388,7 @@ impl<'s> TreeParser<'s> {
                     };
                     if !continues {
                         let l = self.open_lists.pop().unwrap();
-                        self.close_list(l, span_start.start);
+                        self.close_list(&l, span_start.start);
                     }
                 }
             }
@@ -705,7 +705,7 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = false;
                 self.prev_loose = false;
                 let l = self.open_lists.pop().unwrap();
-                self.close_list(l, span_end.start);
+                self.close_list(&l, span_end.start);
             }
         }
 
@@ -869,7 +869,7 @@ impl<'s> TreeParser<'s> {
         self.exit(span_end);
     }
 
-    fn close_list(&mut self, list: OpenList, pos: usize) {
+    fn close_list(&mut self, list: &OpenList, pos: usize) {
         if let EventKind::Enter(Node::Container(List { ty, tight })) =
             &mut self.events[list.event].kind
         {
