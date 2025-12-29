@@ -1020,7 +1020,7 @@ impl<'s> IdentifiedBlock<'s> {
                     None
                 }
             }
-            '[' => chars.as_str().find("]").and_then(|l| {
+            '[' => chars.as_str().find(']').and_then(|l| {
                 if chars.as_str()[l + 1..].starts_with(':') {
                     let label = &chars.as_str()[0..l];
                     let footnote = label.starts_with('^');
