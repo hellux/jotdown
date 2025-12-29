@@ -411,7 +411,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             } => {
                                 out.write_str("<ol")?;
                                 if *start > 1 {
-                                    write!(out, r#" start="{}""#, start)?;
+                                    write!(out, r#" start="{start}""#)?;
                                 }
                                 if let Some(ty) = match numbering {
                                     Decimal => None,
@@ -420,7 +420,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                                     RomanLower => Some('i'),
                                     RomanUpper => Some('I'),
                                 } {
-                                    write!(out, r#" type="{}""#, ty)?;
+                                    write!(out, r#" type="{ty}""#)?;
                                 }
                             }
                         }
@@ -441,7 +441,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                         }
                         out.write_str("<p")?;
                     }
-                    Container::Heading { level, .. } => write!(out, "<h{}", level)?,
+                    Container::Heading { level, .. } => write!(out, "<h{level}")?,
                     Container::TableCell { head: false, .. } => out.write_str("<td")?,
                     Container::TableCell { head: true, .. } => out.write_str("<th")?,
                     Container::Caption => out.write_str("<caption")?,
@@ -490,7 +490,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 let mut id_written = false;
                 let mut class_written = false;
                 for (a, v) in attrs.unique_pairs() {
-                    write!(out, r#" {}=""#, a)?;
+                    write!(out, r#" {a}=""#)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
                     match a {
                         "class" => {
@@ -541,7 +541,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             Alignment::Center => "center",
                             Alignment::Right => "right",
                         };
-                        write!(out, r#" style="text-align: {};">"#, a)?;
+                        write!(out, r#" style="text-align: {a};">"#)?;
                     }
                     Container::CodeBlock { language } => {
                         if language.is_empty() {
@@ -608,7 +608,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                             out.write_str("</p>")?;
                         }
                     }
-                    Container::Heading { level, .. } => write!(out, "</h{}>", level)?,
+                    Container::Heading { level, .. } => write!(out, "</h{level}>")?,
                     Container::TableCell { head: false, .. } => out.write_str("</td>")?,
                     Container::TableCell { head: true, .. } => out.write_str("</th>")?,
                     Container::Caption => out.write_str("</caption>")?,
@@ -659,7 +659,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                     )?;
                 }
             }
-            Event::Symbol(sym) => write!(out, ":{}:", sym)?,
+            Event::Symbol(sym) => write!(out, ":{sym}:")?,
             Event::LeftSingleQuote => out.write_str("‘")?,
             Event::RightSingleQuote => out.write_str("’")?,
             Event::LeftDoubleQuote => out.write_str("“")?,
@@ -681,7 +681,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 self.block(&mut out, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
-                    write!(out, r#" {}=""#, a)?;
+                    write!(out, r#" {a}=""#)?;
                     v.parts().try_for_each(|part| write_attr(part, &mut out))?;
                     out.write_char('"')?;
                 }
@@ -707,7 +707,7 @@ impl<'s, 'f> Writer<'s, 'f> {
 
             while let Some((number, events)) = self.footnotes.next() {
                 self.block(&mut out, 0)?;
-                write!(out, "<li id=\"fn{}\">", number)?;
+                write!(out, "<li id=\"fn{number}\">")?;
 
                 let mut unclosed_para = false;
                 for e in events.into_iter().flatten() {
@@ -729,8 +729,7 @@ impl<'s, 'f> Writer<'s, 'f> {
                 }
                 write!(
                     out,
-                    "<a href=\"#fnref{}\" role=\"doc-backlink\">\u{21A9}\u{FE0E}</a></p>",
-                    number,
+                    "<a href=\"#fnref{number}\" role=\"doc-backlink\">\u{21A9}\u{FE0E}</a></p>",
                 )?;
 
                 self.block(&mut out, 0)?;

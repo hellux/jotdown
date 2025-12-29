@@ -9,7 +9,7 @@ fn main() {
     let f = match target.as_str() {
         "parse" => jotdown_afl::parse,
         "html" => jotdown_afl::html,
-        _ => panic!("unknown target '{}'", target),
+        _ => panic!("unknown target '{target}'"),
     };
 
     let mut input = Vec::new();

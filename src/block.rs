@@ -598,7 +598,7 @@ impl<'s> TreeParser<'s> {
                 }
                 Kind::ListItem { .. } | Kind::Definition { .. } => whitespace.min(outer_len),
                 Kind::Fenced { indent, .. } => whitespace.min(*indent),
-                _ => panic!("non-container {:?}", k),
+                _ => panic!("non-container {k:?}"),
             };
             let len = self.src.as_bytes()[sp.clone()]
                 .iter()
