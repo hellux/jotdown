@@ -2348,6 +2348,7 @@ impl<'s> Parser<'s> {
     ///     ],
     /// ));
     /// ```
+    #[must_use]
     pub fn into_offset_iter(self) -> OffsetIter<'s> {
         OffsetIter { parser: self }
     }
