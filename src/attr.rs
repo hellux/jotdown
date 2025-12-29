@@ -39,6 +39,7 @@ impl<'s> AttributeValue<'s> {
 
     /// Processes the attribute value escapes and returns an iterator of the parts of the value
     /// that should be displayed.
+    #[must_use]
     pub fn parts(&'s self) -> AttributeValueParts<'s> {
         AttributeValueParts { ahead: &self.raw }
     }
