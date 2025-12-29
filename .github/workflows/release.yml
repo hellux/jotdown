@@ -65,7 +65,7 @@ jobs:
         if [ -n "${{ matrix.linker }}" ]; then
           export RUSTFLAGS="-Clinker=${{ matrix.linker }}"
         fi
-        cargo build --verbose --release --target ${{ matrix.target }}
+        cargo build --all-features --verbose --release --target ${{ matrix.target }}
         find .
         bin="target/${{ matrix.target }}/release/jotdown"
         [ "${{ matrix.os }}" = "windows-latest" ] && bin="$bin.exe"
