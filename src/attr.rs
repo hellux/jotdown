@@ -63,7 +63,7 @@ impl<'s> AttributeValue<'s> {
                     self.raw = format!("{}{}", prev, s).into();
                 }
             }
-            CowStr::Owned(ref mut prev) => {
+            CowStr::Owned(prev) => {
                 if prev.is_empty() {
                     self.raw = s.into();
                 } else {
