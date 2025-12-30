@@ -914,12 +914,14 @@ impl<'s> Parser<'s> {
                 return None;
             }
             lex::Kind::Seq(Sequence::Hyphen) if first.len >= 2 => {
-                let (m, n) = if first.len % 3 == 0 {
+                let (m, n) = if first.len.is_multiple_of(3) {
                     (first.len / 3, 0)
-                } else if first.len % 2 == 0 {
+                } else if first.len.is_multiple_of(2) {
                     (0, first.len / 2)
                 } else {
-                    let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
+                    let n = (1..)
+                        .find(|n| (first.len - 2 * n).is_multiple_of(3))
+                        .unwrap();
                     ((first.len - 2 * n) / 3, n)
                 };
                 std::iter::repeat_n(EmDash, m)
