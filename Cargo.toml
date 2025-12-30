@@ -33,14 +33,18 @@ exclude = [
     "tests/afl",
 ]
 
+[dependencies]
+clap = { version = "4.5", optional = true, features = ["derive"] }
+
 [[bin]]
 name = "jotdown"
-required-features = ["html"]
+required-features = ["cli"]
 doc = false
 
 [features]
 default = ["html"]
-html = [] # html renderer and minimal cli binary
+html = [] # html renderer
+cli = ["html", "dep:clap"]
 deterministic = [] # for stable fuzzing
 
 [profile.release]

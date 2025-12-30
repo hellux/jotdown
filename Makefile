@@ -7,7 +7,7 @@ jotdown: target/release/jotdown
 	cp $< $@
 
 target/release/jotdown:
-	cargo build --release
+	cargo build --release --all-features
 
 .PHONY:
 docs:
@@ -18,12 +18,12 @@ lint:
 	cargo clippy -- -D warnings
 	cargo clippy --no-default-features -- -D warnings
 	cargo clippy --all-features -- -D warnings
-	cargo check --all
+	cargo check --all --all-features
 	cargo fmt --all -- --check
 
 .PHONY: check
 check:
-	cargo test --workspace
+	cargo test --workspace --all-features
 	cargo test --workspace --no-default-features
 
 .PHONY: enable-git-hooks
