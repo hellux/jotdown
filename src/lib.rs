@@ -125,7 +125,7 @@ pub trait Render {
 
         self.push(events, &mut out).map_err(|_| match out.error {
             Err(e) => e,
-            _ => std::io::Error::new(std::io::ErrorKind::Other, "formatter error"),
+            _ => std::io::Error::other("formatter error"),
         })
     }
 }
@@ -2137,8 +2137,7 @@ impl<'s> PrePass<'s> {
                                 let mut chars = src[ev.span].chars().peekable();
                                 while let Some(c) = chars.next() {
                                     if c.is_ascii_whitespace() {
-                                        while chars.peek().map_or(false, char::is_ascii_whitespace)
-                                        {
+                                        while chars.peek().is_some_and(char::is_ascii_whitespace) {
                                             chars.next();
                                         }
                                         if !last_whitespace {
@@ -2171,11 +2170,11 @@ impl<'s> PrePass<'s> {
                         let mut num = 1;
                         id_auto.push('-');
                         let i_num = id_auto.len();
-                        write!(id_auto, "{}", num).unwrap();
+                        write!(id_auto, "{num}").unwrap();
                         while used_ids.contains::<str>(&id_auto) {
                             num += 1;
                             id_auto.drain(i_num..);
-                            write!(id_auto, "{}", num).unwrap();
+                            write!(id_auto, "{num}").unwrap();
                         }
                     }
 
@@ -2413,7 +2412,7 @@ impl<'s> Parser<'s> {
                             } else {
                                 self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
                                     || (tag.clone(), SpanLinkType::Unresolved),
-                                    |id| (format!("#{}", id).into(), SpanLinkType::Reference),
+                                    |id| (format!("#{id}").into(), SpanLinkType::Reference),
                                 )
                             };
 
@@ -2463,7 +2462,7 @@ impl<'s> Parser<'s> {
                 }
                 inline::EventKind::Str => Event::Str(self.src[inline.span.clone()].into()),
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
-                    panic!("{:?}", inline)
+                    panic!("{inline:?}")
                 }
             };
             (event, inline.span)
@@ -2471,8 +2470,7 @@ impl<'s> Parser<'s> {
 
         debug_assert!(
             attributes.is_empty(),
-            "unhandled attributes: {:?}",
-            attributes
+            "unhandled attributes: {attributes:?}",
         );
 
         event

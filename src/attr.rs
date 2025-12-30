@@ -61,7 +61,7 @@ impl<'s> AttributeValue<'s> {
                 if prev.is_empty() {
                     *prev = s;
                 } else {
-                    self.raw = format!("{}{}", prev, s).into();
+                    self.raw = format!("{prev}{s}").into();
                 }
             }
             CowStr::Owned(prev) => {
@@ -531,7 +531,7 @@ impl std::fmt::Debug for Attributes<'_> {
             match k {
                 AttributeKind::Class => write!(f, ".{}", v.raw)?,
                 AttributeKind::Id => write!(f, "#{}", v.raw)?,
-                AttributeKind::Pair { key } => write!(f, "{}=\"{}\"", key, v.raw)?,
+                AttributeKind::Pair { key } => write!(f, "{key}=\"{}\"", v.raw)?,
                 AttributeKind::Comment => write!(f, "%{}%", v.raw)?,
             }
         }
@@ -654,11 +654,7 @@ impl<'a: 's, 's> Iterator for AttributePairsIter<'a, 's> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((key, value)) = self.attrs[self.pos..].first() {
             self.pos += 1;
-            let key = if let Some(k) = key.key() {
-                k
-            } else {
-                continue; // ignore comments
-            };
+            let Some(key) = key.key() else { continue };
 
             if self.attrs[..self.pos - 1]
                 .iter()
@@ -862,7 +858,7 @@ impl State {
             ValueQuoted if c == b'\\' => ValueEscape,
             ValueQuoted | ValueEscape => ValueQuoted,
             ValueNewline | ValueContinued => ValueContinued,
-            Invalid | Done => panic!("{:?}", self),
+            Invalid | Done => panic!("{self:?}"),
         }
     }
 }

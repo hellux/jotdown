@@ -24,7 +24,8 @@ current implementation has zero dependencies, if major non-essential features
 are added or larger dependencies are utilized, these should be optional using
 feature flags.
 
-Jotdown supports Rust edition 2021, i.e. Rust 1.56 and above.
+Jotdown currently supports Rust 1.82 and later. Version 0.9.1 and earlier
+support Rust 1.56.
 
 [djot]: https://djot.net
 [djot-syntax]: https://htmlpreview.github.io/?https://github.com/jgm/djot/blob/master/doc/syntax.html

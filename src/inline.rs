@@ -315,15 +315,13 @@ impl<'s> Parser<'s> {
                     });
                     self.input.span.end = span_format.end + 1;
                 }
-                let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
-                    debug_assert!(matches!(
-                        ty,
-                        Verbatim | RawFormat { .. } | InlineMath | DisplayMath
-                    ));
-                    ty
-                } else {
+                let EventKind::Enter(ty_opener) = self.events[event_opener].kind else {
                     panic!()
                 };
+                debug_assert!(matches!(
+                    ty_opener,
+                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
+                ));
                 if let Some((lex::Kind::Seq(Sequence::Backtick), event_skip)) = non_whitespace_last
                 {
                     self.events.drain(*event_skip..);
@@ -332,9 +330,10 @@ impl<'s> Parser<'s> {
                 self.input.lexer.verbatim = false;
                 self.verbatim = None;
                 if raw_format.is_none()
-                    && self.input.peek().map_or(false, |t| {
-                        matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
-                    })
+                    && self
+                        .input
+                        .peek()
+                        .is_some_and(|t| matches!(t.kind, lex::Kind::Open(Delimiter::Brace)))
                 {
                     return self
                         .ahead_attributes(
@@ -352,7 +351,7 @@ impl<'s> Parser<'s> {
                     .all(u8::is_ascii_whitespace);
                 if is_whitespace {
                     if !*non_whitespace_encountered
-                        && self.input.peek().map_or(false, |t| {
+                        && self.input.peek().is_some_and(|t| {
                             matches!(
                                 t.kind,
                                 lex::Kind::Seq(Sequence::Backtick) if t.len != len_opener.into(),
@@ -380,14 +379,14 @@ impl<'s> Parser<'s> {
                         && sp
                             .end
                             .checked_sub(2)
-                            .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                            .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
                 }) {
                 let (ty, num_dollar) = if sp.len() > 1
                     && self.input.src.as_bytes()[sp.start + sp.len() - 2] == b'$'
                     && sp
                         .end
                         .checked_sub(3)
-                        .map_or(true, |i| self.input.src.as_bytes()[i] != b'\\')
+                        .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
                 {
                     (DisplayMath, 2)
                 } else {
@@ -714,7 +713,7 @@ impl<'s> Parser<'s> {
                     .src
                     .as_bytes()
                     .get(self.input.span.start.saturating_sub(1))
-                    .map_or(false, u8::is_ascii_whitespace);
+                    .is_some_and(u8::is_ascii_whitespace);
                 if opener.bidirectional() && whitespace_before {
                     return None;
                 }
@@ -834,9 +833,11 @@ impl<'s> Parser<'s> {
                     }
                 };
 
-                if self.input.peek().map_or(false, |t| {
-                    matches!(t.kind, lex::Kind::Open(Delimiter::Brace))
-                }) {
+                if self
+                    .input
+                    .peek()
+                    .is_some_and(|t| matches!(t.kind, lex::Kind::Open(Delimiter::Brace)))
+                {
                     let elem_ty = if matches!(opener, Opener::DoubleQuoted | Opener::SingleQuoted) {
                         // quote delimiters will turn into atoms instead of containers, so cannot
                         // place attributes on the container start
@@ -859,7 +860,7 @@ impl<'s> Parser<'s> {
                     .ahead()
                     .iter()
                     .next()
-                    .map_or(true, u8::is_ascii_whitespace);
+                    .is_none_or(u8::is_ascii_whitespace);
                 if opener.bidirectional() && whitespace_after {
                     return None;
                 }
@@ -872,7 +873,7 @@ impl<'s> Parser<'s> {
                     && self
                         .events
                         .back()
-                        .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                        .is_some_and(|ev| matches!(ev.kind, EventKind::Str))
                     && !whitespace_before
                 {
                     return None;
@@ -921,9 +922,8 @@ impl<'s> Parser<'s> {
                     let n = (1..).find(|n| (first.len - 2 * n) % 3 == 0).unwrap();
                     ((first.len - 2 * n) / 3, n)
                 };
-                std::iter::repeat(EmDash)
-                    .take(m)
-                    .chain(std::iter::repeat(EnDash).take(n))
+                std::iter::repeat_n(EmDash, m)
+                    .chain(std::iter::repeat_n(EnDash, n))
                     .for_each(|atom| {
                         let end =
                             self.input.span.start + if matches!(atom, EnDash) { 2 } else { 3 };
@@ -962,7 +962,7 @@ impl<'s> Parser<'s> {
         while self
             .events
             .front()
-            .map_or(false, |e| should_merge(e, span.clone()))
+            .is_some_and(|e| should_merge(e, span.clone()))
         {
             let ev = self.events.pop_front().unwrap();
             span.end = ev.span.end;
@@ -1173,7 +1173,7 @@ impl<'s> Iterator for Parser<'s> {
             || self // for merge or attributes
                 .events
                 .back()
-                .map_or(false, |ev| matches!(ev.kind, EventKind::Str))
+                .is_some_and(|ev| matches!(ev.kind, EventKind::Str))
         {
             match self.parse_event() {
                 Continue => {}
@@ -1192,15 +1192,13 @@ impl<'s> Iterator for Parser<'s> {
         // automatically close unclosed verbatim
         if let Some(VerbatimState { event_opener, .. }) = self.verbatim.take() {
             self.input.lexer.verbatim = false;
-            let ty_opener = if let EventKind::Enter(ty) = self.events[event_opener].kind {
-                debug_assert!(matches!(
-                    ty,
-                    Verbatim | RawFormat { .. } | InlineMath | DisplayMath
-                ));
-                ty
-            } else {
+            let EventKind::Enter(ty_opener) = self.events[event_opener].kind else {
                 panic!()
             };
+            debug_assert!(matches!(
+                ty_opener,
+                Verbatim | RawFormat { .. } | InlineMath | DisplayMath
+            ));
             self.push(EventKind::Exit(ty_opener));
         }
 

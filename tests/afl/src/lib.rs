@@ -25,11 +25,10 @@ pub fn parse(data: &[u8]) {
                     )
                     && range.end <= last.1.start
                 ),
-                "{} > {} {:?} {:?}",
+                "{} > {} {:?} {event:?}",
                 last.1.end,
                 range.start,
                 last.0,
-                event
             );
             last = (event.clone(), range.clone());
             // range is valid unicode, does not cross char boundary
@@ -105,7 +104,7 @@ fn validate_html(html: &str) {
     if has_error {
         eprintln!("html:");
         html.split('\n').enumerate().for_each(|(i, l)| {
-            eprintln!("{:>2}:{}", i + 1, l);
+            eprintln!("{:>2}:{l}", i + 1);
         });
         eprintln!("\n");
         panic!();

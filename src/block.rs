@@ -268,9 +268,7 @@ impl<'s> TreeParser<'s> {
 
     fn exit(&mut self, span: std::ops::Range<usize>) -> usize {
         let i = self.events.len();
-        let node = if let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind {
-            node
-        } else {
+        let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
             panic!();
         };
         self.events.push(Event {
@@ -510,7 +508,7 @@ impl<'s> TreeParser<'s> {
             }
 
             // skip first inline if empty
-            if lines.first().map_or(false, std::ops::Range::is_empty) {
+            if lines.first().is_some_and(std::ops::Range::is_empty) {
                 lines = &mut lines[1..];
             }
 
@@ -541,11 +539,7 @@ impl<'s> TreeParser<'s> {
                     .map_or(0, |i| i + 1);
                 let pos = span_start.start as u32;
                 for i in 0..(self.open_sections.len() - first_close) {
-                    let node = if let EventKind::Enter(node) =
-                        self.events[self.open.pop().unwrap()].kind
-                    {
-                        node
-                    } else {
+                    let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
                         panic!();
                     };
                     let end = self
@@ -604,7 +598,7 @@ impl<'s> TreeParser<'s> {
                 }
                 Kind::ListItem { .. } | Kind::Definition { .. } => whitespace.min(outer_len),
                 Kind::Fenced { indent, .. } => whitespace.min(*indent),
-                _ => panic!("non-container {:?}", k),
+                _ => panic!("non-container {k:?}"),
             };
             let len = self.src.as_bytes()[sp.clone()]
                 .iter()
@@ -617,9 +611,7 @@ impl<'s> TreeParser<'s> {
             let same_depth = self
                 .open_lists
                 .last()
-                .map_or(true, |OpenList { depth, .. }| {
-                    usize::from(*depth) < self.open.len()
-                });
+                .is_none_or(|OpenList { depth, .. }| usize::from(*depth) < self.open.len());
             if same_depth {
                 let tight = true;
                 let event = self.enter(
@@ -657,14 +649,13 @@ impl<'s> TreeParser<'s> {
                 if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
                     // convert paragraph into description term
                     *l = DescriptionTerm;
-                    let exit_term = if let Some(i) = self.events[enter_term + 1..]
+                    let Some(inner) = self.events[enter_term + 1..]
                         .iter_mut()
                         .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
-                    {
-                        enter_term + 1 + i
-                    } else {
+                    else {
                         panic!()
                     };
+                    let exit_term = enter_term + 1 + inner;
                     if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
                         *l = DescriptionTerm;
                     } else {
@@ -979,9 +970,7 @@ impl<'s> IdentifiedBlock<'s> {
         let lt = line_t.len();
         let mut chars = line.chars();
 
-        let first = if let Some(c) = chars.next() {
-            c
-        } else {
+        let Some(first) = chars.next() else {
             return Self {
                 kind: Kind::Atom(Blankline),
                 span: indent..indent,
@@ -992,13 +981,13 @@ impl<'s> IdentifiedBlock<'s> {
             '\n' => Some((Kind::Atom(Blankline), indent..(indent + 1))),
             '#' => chars
                 .find(|c| *c != '#')
-                .map_or(true, |c| c.is_ascii_whitespace())
+                .is_none_or(|c| c.is_ascii_whitespace())
                 .then(|| {
                     let level = line.bytes().take_while(|c| *c == b'#').count();
                     (Kind::Heading { level }, indent..(indent + level))
                 }),
             '>' => {
-                if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
+                if chars.next().is_none_or(|c| c.is_ascii_whitespace()) {
                     Some((Kind::Blockquote, indent..(indent + 1)))
                 } else {
                     None
@@ -1040,11 +1029,11 @@ impl<'s> IdentifiedBlock<'s> {
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
                 Some((Kind::Atom(ThematicBreak), indent..(indent + lt)))
             }
-            b @ ('-' | '*' | '+') => chars.next().map_or(true, |c| c == ' ').then(|| {
+            b @ ('-' | '*' | '+') => chars.next().is_none_or(|c| c == ' ').then(|| {
                 let task_list = chars.next() == Some('[')
                     && matches!(chars.next(), Some('x' | 'X' | ' '))
                     && chars.next() == Some(']')
-                    && chars.next().map_or(true, |c| c.is_ascii_whitespace());
+                    && chars.next().is_none_or(|c| c.is_ascii_whitespace());
                 if task_list {
                     (
                         Kind::ListItem {
@@ -1065,20 +1054,14 @@ impl<'s> IdentifiedBlock<'s> {
                     )
                 }
             }),
-            ':' if chars
-                .clone()
-                .next()
-                .map_or(true, |c| c.is_ascii_whitespace()) =>
-            {
-                Some((
-                    Kind::ListItem {
-                        indent,
-                        ty: Description,
-                        last_blankline: false,
-                    },
-                    indent..(indent + 1),
-                ))
-            }
+            ':' if chars.clone().next().is_none_or(|c| c.is_ascii_whitespace()) => Some((
+                Kind::ListItem {
+                    indent,
+                    ty: Description,
+                    last_blankline: false,
+                },
+                indent..(indent + 1),
+            )),
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
                 let spec =
@@ -1203,7 +1186,7 @@ impl<'s> IdentifiedBlock<'s> {
         };
         let len_style = usize::from(start_paren) + 1;
 
-        if chars.next().map_or(true, |c| c.is_ascii_whitespace()) {
+        if chars.next().is_none_or(|c| c.is_ascii_whitespace()) {
             let len = len_num + len_style;
             Some((
                 ListNumber {

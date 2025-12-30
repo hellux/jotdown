@@ -25,9 +25,8 @@ fn main() -> std::io::Result<()> {
     inputs.iter().try_for_each(|(name, input)| {
         write!(
             out,
-            "#[allow(dead_code)]\nconst {}: &str = r###\"{}\"###;",
+            "#[allow(dead_code)]\nconst {}: &str = r###\"{input}\"###;",
             name.to_uppercase(),
-            input,
         )
     })?;
 
@@ -46,7 +45,7 @@ fn main() -> std::io::Result<()> {
         .map(|(n, _)| n.as_ref())
         .chain(std::iter::once("all"))
     {
-        write!(out, "(\"{}\", {}),", n, n.to_uppercase())?
+        write!(out, "(\"{n}\", {}),", n.to_uppercase())?
     }
     write!(out, "];")?;
 

@@ -115,7 +115,7 @@ fn main() {
     match run() {
         Ok(()) => {}
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
             std::process::exit(1);
         }
     }
