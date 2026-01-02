@@ -35,10 +35,6 @@ where
 {
     type Error = R::Error;
 
-    fn begin(&mut self) -> Result<(), Self::Error> {
-        self.0.begin()
-    }
-
     fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
         match event {
             // Render raw html as code blocks to avoid arbitrary html injection.
@@ -57,10 +53,6 @@ where
             }
             _ => self.0.emit(event),
         }
-    }
-
-    fn finish(&mut self) -> Result<(), Self::Error> {
-        self.0.finish()
     }
 }
 

@@ -64,14 +64,8 @@ type CowStr<'s> = std::borrow::Cow<'s, str>;
 pub trait Render<'s> {
     type Error;
 
-    /// Called at the start of rendering a djot document
-    fn begin(&mut self) -> Result<(), Self::Error>;
-
     /// Called iteratively with every single event emitted by parsing djot document
     fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error>;
-
-    /// Called at the end of rendering a djot document
-    fn finish(&mut self) -> Result<(), Self::Error>;
 }
 
 /// Utility extensions method for [`Render`] trait
@@ -86,13 +80,13 @@ pub trait RenderExt<'s>: Render<'s> {
     where
         I: Iterator<Item = Event<'s>>,
     {
-        self.begin()?;
+        self.emit(Event::Start(Container::Document, Attributes::new()))?;
 
         for event in events {
             self.emit(event)?;
         }
 
-        self.finish()
+        self.emit(Event::End)
     }
 }
 
@@ -610,6 +604,8 @@ pub enum Event<'s> {
 /// - block container, may contain any block-level elements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Container<'s> {
+    /// The top-level document container.
+    Document,
     /// A blockquote element.
     ///
     /// # Examples
@@ -1654,7 +1650,8 @@ impl Container<'_> {
     #[must_use]
     pub fn is_block(&self) -> bool {
         match self {
-            Self::Blockquote
+            Self::Document
+            | Self::Blockquote
             | Self::List { .. }
             | Self::ListItem
             | Self::TaskListItem { .. }
@@ -1693,7 +1690,8 @@ impl Container<'_> {
     #[must_use]
     pub fn is_block_container(&self) -> bool {
         match self {
-            Self::Blockquote
+            Self::Document
+            | Self::Blockquote
             | Self::List { .. }
             | Self::ListItem
             | Self::TaskListItem { .. }

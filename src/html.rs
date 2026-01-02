@@ -359,19 +359,22 @@ where
 {
     type Error = std::fmt::Error;
 
-    fn begin(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    /// Called iteratively with every single event emitted by parsing djot document
     fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
-        self.writer
-            .render_event(event, &mut self.output, &self.indent)
-    }
+        match &event {
+            Event::Start(Container::Document, _) => {
+                self.writer.containers.push(Container::Document);
+            }
+            Event::End if self.writer.containers.last() == Some(&Container::Document) => {
+                self.writer.containers.pop();
+                self.writer.render_epilogue(&mut self.output, &self.indent)?;
+            }
+            _ => {
+                self.writer
+                    .render_event(event, &mut self.output, &self.indent)?;
+            }
+        }
 
-    /// Called at the end of rendering a djot document
-    fn finish(&mut self) -> Result<(), Self::Error> {
-        self.writer.render_epilogue(&mut self.output, &self.indent)
+        Ok(())
     }
 }
 
@@ -392,24 +395,27 @@ where
 {
     type Error = std::io::Error;
 
-    fn begin(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    /// Called iteratively with every single event emitted by parsing djot document
     fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
-        let mut adapter = WriteAdapterInner::new(&mut self.output.0);
-        self.writer
-            .render_event(event, &mut adapter, &self.indent)
-            .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))
-    }
+        match &event {
+            Event::Start(Container::Document, _) => {
+                self.writer.containers.push(Container::Document);
+            }
+            Event::End if self.writer.containers.last() == Some(&Container::Document) => {
+                self.writer.containers.pop();
+                let mut adapter = WriteAdapterInner::new(&mut self.output.0);
+                self.writer
+                    .render_epilogue(&mut adapter, &self.indent)
+                    .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))?;
+            }
+            _ => {
+                let mut adapter = WriteAdapterInner::new(&mut self.output.0);
+                self.writer
+                    .render_event(event, &mut adapter, &self.indent)
+                    .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))?;
+            }
+        }
 
-    /// Called at the end of rendering a djot document
-    fn finish(&mut self) -> Result<(), Self::Error> {
-        let mut adapter = WriteAdapterInner::new(&mut self.output.0);
-        self.writer
-            .render_epilogue(&mut adapter, &self.indent)
-            .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))
+        Ok(())
     }
 }
 
@@ -667,6 +673,7 @@ impl<'s> Writer<'s> {
                     Container::Emphasis => out.write_str("<em")?,
                     Container::Mark => out.write_str("<mark")?,
                     Container::LinkDefinition { .. } => return Ok(()),
+                    Container::Document => unreachable!("Document start is handled in emit()"),
                 }
 
                 let mut id_written = false;
@@ -823,6 +830,7 @@ impl<'s> Writer<'s> {
                     Container::Strong => out.write_str("</strong>")?,
                     Container::Emphasis => out.write_str("</em>")?,
                     Container::Mark => out.write_str("</mark>")?,
+                    Container::Document => unreachable!("Document end is handled in emit()"),
                     Container::LinkDefinition { .. } => unreachable!(),
                 }
             }
