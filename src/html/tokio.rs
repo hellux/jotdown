@@ -1,10 +1,6 @@
-//! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
+//! An HTML renderer for async I/O that takes an iterator of [`Event`]s and emits HTML.
 
-pub mod filters;
-
-#[cfg(feature = "async")]
-pub mod tokio;
-
+use crate::r#async::{AsyncRender, AsyncRenderExt, AsyncRenderOutput};
 use crate::Alignment;
 use crate::Container;
 use crate::CowStr;
@@ -13,26 +9,64 @@ use crate::LinkType;
 use crate::ListKind;
 use crate::Map;
 use crate::OrderedListNumbering::*;
-use crate::Render;
-use crate::RenderOutput;
 use crate::SpanLinkType;
+use std::io;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio::io::AsyncWrite;
 
-/// Render events into a string.
+/// A simple wrapper around `Vec<u8>` that implements `AsyncWrite` for in-memory buffering.
+pub struct VecWriter(Vec<u8>);
+
+impl VecWriter {
+    fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl AsyncWrite for VecWriter {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        self.0.extend_from_slice(buf);
+        Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+/// Render events into a string asynchronously.
 ///
 /// This is a convenience function for rendering documents whole without any customizations.
 ///
 /// # Examples
 ///
+/// ```no_run
+/// # use jotdown::html::tokio;
+/// # tokio_test::block_on(async {
+/// let result = tokio::render_to_string("hello").await;
+/// assert_eq!(result, "<p>hello</p>\n");
+/// # });
 /// ```
-/// assert_eq!(jotdown::html::render_to_string("hello"), "<p>hello</p>\n");
-/// ```
-pub fn render_to_string(doc: &str) -> String {
-    use crate::RenderExt;
+pub async fn render_to_string(doc: &str) -> String {
     let mut r = Renderer::default();
 
-    r.render_document(doc).unwrap();
+    r.render_document(doc).await.unwrap();
 
-    r.into_inner()
+    let bytes = r.into_inner().into_inner();
+    String::from_utf8(bytes).expect("HTML output must be valid UTF-8")
 }
 
 #[derive(Clone)]
@@ -139,7 +173,7 @@ impl Default for Indentation {
     }
 }
 
-/// [`Render`] implementor that writes HTML output.
+/// [`AsyncRender`] implementor that writes HTML output.
 ///
 /// By default, block elements are placed on separate lines. To configure the formatting of the
 /// output, see the [`Renderer::minified`] and [`Renderer::indented`] constructors.
@@ -149,12 +183,12 @@ pub struct Renderer<'s, W> {
     output: W,
 }
 
-impl<'s> Renderer<'s, String> {
+impl<'s> Renderer<'s, VecWriter> {
     fn new(indent: Option<Indentation>) -> Self {
         Self {
             writer: Writer::new(&indent),
             indent,
-            output: String::new(),
+            output: VecWriter::new(),
         }
     }
 
@@ -223,62 +257,32 @@ impl<'s> Renderer<'s, String> {
         Self::new(Some(indent))
     }
 
-    pub fn render_to_string(self, input: &str) -> String {
-        use super::RenderExt;
-        let mut s = self.with_fmt_writer(String::new());
-        s.render_document(input).expect("Can't fail");
+    pub async fn render_to_string(self, input: &str) -> String {
+        use crate::r#async::AsyncRenderExt;
+        let mut s = self.with_writer(VecWriter::new());
+        s.render_document(input).await.expect("Can't fail");
 
-        s.into_inner()
+        let bytes = s.into_inner().into_inner();
+        String::from_utf8(bytes).expect("HTML output must be valid UTF-8")
     }
 
-    pub fn render_events_to_string<I>(self, events: I) -> String
+    pub async fn render_events_to_string<I>(self, events: I) -> String
     where
-        I: Iterator<Item = Event<'s>>,
+        I: Iterator<Item = Event<'s>> + Send,
     {
-        use super::RenderExt;
-        let mut s = self.with_fmt_writer(String::new());
-        s.render_events(events).expect("Can't fail");
+        use crate::r#async::AsyncRenderExt;
+        let mut s = self.with_writer(VecWriter::new());
+        s.render_events(events).await.expect("Can't fail");
 
-        s.into_inner()
+        let bytes = s.into_inner().into_inner();
+        String::from_utf8(bytes).expect("HTML output must be valid UTF-8")
     }
 }
 
-impl<'s> Default for Renderer<'s, String> {
+impl<'s> Default for Renderer<'s, VecWriter> {
     /// Place block elements on separate lines.
     ///
     /// This is the default behavior and matches the reference implementation.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
-    /// let src = concat!(
-    ///     "- a\n",
-    ///     "\n",
-    ///     "  - b\n",
-    ///     "\n",
-    ///     "  - c\n",
-    /// );
-    /// let renderer = Renderer::default();
-    /// let actual = renderer.render_to_string(src);
-    /// let expected = concat!(
-    ///     "<ul>\n",
-    ///     "<li>\n",
-    ///     "a\n",
-    ///     "<ul>\n",
-    ///     "<li>\n",
-    ///     "<p>b</p>\n",
-    ///     "</li>\n",
-    ///     "<li>\n",
-    ///     "<p>c</p>\n",
-    ///     "</li>\n",
-    ///     "</ul>\n",
-    ///     "</li>\n",
-    ///     "</ul>\n",
-    /// );
-    /// assert_eq!(actual, expected);
-    /// ```
     fn default() -> Self {
         Renderer::new(Some(Indentation {
             string: String::new(),
@@ -291,57 +295,10 @@ impl<'s, W> Renderer<'s, W> {
     pub fn into_inner(self) -> W {
         self.output
     }
-}
 
-pub struct WriteAdapter<T: std::io::Write>(T);
-
-struct WriteAdapterInner<T: std::io::Write> {
-    inner: T,
-    error: std::io::Result<()>,
-}
-
-impl<T: std::io::Write> WriteAdapterInner<T> {
-    fn new(output: T) -> Self {
-        Self {
-            inner: output,
-            error: Ok(()),
-        }
-    }
-}
-impl<T: std::io::Write> std::fmt::Write for WriteAdapterInner<T> {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.inner.write_all(s.as_bytes()).map_err(|e| {
-            self.error = Err(e);
-            std::fmt::Error
-        })
-    }
-}
-
-impl<'s, W> Renderer<'s, W> {
-    pub fn with_io_writer<NewWriter>(
-        self,
-        output: NewWriter,
-    ) -> Renderer<'s, WriteAdapter<NewWriter>>
+    pub fn with_writer<NewWriter>(self, output: NewWriter) -> Renderer<'s, NewWriter>
     where
-        NewWriter: std::io::Write,
-    {
-        let Renderer {
-            indent,
-            writer,
-            output: _,
-        } = self;
-
-        let output = WriteAdapter(output);
-        Renderer {
-            indent,
-            writer,
-            output,
-        }
-    }
-
-    pub fn with_fmt_writer<NewWriter>(self, output: NewWriter) -> Renderer<'s, NewWriter>
-    where
-        NewWriter: std::fmt::Write,
+        NewWriter: AsyncWrite,
     {
         let Renderer {
             indent,
@@ -357,69 +314,55 @@ impl<'s, W> Renderer<'s, W> {
     }
 }
 
-impl<'s, W> Render<'s> for Renderer<'s, W>
+#[async_trait::async_trait]
+impl<'s, W> AsyncRender<'s> for Renderer<'s, W>
 where
-    W: std::fmt::Write,
+    W: AsyncWrite + Unpin + Send,
 {
-    type Error = std::fmt::Error;
+    type Error = io::Error;
 
-    fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
+    async fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
+        use tokio::io::AsyncWriteExt;
+
+        // Buffer writes to a String first (using std::fmt::Write)
+        let mut buffer = String::new();
+
         match &event {
             Event::Start(Container::Document, _) => {
                 self.writer.containers.push(Container::Document);
+                // No output for document start
+                return Ok(());
             }
             Event::End if self.writer.containers.last() == Some(&Container::Document) => {
                 self.writer.containers.pop();
-                self.writer.render_epilogue(&mut self.output, &self.indent)?;
+                self.writer
+                    .render_epilogue(&mut buffer, &self.indent)
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "format error"))?;
             }
             _ => {
                 self.writer
-                    .render_event(event, &mut self.output, &self.indent)?;
+                    .render_event(event, &mut buffer, &self.indent)
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "format error"))?;
             }
+        }
+
+        // Async write the buffer to the output
+        if !buffer.is_empty() {
+            self.output.write_all(buffer.as_bytes()).await?;
         }
 
         Ok(())
     }
 }
 
-impl<'s, W> RenderOutput<'s> for Renderer<'s, W>
+impl<'s, W> AsyncRenderOutput<'s> for Renderer<'s, W>
 where
-    W: std::fmt::Write,
+    W: AsyncWrite + Unpin + Send,
 {
     type Output = W;
 
     fn into_output(self) -> Self::Output {
         self.output
-    }
-}
-
-impl<'s, W> Render<'s> for Renderer<'s, WriteAdapter<W>>
-where
-    W: std::io::Write,
-{
-    type Error = std::io::Error;
-
-    fn emit(&mut self, event: Event<'s>) -> Result<(), Self::Error> {
-        match &event {
-            Event::Start(Container::Document, _) => {
-                self.writer.containers.push(Container::Document);
-            }
-            Event::End if self.writer.containers.last() == Some(&Container::Document) => {
-                self.writer.containers.pop();
-                let mut adapter = WriteAdapterInner::new(&mut self.output.0);
-                self.writer
-                    .render_epilogue(&mut adapter, &self.indent)
-                    .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))?;
-            }
-            _ => {
-                let mut adapter = WriteAdapterInner::new(&mut self.output.0);
-                self.writer
-                    .render_event(event, &mut adapter, &self.indent)
-                    .map_err(|_| adapter.error.expect_err("Inner adapter always sets error"))?;
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -603,7 +546,7 @@ impl<'s> Writer<'s> {
                             } => {
                                 out.write_str("<ol")?;
                                 if *start > 1 {
-                                    write!(out, r#" start="{}""#, start)?;
+                                    out.write_str(&format!(r#" start="{}""#, start))?;
                                 }
                                 if let Some(ty) = match numbering {
                                     Decimal => None,
@@ -612,7 +555,7 @@ impl<'s> Writer<'s> {
                                     RomanLower => Some('i'),
                                     RomanUpper => Some('I'),
                                 } {
-                                    write!(out, r#" type="{}""#, ty)?;
+                                    out.write_str(&format!(r#" type="{}""#, ty))?;
                                 }
                             }
                         }
@@ -633,7 +576,7 @@ impl<'s> Writer<'s> {
                         }
                         out.write_str("<p")?;
                     }
-                    Container::Heading { level, .. } => write!(out, "<h{}", level)?,
+                    Container::Heading { level, .. } => out.write_str(&format!("<h{}", level))?,
                     Container::TableCell { head: false, .. } => out.write_str("<td")?,
                     Container::TableCell { head: true, .. } => out.write_str("<th")?,
                     Container::Caption => out.write_str("<caption")?,
@@ -683,8 +626,10 @@ impl<'s> Writer<'s> {
                 let mut id_written = false;
                 let mut class_written = false;
                 for (a, v) in attrs.unique_pairs() {
-                    write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    out.write_str(&format!(r#" {}=""#, a))?;
+                    for part in v.parts() {
+                        write_attr(part, &mut out)?;
+                    }
                     match a {
                         "class" => {
                             class_written = true;
@@ -734,7 +679,7 @@ impl<'s> Writer<'s> {
                             Alignment::Center => "center",
                             Alignment::Right => "right",
                         };
-                        write!(out, r#" style="text-align: {};">"#, a)?;
+                        out.write_str(&format!(r#" style="text-align: {};">"#, a))?;
                     }
                     Container::CodeBlock { language } => {
                         if language.is_empty() {
@@ -802,7 +747,7 @@ impl<'s> Writer<'s> {
                             out.write_str("</p>")?;
                         }
                     }
-                    Container::Heading { level, .. } => write!(out, "</h{}>", level)?,
+                    Container::Heading { level, .. } => out.write_str(&format!("</h{}>", level))?,
                     Container::TableCell { head: false, .. } => out.write_str("</td>")?,
                     Container::TableCell { head: true, .. } => out.write_str("</th>")?,
                     Container::Caption => out.write_str("</caption>")?,
@@ -847,14 +792,13 @@ impl<'s> Writer<'s> {
             Event::FootnoteReference(label) => {
                 let number = self.footnotes.reference(label.clone());
                 if self.img_alt_text == 0 {
-                    write!(
-                        out,
+                    out.write_str(&format!(
                         r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
                         number, number, number
-                    )?;
+                    ))?;
                 }
             }
-            Event::Symbol(sym) => write!(out, ":{}:", sym)?,
+            Event::Symbol(sym) => out.write_str(&format!(":{}:", sym))?,
             Event::LeftSingleQuote => out.write_str("‘")?,
             Event::RightSingleQuote => out.write_str("’")?,
             Event::LeftDoubleQuote => out.write_str("“")?,
@@ -865,7 +809,7 @@ impl<'s> Writer<'s> {
             Event::NonBreakingSpace => out.write_str("&nbsp;")?,
             Event::Hardbreak => {
                 out.write_str("<br>")?;
-                self.block(out, indent, 0)?;
+                self.block(&mut out, indent, 0)?;
             }
             Event::Softbreak => {
                 out.write_char('\n')?;
@@ -876,8 +820,10 @@ impl<'s> Writer<'s> {
                 self.block(&mut out, indent, 0)?;
                 out.write_str("<hr")?;
                 for (a, v) in attrs.unique_pairs() {
-                    write!(out, r#" {}=""#, a)?;
-                    v.parts().try_for_each(|part| write_attr(part, &mut out))?;
+                    out.write_str(&format!(r#" {}=""#, a))?;
+                    for part in v.parts() {
+                        write_attr(part, &mut out)?;
+                    }
                     out.write_char('"')?;
                 }
                 out.write_str(">")?;
@@ -902,7 +848,7 @@ impl<'s> Writer<'s> {
 
             while let Some((number, events)) = self.footnotes.next() {
                 self.block(&mut out, indent, 0)?;
-                write!(out, "<li id=\"fn{}\">", number)?;
+                out.write_str(&format!("<li id=\"fn{}\">", number))?;
 
                 let mut unclosed_para = false;
                 for e in events.into_iter().flatten() {
@@ -924,11 +870,10 @@ impl<'s> Writer<'s> {
                     self.block(&mut out, indent, 0)?;
                     out.write_str("<p>")?;
                 }
-                write!(
-                    out,
+                out.write_str(&format!(
                     "<a href=\"#fnref{}\" role=\"doc-backlink\">\u{21A9}\u{FE0E}</a></p>",
                     number,
-                )?;
+                ))?;
 
                 self.block(&mut out, indent, 0)?;
                 out.write_str("</li>")?;

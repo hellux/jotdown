@@ -44,6 +44,9 @@
 #[cfg(feature = "html")]
 pub mod html;
 
+#[cfg(feature = "async")]
+pub mod r#async;
+
 mod attr;
 mod block;
 mod inline;
