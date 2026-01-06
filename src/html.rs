@@ -370,7 +370,8 @@ where
             }
             Event::End if self.writer.containers.last() == Some(&Container::Document) => {
                 self.writer.containers.pop();
-                self.writer.render_epilogue(&mut self.output, &self.indent)?;
+                self.writer
+                    .render_epilogue(&mut self.output, &self.indent)?;
             }
             _ => {
                 self.writer
