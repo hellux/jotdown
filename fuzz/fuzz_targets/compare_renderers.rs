@@ -1,8 +1,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use jotdown::{Parser, RenderExt};
-use jotdown::r#async::AsyncRenderExt;
+use jotup::{Parser, RenderExt};
+use jotup::r#async::AsyncRenderExt;
 
 fuzz_target!(|data: &[u8]| {
     // Convert bytes to valid UTF-8 string, return early if invalid

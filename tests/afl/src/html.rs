@@ -1,3 +1,3 @@
 fn main() {
-    afl::fuzz!(|data: &[u8]| { jotdown_afl::html(data) });
+    afl::fuzz!(|data: &[u8]| { jotup_afl::html(data) });
 }

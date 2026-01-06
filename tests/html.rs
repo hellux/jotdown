@@ -1,11 +1,11 @@
-use jotdown::html::Indentation;
-use jotdown::RenderExt;
+use jotup::html::Indentation;
+use jotup::RenderExt;
 
 macro_rules! test_html {
     ($src:expr, $expected:expr $(,$indent:expr)? $(,)?) => {
         #[allow(unused)]
-        let mut renderer = jotdown::html::Renderer::minified();
-        $(renderer = jotdown::html::Renderer::indented($indent);)?
+        let mut renderer = jotup::html::Renderer::minified();
+        $(renderer = jotup::html::Renderer::indented($indent);)?
         renderer
             .render_document($src).expect("Can't fail");
         let actual = renderer.into_inner();

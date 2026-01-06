@@ -137,7 +137,7 @@ pub enum AttributeKind<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{.a}").unwrap().into_iter();
     /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
     /// assert_eq!(a.next(), None);
@@ -148,7 +148,7 @@ pub enum AttributeKind<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{#a}").unwrap().into_iter();
     /// assert_eq!(a.next(), Some((AttributeKind::Id, "a".into())));
     /// assert_eq!(a.next(), None);
@@ -159,7 +159,7 @@ pub enum AttributeKind<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from(r#"{key=value id="a"}"#)
     ///     .unwrap()
     ///     .into_iter();
@@ -179,7 +179,7 @@ pub enum AttributeKind<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{%cmt0% %cmt1}").unwrap().into_iter();
     /// assert_eq!(a.next(), Some((AttributeKind::Comment, "cmt0".into())));
     /// assert_eq!(a.next(), Some((AttributeKind::Comment, "cmt1".into())));
@@ -222,7 +222,7 @@ impl AttributeKind<'_> {
 /// Access the inner [`Vec`]:
 ///
 /// ```
-/// # use jotdown::*;
+/// # use jotup::*;
 /// let a: Attributes = r#"{#a .b id=c class=d key="val" %comment%}"#
 ///     .try_into()
 ///     .unwrap();
@@ -242,7 +242,7 @@ impl AttributeKind<'_> {
 /// Replace a value:
 ///
 /// ```
-/// # use jotdown::*;
+/// # use jotup::*;
 /// let mut attrs = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
 ///
 /// for (attr, value) in &mut attrs {
@@ -263,7 +263,7 @@ impl AttributeKind<'_> {
 /// Filter out keys with a specific prefix:
 ///
 /// ```
-/// # use jotdown::*;
+/// # use jotup::*;
 /// let a: Attributes = Attributes::try_from("{ign:x=a ign:y=b z=c}")
 ///     .unwrap()
 ///     .into_iter()
@@ -303,7 +303,7 @@ impl<'s> Attributes<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a = Attributes::try_from("{x=y .a}").unwrap();
     /// assert!(a.contains_key("x"));
     /// assert!(!a.contains_key("y"));
@@ -326,7 +326,7 @@ impl<'s> Attributes<'s> {
     /// For the "class" key, concatenate all class values:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// assert_eq!(
     ///     Attributes::try_from("{.a class=b}").unwrap().get_value("class"),
     ///     Some("a b".into()),
@@ -336,7 +336,7 @@ impl<'s> Attributes<'s> {
     /// For other keys, return the last set value:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// assert_eq!(
     ///     Attributes::try_from("{x=a x=b}").unwrap().get_value("x"),
     ///     Some("b".into()),
@@ -375,7 +375,7 @@ impl<'s> Attributes<'s> {
     /// For "class" elements, values are concatenated:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a: Attributes = "{class=a .b}".try_into().unwrap();
     /// let mut pairs = a.unique_pairs();
     /// assert_eq!(pairs.next(), Some(("class", "a b".into())));
@@ -385,7 +385,7 @@ impl<'s> Attributes<'s> {
     /// For other keys, the last set value is used:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a: Attributes = "{id=a key=b #c key=d}".try_into().unwrap();
     /// let mut pairs = a.unique_pairs();
     /// assert_eq!(pairs.next(), Some(("id", "c".into())));
@@ -396,7 +396,7 @@ impl<'s> Attributes<'s> {
     /// Comments are ignored:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a: Attributes = "{%cmt% #a}".try_into().unwrap();
     /// let mut pairs = a.unique_pairs();
     /// assert_eq!(pairs.next(), Some(("id", "a".into())));
@@ -429,7 +429,7 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     /// A single set of attributes can be parsed:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{.a}").unwrap().into_iter();
     /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
     /// assert_eq!(a.next(), None);
@@ -438,7 +438,7 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     /// Multiple sets can be parsed if they immediately follow the each other:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{.a}{.b}").unwrap().into_iter();
     /// assert_eq!(a.next(), Some((AttributeKind::Class, "a".into())));
     /// assert_eq!(a.next(), Some((AttributeKind::Class, "b".into())));
@@ -448,7 +448,7 @@ impl<'s> TryFrom<&'s str> for Attributes<'s> {
     /// When the attributes are invalid, the position where the parsing failed is returned:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// assert_eq!(Attributes::try_from("{.a $}"), Err(ParseAttributesError { pos: 4 }));
     /// ```
     fn try_from(s: &'s str) -> Result<Self, Self::Error> {
@@ -492,7 +492,7 @@ impl<'s> FromIterator<AttributeElem<'s>> for Attributes<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let e0 = (AttributeKind::Class, AttributeValue::from("a"));
     /// let e1 = (AttributeKind::Id, AttributeValue::from("b"));
     /// let a: Attributes = [e0.clone(), e1.clone()].into_iter().collect();
@@ -512,7 +512,7 @@ impl std::fmt::Debug for Attributes<'_> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a = r#"{#a .b id=c class=d key="val" %comment%}"#;
     /// let b = r#"{#a .b id="c" class="d" key="val" %comment%}"#;
     /// assert_eq!(format!("{:?}", Attributes::try_from(a).unwrap()), b);
@@ -546,7 +546,7 @@ impl<'s> IntoIterator for Attributes<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
     /// let mut elems = a.into_iter();
     /// assert_eq!(
@@ -580,7 +580,7 @@ impl<'i, 's> IntoIterator for &'i Attributes<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
     /// let mut elems = a.iter();
     /// assert_eq!(
@@ -614,7 +614,7 @@ impl<'i, 's> IntoIterator for &'i mut Attributes<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let mut a = Attributes::try_from("{key1=val1 key2=val2}").unwrap();
     /// let mut elems = a.iter_mut();
     /// assert_eq!(

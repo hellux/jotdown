@@ -1,18 +1,18 @@
 [package]
-name = "jotdown_wasm"
-description = "Web demo of Jotdown"
+name = "jotup_wasm"
+description = "Web demo of Jotup"
 authors = ["Noah Hellman <noah@hllmn.net>"]
 license = "MIT"
 version = "0.9.0"
 edition = "2021"
-homepage = "https://hllmn.net/projects/jotdown"
-repository = "https://github.com/hellux/jotdown"
+homepage = "https://github.com/dpc/jotup"
+repository = "https://github.com/dpc/jotup"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-jotdown = { path = "../../" }
+jotup = { path = "../../" }
 wasm-bindgen = { version = "0.2", default-features = false }
 
 [dependencies.web-sys]

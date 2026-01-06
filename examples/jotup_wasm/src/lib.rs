@@ -4,21 +4,21 @@ use std::fmt::Write;
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_version() -> String {
+pub fn jotup_version() -> String {
     include_str!(concat!(env!("OUT_DIR"), "/version")).to_string()
 }
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_render(djot: &str) -> String {
-    jotdown::html::render_to_string(djot)
+pub fn jotup_render(djot: &str) -> String {
+    jotup::html::render_to_string(djot)
 }
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_parse(djot: &str, spans: bool) -> String {
+pub fn jotup_parse(djot: &str, spans: bool) -> String {
     let mut out = String::new();
-    for (e, sp) in jotdown::Parser::new(djot).into_offset_iter() {
+    for (e, sp) in jotup::Parser::new(djot).into_offset_iter() {
         write!(out, "{:?}", e).unwrap();
         if spans {
             write!(out, " {:?} {:?}", &djot[sp.clone()], sp).unwrap();
@@ -30,17 +30,17 @@ pub fn jotdown_parse(djot: &str, spans: bool) -> String {
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_parse_indent(djot: &str) -> String {
+pub fn jotup_parse_indent(djot: &str) -> String {
     let mut level = 0;
     let mut out = String::new();
-    for e in jotdown::Parser::new(djot) {
-        if !matches!(e, jotdown::Event::End) {
+    for e in jotup::Parser::new(djot) {
+        if !matches!(e, jotup::Event::End) {
             // use non-breaking space for indent because normal spaces gets squeezed by browser
             let nbsp = '\u{00a0}';
             (0..4 * level).for_each(|_| out.push(nbsp));
         }
         match e {
-            jotdown::Event::Start(c, attrs) => {
+            jotup::Event::Start(c, attrs) => {
                 level += 1;
                 if c.is_block() {
                     out.push('[');
@@ -58,7 +58,7 @@ pub fn jotdown_parse_indent(djot: &str) -> String {
                 }
                 out.push('\n');
             }
-            jotdown::Event::End => {
+            jotup::Event::End => {
                 level -= 1;
             }
             e => {

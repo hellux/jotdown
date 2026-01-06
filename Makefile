@@ -1,12 +1,12 @@
 .POSIX:
 
-all: jotdown docs
+all: jotup docs
 	cargo build --workspace
 
-jotdown: target/release/jotdown
+jotup: target/release/jotup
 	cp $< $@
 
-target/release/jotdown:
+target/release/jotup:
 	cargo build --release
 
 .PHONY:
@@ -114,4 +114,4 @@ clean:
 	(cd tests/html-ref && make clean)
 	find bench -type l -path 'bench/*.dj' -print0 | xargs -0 rm -f
 	rm -rf tests/afl/out
-	(cd examples/jotdown_wasm && make clean)
+	(cd examples/jotup_wasm && make clean)

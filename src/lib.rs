@@ -16,8 +16,8 @@
 //! # #[cfg(feature = "html")]
 //! # {
 //! let djot_input = "hello *world*!";
-//! let events = jotdown::Parser::new(djot_input);
-//! let html = jotdown::html::Renderer::default().render_events_to_string(events);
+//! let events = jotup::Parser::new(djot_input);
+//! let html = jotup::html::Renderer::default().render_events_to_string(events);
 //! assert_eq!(html, "<p>hello <strong>world</strong>!</p>\n");
 //! # }
 //! ```
@@ -27,16 +27,16 @@
 //! ```
 //! # #[cfg(feature = "html")]
 //! # {
-//! # use jotdown::Event;
-//! # use jotdown::Container::Link;
+//! # use jotup::Event;
+//! # use jotup::Container::Link;
 //! let events =
-//!     jotdown::Parser::new("a [link](https://example.com)").map(|e| match e {
+//!     jotup::Parser::new("a [link](https://example.com)").map(|e| match e {
 //!         Event::Start(Link(dst, ty), attrs) => {
 //!             Event::Start(Link(dst.replace(".com", ".net").into(), ty), attrs)
 //!         }
 //!         e => e,
 //!     });
-//! let html = jotdown::html::Renderer::default().render_events_to_string(events);
+//! let html = jotup::html::Renderer::default().render_events_to_string(events);
 //! assert_eq!(html, "<p>a <a href=\"https://example.net\">link</a></p>\n");
 //! # }
 //! ```
@@ -132,7 +132,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "{#a}\n",
     ///     "[word]{#b}\n",
@@ -170,7 +170,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "str";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -190,7 +190,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "txt[^nb].";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -222,7 +222,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "a :sym:";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -243,7 +243,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = r#"'quote'"#;
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -265,7 +265,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = r#"'}Tis Socrates'"#;
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -287,7 +287,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = r#""Hello," he said"#;
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -312,7 +312,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "yes...";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -333,7 +333,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "57--33";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -355,7 +355,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "oxen---and";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -377,7 +377,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "no\\ break";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -400,7 +400,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "soft\n",
     ///     "break\n",
@@ -428,7 +428,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "hard\\\n",
     ///     "break\n",
@@ -457,7 +457,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "\\*a\\*";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -480,7 +480,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "para0\n",
     ///     "\n",
@@ -511,7 +511,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "para0\n",
     ///     "\n",
@@ -555,7 +555,7 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "{#a}\n",
     ///     "\n",
@@ -614,7 +614,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "> a\n",
     ///     "> b\n",
@@ -646,7 +646,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",
@@ -695,7 +695,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "- a";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -731,7 +731,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "- [x] a";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -771,7 +771,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     ": orange\n",
     ///     "\n",
@@ -828,7 +828,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "txt[^nb]\n",
     ///     "\n",
@@ -872,7 +872,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "| a | b |\n",
     ///     "|---|--:|\n",
@@ -954,7 +954,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "# outer\n",
     ///     "\n",
@@ -1013,7 +1013,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "::: note\n",
     ///     "this is a note\n",
@@ -1048,7 +1048,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "# heading";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1090,7 +1090,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "|a|\n",
     ///     "^ caption\n",
@@ -1138,7 +1138,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "[label]: url";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1161,7 +1161,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "```=html\n",
     ///     "<tag>x</tag>\n",
@@ -1188,7 +1188,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "```html\n",
     ///     "<tag>x</tag>\n",
@@ -1220,7 +1220,7 @@ pub enum Container<'s> {
     /// Can be used to add attributes:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "word{#a}\n",
     ///     "[two words]{#b}\n",
@@ -1260,7 +1260,7 @@ pub enum Container<'s> {
     /// URLs or email addresses can be enclosed with angled brackets to create a hyperlink:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "<https://example.com>\n",
     ///     "<me@example.com>\n",
@@ -1302,7 +1302,7 @@ pub enum Container<'s> {
     /// Anchor text and the URL can be specified inline:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "[anchor](url)\n";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1329,7 +1329,7 @@ pub enum Container<'s> {
     /// exists:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "[a][label]\n",
     ///     "[b][non-existent]\n",
@@ -1384,7 +1384,7 @@ pub enum Container<'s> {
     /// Inner Str objects compose the alternative text:
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "![alt text](img.png)";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1409,7 +1409,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "inline `verbatim`";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1432,7 +1432,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = concat!(
     ///     "inline $`a\\cdot{}b` or\n",
     ///     "display $$`\\frac{a}{b}`\n",
@@ -1473,7 +1473,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "`<tag>a</tag>`{=html}";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1497,7 +1497,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "~SUB~";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1519,7 +1519,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "^SUP^";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1541,7 +1541,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "{+INS+}";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1563,7 +1563,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "{-DEL-}";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1585,7 +1585,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "*STRONG*";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1607,7 +1607,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "_EM_";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -1629,7 +1629,7 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
+    /// # use jotup::*;
     /// let src = "{=MARK=}";
     /// let events: Vec<_> = Parser::new(src).collect();
     /// assert_eq!(
@@ -2202,9 +2202,9 @@ impl<'s> Parser<'s> {
     /// container, not its inner content:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::Event::*;
-    /// # use jotdown::Container::*;
+    /// # use jotup::*;
+    /// # use jotup::Event::*;
+    /// # use jotup::Container::*;
     /// let input = "> _hello_ [text](url)\n";
     /// assert!(matches!(
     ///     Parser::new(input)
@@ -2232,9 +2232,9 @@ impl<'s> Parser<'s> {
     /// attributes that belong to a container are included in the _end_ event:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::Event::*;
-    /// # use jotdown::Container::*;
+    /// # use jotup::*;
+    /// # use jotup::Event::*;
+    /// # use jotup::Container::*;
     /// let input = "
     /// {.quote}
     /// > [Hello]{lang=en} world!";
@@ -2262,9 +2262,9 @@ impl<'s> Parser<'s> {
     /// (e.g. `>` characters from blockquotes or whitespace from list items):
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::Event::*;
-    /// # use jotdown::Container::*;
+    /// # use jotup::*;
+    /// # use jotup::Event::*;
+    /// # use jotup::Container::*;
     /// let input = "
     /// > [txt](multi
     /// > line)";

@@ -9,8 +9,8 @@ use crate::{Attributes, Container, Event, Render, RenderOutput};
 /// from an untrusted djot input.
 ///
 /// ````
-/// use jotdown::{Render, RenderOutputExt};
-/// use jotdown::html::filters::SanitizeExt;
+/// use jotup::{Render, RenderOutputExt};
+/// use jotup::html::filters::SanitizeExt;
 ///
 /// let src = r#"
 /// ```=html
@@ -78,9 +78,11 @@ pub trait SanitizeExt {
 
 impl<'s, R> SanitizeExt for R where R: Sized + Render<'s> {}
 
+#[cfg(feature = "async")]
 /// Async version of Sanitize filter for async rendering
 pub struct AsyncSanitize<R>(R);
 
+#[cfg(feature = "async")]
 #[async_trait::async_trait]
 impl<'s, R> crate::r#async::AsyncRender<'s> for AsyncSanitize<R>
 where
@@ -113,6 +115,7 @@ where
     }
 }
 
+#[cfg(feature = "async")]
 #[async_trait::async_trait]
 impl<'s, R> crate::r#async::AsyncRenderOutput<'s> for AsyncSanitize<R>
 where
@@ -125,6 +128,7 @@ where
     }
 }
 
+#[cfg(feature = "async")]
 pub trait AsyncSanitizeExt {
     fn sanitize(self) -> AsyncSanitize<Self>
     where
@@ -134,7 +138,8 @@ pub trait AsyncSanitizeExt {
     }
 }
 
-impl<'s, R> AsyncSanitizeExt for R where R: Sized + crate::r#async::AsyncRender<'s> {}
+#[cfg(feature = "async")]
+impl<'s, R> AsyncSanitizeExt for R where R: Sized + crate::r#async::AsyncRender<'s> + Send {}
 
 #[test]
 fn sanitize_me() {

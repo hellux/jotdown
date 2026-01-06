@@ -2,7 +2,7 @@ use html5ever::tendril;
 use html5ever::tendril::TendrilSink;
 use html5ever::tokenizer;
 use html5ever::tree_builder;
-use jotdown::RenderExt;
+use jotup::RenderExt;
 
 /// Perform sanity checks on events.
 pub fn parse(data: &[u8]) {

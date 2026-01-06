@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jotdown = { path = "../.." }
+jotup = { path = "../.." }
 
 [lib]
 name = "test_html_ref"

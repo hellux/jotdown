@@ -1,4 +1,4 @@
-use jotdown::{Container, Event, Render, RenderExt as _, RenderOutput};
+use jotup::{Container, Event, Render, RenderExt as _, RenderOutput};
 use std::borrow::Cow;
 
 struct RickrollRenderer<R>(R);
@@ -36,7 +36,7 @@ where
 
 #[test]
 fn rickroll_me() {
-    use jotdown::RenderOutputExt;
+    use jotup::RenderOutputExt;
     let src = "[interesting link](https://example.com)";
     let out = RickrollRenderer(jotdown::html::Renderer::minified())
         .render_into_document(src)

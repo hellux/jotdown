@@ -1,4 +1,4 @@
-use jotdown::RenderExt as _;
+use jotup::RenderExt as _;
 
 #[derive(Default)]
 struct App {
@@ -95,9 +95,9 @@ fn run() -> Result<(), std::io::Error> {
     };
 
     let renderer = if app.minified {
-        jotdown::html::Renderer::minified()
+        jotup::html::Renderer::minified()
     } else {
-        jotdown::html::Renderer::indented(jotdown::html::Indentation {
+        jotup::html::Renderer::indented(jotup::html::Indentation {
             string: app.indent_string,
             initial_level: app.start_indent,
         })

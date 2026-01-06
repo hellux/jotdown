@@ -6,7 +6,7 @@ macro_rules! compare {
     ($src:expr, $expected:expr) => {
         let src = $src;
         let expected = $expected;
-        let actual = jotdown::html::render_to_string(src);
+        let actual = jotup::html::render_to_string(src);
         assert_eq!(
             actual.trim(),
             expected.trim(),

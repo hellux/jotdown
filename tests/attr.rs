@@ -1,7 +1,7 @@
-use jotdown::AttributeKind;
-use jotdown::AttributeKind::*;
-use jotdown::AttributeValue;
-use jotdown::Attributes;
+use jotup::AttributeKind;
+use jotup::AttributeKind::*;
+use jotup::AttributeValue;
+use jotup::Attributes;
 
 macro_rules! test_attr {
     ($src:expr, [$($exp:expr),* $(,)?], [$($exp_uniq:expr),* $(,)?] $(,)?) => {

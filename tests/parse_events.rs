@@ -1,24 +1,24 @@
-use jotdown::AttributeKind;
-use jotdown::Attributes;
-use jotdown::Container::*;
-use jotdown::Event::*;
-use jotdown::LinkType;
-use jotdown::ListBulletType::*;
-use jotdown::ListKind;
-use jotdown::OrderedListNumbering::*;
-use jotdown::OrderedListStyle::*;
-use jotdown::SpanLinkType;
+use jotup::AttributeKind;
+use jotup::Attributes;
+use jotup::Container::*;
+use jotup::Event::*;
+use jotup::LinkType;
+use jotup::ListBulletType::*;
+use jotup::ListKind;
+use jotup::OrderedListNumbering::*;
+use jotup::OrderedListStyle::*;
+use jotup::SpanLinkType;
 
 macro_rules! attrs {
     ($(($kind:expr, $val:expr)),* $(,)?) => {
-        [$(($kind, $val.into())),*].into_iter().collect::<jotdown::Attributes>()
+        [$(($kind, $val.into())),*].into_iter().collect::<jotup::Attributes>()
     };
 }
 
 macro_rules! test_parse {
     ($src:expr $(,$($token:expr),* $(,)?)?) => {
         #[allow(unused)]
-        let actual = jotdown::Parser::new($src)
+        let actual = jotup::Parser::new($src)
             .into_offset_iter()
             .map(|(e, r)| (e, &$src[r]))
             .collect::<Vec<_>>();

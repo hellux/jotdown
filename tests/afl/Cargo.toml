@@ -1,12 +1,12 @@
 [package]
-name = "jotdown-afl"
+name = "jotup-afl"
 version = "0.1.0"
 edition = "2021"
 default-run = "main"
 
 [dependencies]
 afl = "0.17"
-jotdown = { path = "../../", features = ["deterministic"] }
+jotup = { path = "../../", features = ["deterministic"] }
 html5ever = "0.26"
 
 [[bin]]

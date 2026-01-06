@@ -1,5 +1,5 @@
 [package]
-name = "jotdown-fuzz"
+name = "jotup-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-jotdown = { path = "..", features = ["html", "async"] }
+jotup = { path = "..", features = ["html", "async"] }
 tokio = { version = "1.0", features = ["rt", "macros"] }
 
 [[bin]]

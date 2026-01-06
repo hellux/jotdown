@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! compare {
     ($src:expr, $expected:expr) => {
-        use jotdown::Render;
+        use jotup::Render;
         let src = $src;
         let expected = $expected;
         let p = jotdown::Parser::new(src);

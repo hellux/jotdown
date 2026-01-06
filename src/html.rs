@@ -24,7 +24,7 @@ use crate::SpanLinkType;
 /// # Examples
 ///
 /// ```
-/// assert_eq!(jotdown::html::render_to_string("hello"), "<p>hello</p>\n");
+/// assert_eq!(jotup::html::render_to_string("hello"), "<p>hello</p>\n");
 /// ```
 pub fn render_to_string(doc: &str) -> String {
     use crate::RenderExt;
@@ -47,8 +47,8 @@ pub struct Indentation {
     /// Defaults to a single tab character:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     ///
     /// let renderer = Renderer::indented(Indentation::default());
@@ -66,8 +66,8 @@ pub struct Indentation {
     /// To indent with e.g. 4 spaces, set to `"    "`:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     string: "    ".to_string(),
@@ -91,8 +91,8 @@ pub struct Indentation {
     /// Defaults to zero:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     ///
     /// let renderer = Renderer::indented(Indentation::default());
@@ -110,8 +110,8 @@ pub struct Indentation {
     /// Set to a non-zero value to use a starting indent:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     initial_level: 2,
@@ -163,8 +163,8 @@ impl<'s> Renderer<'s, String> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",
@@ -190,8 +190,8 @@ impl<'s> Renderer<'s, String> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",
@@ -251,8 +251,8 @@ impl<'s> Default for Renderer<'s, String> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",

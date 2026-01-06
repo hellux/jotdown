@@ -1,3 +1,14 @@
+# Project Fork Notice
+
+This project was forked from [jotdown](https://github.com/hellux/jotdown) and renamed to **jotup** to pursue slightly different API design goals and async support. The changelog below reflects the history from the original project.
+
+---
+
+## Unreleased
+
+- Add `async` feature with async rendering support.
+- **BREAKING**: Project renamed from `jotdown` to `jotup`.
+
 ## [0.9.0](https://github.com/hellux/jotdown/releases/tag/0.9.0) - 2025-10-30
 
 ### Changed

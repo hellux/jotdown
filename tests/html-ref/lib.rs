@@ -6,7 +6,7 @@ macro_rules! compare {
     ($src:expr, $expected:expr) => {
         let src = $src;
         let expected = std::fs::read_to_string($expected).expect("read failed");
-        let actual = jotdown::html::Renderer::default().render_to_string(src);
+        let actual = jotup::html::Renderer::default().render_to_string(src);
         assert_eq!(actual, expected, "\n{}", {
             use std::io::Write;
             let mut child = std::process::Command::new("diff")

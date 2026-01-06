@@ -1,6 +1,6 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
-use jotdown::RenderExt;
+use jotup::RenderExt;
 
 fn gen_block(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("block");
@@ -10,7 +10,7 @@ fn gen_block(c: &mut criterion::Criterion) {
             criterion::BenchmarkId::from_parameter(name),
             input,
             |b, &input| {
-                b.iter(|| jotdown::Parser::new(input));
+                b.iter(|| jotup::Parser::new(input));
             },
         );
     }
@@ -26,7 +26,7 @@ fn gen_inline(c: &mut criterion::Criterion) {
             input,
             |b, &input| {
                 b.iter_batched(
-                    || jotdown::Parser::new(input),
+                    || jotup::Parser::new(input),
                     |p| p.last().unwrap(),
                     criterion::BatchSize::SmallInput,
                 );
@@ -40,15 +40,15 @@ fn gen_html(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("html");
     for (name, input) in bench_input::INPUTS {
         group.throughput(criterion::Throughput::Elements(
-            jotdown::Parser::new(input).count() as u64,
+            jotup::Parser::new(input).count() as u64,
         ));
         group.bench_with_input(
             criterion::BenchmarkId::from_parameter(name),
             input,
             |b, &input| {
                 b.iter_batched(
-                    || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| jotdown::html::Renderer::default().render_events(p.into_iter()),
+                    || jotup::Parser::new(input).collect::<Vec<_>>(),
+                    |p| jotup::html::Renderer::default().render_events(p.into_iter()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -61,15 +61,15 @@ fn gen_html_clone(c: &mut criterion::Criterion) {
     let mut group = c.benchmark_group("html_clone");
     for (name, input) in bench_input::INPUTS {
         group.throughput(criterion::Throughput::Elements(
-            jotdown::Parser::new(input).count() as u64,
+            jotup::Parser::new(input).count() as u64,
         ));
         group.bench_with_input(
             criterion::BenchmarkId::from_parameter(name),
             input,
             |b, &input| {
                 b.iter_batched(
-                    || jotdown::Parser::new(input).collect::<Vec<_>>(),
-                    |p| jotdown::html::Renderer::default().render_events(p.into_iter()),
+                    || jotup::Parser::new(input).collect::<Vec<_>>(),
+                    |p| jotup::html::Renderer::default().render_events(p.into_iter()),
                     criterion::BatchSize::SmallInput,
                 );
             },
@@ -86,7 +86,7 @@ fn gen_full(c: &mut criterion::Criterion) {
             criterion::BenchmarkId::from_parameter(name),
             input,
             |b, &input| {
-                b.iter_with_large_drop(|| jotdown::html::render_to_string(input));
+                b.iter_with_large_drop(|| jotup::html::render_to_string(input));
             },
         );
     }

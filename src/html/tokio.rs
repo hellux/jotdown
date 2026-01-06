@@ -54,7 +54,7 @@ impl AsyncWrite for VecWriter {
 /// # Examples
 ///
 /// ```no_run
-/// # use jotdown::html::tokio;
+/// # use jotup::html::tokio;
 /// # tokio_test::block_on(async {
 /// let result = tokio::render_to_string("hello").await;
 /// assert_eq!(result, "<p>hello</p>\n");
@@ -81,8 +81,8 @@ pub struct Indentation {
     /// Defaults to a single tab character:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     ///
     /// let renderer = Renderer::indented(Indentation::default());
@@ -100,8 +100,8 @@ pub struct Indentation {
     /// To indent with e.g. 4 spaces, set to `"    "`:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     string: "    ".to_string(),
@@ -125,8 +125,8 @@ pub struct Indentation {
     /// Defaults to zero:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     ///
     /// let renderer = Renderer::indented(Indentation::default());
@@ -144,8 +144,8 @@ pub struct Indentation {
     /// Set to a non-zero value to use a starting indent:
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = "> a\n";
     /// let renderer = Renderer::indented(Indentation {
     ///     initial_level: 2,
@@ -197,8 +197,8 @@ impl<'s> Renderer<'s, VecWriter> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",
@@ -224,8 +224,8 @@ impl<'s> Renderer<'s, VecWriter> {
     /// # Examples
     ///
     /// ```
-    /// # use jotdown::*;
-    /// # use jotdown::html::*;
+    /// # use jotup::*;
+    /// # use jotup::html::*;
     /// let src = concat!(
     ///     "- a\n",
     ///     "\n",
