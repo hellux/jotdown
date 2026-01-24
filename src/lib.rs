@@ -135,7 +135,7 @@ pub trait Render {
 ///
 /// A Djot document is represented by a sequence of events. An element may consist of one or
 /// multiple events. [`Container`] elements are represented by a [`Event::Start`] followed by
-/// events representing its content, and finally a [`Event::End`]. Atomic elements without any
+/// events representing its content, and finally an [`Event::End`]. Atomic elements without any
 /// inside elements are represented by a single event.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event<'s> {
