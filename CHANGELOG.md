@@ -1,3 +1,26 @@
+## [0.10.0](https://github.com/hellux/jotdown/releases/tag/0.10.0) - 2026-04-21
+
+### Added
+
+- (breaking) `Document` event, emitted at start and end of document.
+- (breaking) `cli` feature flag. must be manually set in order to compile the
+  CLI binary.
+
+### Changed
+
+- (breaking) Minimum supported Rust version (MSRV) changed from 1.56 to 1.82.
+- (breaking) `Render` trait can now be driven with one event at a time instead
+  of requiring an iterator of all events.
+  - Add required methods `push_event` and `write_event`.
+  - Rename `push`, `write` to `push_events` and `write_events` and turn them
+    into provided methods.
+- Use `clap` for command line argument parsing.
+- `Attributes::try_from(str)`: Require `}` at end of string.
+
+### Fixed
+
+- Never emit empty `Str` events.
+
 ## [0.9.1](https://github.com/hellux/jotdown/releases/tag/0.9.1) - 2025-12-29
 
 ### Fixed

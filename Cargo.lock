@@ -366,14 +366,14 @@ dependencies = [
 
 [[package]]
 name = "jotdown"
-version = "0.9.1"
+version = "0.10.0"
 dependencies = [
  "clap 4.5.53",
 ]
 
 [[package]]
 name = "jotdown_wasm"
-version = "0.9.1"
+version = "0.10.1"
 dependencies = [
  "git2",
  "jotdown",
