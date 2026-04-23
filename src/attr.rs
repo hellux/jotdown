@@ -355,6 +355,39 @@ impl<'s> Attributes<'s> {
             .any(|(k, _)| matches!(k.key(), Some(k) if k == key))
     }
 
+    /// Returns whether the specified class is provided in the set.
+    ///
+    /// # Examples
+    ///
+    /// Values from both class and pair attribute syntax are matched.
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from("{.a class=b}").unwrap();
+    /// assert!(a.contains_class("a"));
+    /// assert!(a.contains_class("b"));
+    /// assert!(!a.contains_class("c"));
+    /// ```
+    ///
+    /// Unlike in HTML, a value containing one or more spaces is treated as a single class instead
+    /// of multiple:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from(r#"{class="a b"}"#).unwrap();
+    /// assert!(a.contains_class("a b"));
+    /// assert!(!a.contains_class("a"));
+    /// assert!(!a.contains_class("b"));
+    /// ```
+    #[must_use]
+    pub fn contains_class(&self, class: &str) -> bool {
+        self.0.iter().any(|(k, v)| {
+            (matches!(k, AttributeKind::Class)
+                || matches!(k, AttributeKind::Pair { key } if key == "class"))
+                && v == class
+        })
+    }
+
     /// Returns the value corresponding to the provided attribute key.
     ///
     /// Note: A copy of the value is returned rather than a reference, due to class values
