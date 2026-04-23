@@ -75,6 +75,36 @@ impl<'s> AttributeValue<'s> {
     }
 }
 
+impl PartialEq<&str> for AttributeValue<'_> {
+    /// Tests if value matches a [`&str`].
+    ///
+    /// # Examples
+    ///
+    /// Escapes are not part of the value:
+    ///
+    /// ```
+    /// # use jotdown::*;
+    /// let a = Attributes::try_from(r#"{x="a\"b"}"#).unwrap();
+    /// assert_eq!(a.get_value("x").unwrap(), r#"a"b"#);
+    /// ```
+    fn eq(&self, other: &&str) -> bool {
+        self.eq(*other)
+    }
+}
+
+impl PartialEq<str> for AttributeValue<'_> {
+    fn eq(&self, mut other: &str) -> bool {
+        self.parts().all(|p| {
+            if other.starts_with(p) {
+                other = &other[p.len()..];
+                true
+            } else {
+                false
+            }
+        })
+    }
+}
+
 impl<'s> From<&'s str> for AttributeValue<'s> {
     fn from(value: &'s str) -> Self {
         Self { raw: value.into() }
