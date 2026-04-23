@@ -308,12 +308,15 @@ impl<'s> Attributes<'s> {
     ///
     /// # Examples
     ///
+    /// Pair attribute, `class` and `id` keys can match:
+    ///
     /// ```
     /// # use jotdown::*;
-    /// let a = Attributes::try_from("{x=y .a}").unwrap();
+    /// let a = Attributes::try_from("{x=y .a #b}").unwrap();
     /// assert!(a.contains_key("x"));
     /// assert!(!a.contains_key("y"));
     /// assert!(a.contains_key("class"));
+    /// assert!(a.contains_key("id"));
     /// ```
     #[must_use]
     pub fn contains_key(&self, key: &str) -> bool {
