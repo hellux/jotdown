@@ -289,6 +289,7 @@ pub struct Renderer<'s> {
     img_alt_text: usize,
     list_tightness: Vec<bool>,
     first_line: bool,
+    last_raw_block: bool,
     ignore: bool,
     footnotes: Footnotes<'s>,
 }
@@ -307,6 +308,7 @@ impl<'s> Renderer<'s> {
             img_alt_text: 0,
             list_tightness: Vec::new(),
             first_line: true,
+            last_raw_block: false,
             ignore: false,
             footnotes: Footnotes::default(),
         }
@@ -320,7 +322,7 @@ impl<'s> Renderer<'s> {
             return Ok(());
         }
 
-        if !self.first_line {
+        if !self.first_line && !self.last_raw_block {
             out.write_char('\n')?;
         }
 
@@ -385,6 +387,7 @@ impl<'s> Renderer<'s> {
                 if c.is_block() {
                     self.block(out, c.is_block_container().into())?;
                 }
+                self.last_raw_block = false;
                 if self.img_alt_text > 0 && !matches!(c, Container::Image(..)) {
                     return Ok(());
                 }
@@ -620,9 +623,11 @@ impl<'s> Renderer<'s> {
                     Container::Math { display } => {
                         out.write_str(if display { r"\]</span>" } else { r"\)</span>" })?;
                     }
-                    Container::RawBlock { .. } | Container::RawInline { .. } => {
+                    Container::RawBlock { .. } => {
+                        self.last_raw_block = true;
                         self.raw = Raw::None;
                     }
+                    Container::RawInline { .. } => self.raw = Raw::None,
                     Container::Subscript => out.write_str("</sub>")?,
                     Container::Superscript => out.write_str("</sup>")?,
                     Container::Insert => out.write_str("</ins>")?,
@@ -732,7 +737,7 @@ impl<'s> Renderer<'s> {
             out.write_str("</section>")?;
         }
 
-        if self.indent.is_some() {
+        if self.indent.is_some() && !self.last_raw_block {
             out.write_char('\n')?;
         }
 

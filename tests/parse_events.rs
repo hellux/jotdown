@@ -615,13 +615,45 @@ fn raw_block() {
             ),
             "``` =html\n",
         ),
-        (Str("<table>".into()), "<table>"),
+        (Str("<table>\n".into()), "<table>\n"),
         (
             End(RawBlock {
                 format: "html".into()
             }),
             "```"
         ),
+    );
+}
+
+#[test]
+fn raw_block_empty() {
+    test_parse!(
+        concat!(
+            "```=\n", //
+            "```\n"   //
+        ),
+        (
+            Start(RawBlock { format: "".into() }, Attributes::new()),
+            "```=\n",
+        ),
+        (End(RawBlock { format: "".into() }), "```\n"),
+    );
+}
+
+#[test]
+fn raw_block_blankline() {
+    test_parse!(
+        concat!(
+            "```=\n", //
+            "\n",     //
+            "```\n"   //
+        ),
+        (
+            Start(RawBlock { format: "".into() }, Attributes::new()),
+            "```=\n",
+        ),
+        (Str("\n".into()), "\n"),
+        (End(RawBlock { format: "".into() }), "```\n"),
     );
 }
 
@@ -651,7 +683,7 @@ fn raw_block_whitespace() {
             "```=html\n",
         ),
         (Str("<tag1>\n".into()), "<tag1>\n"),
-        (Str("<tag2>".into()), "<tag2>"),
+        (Str("<tag2>\n".into()), "<tag2>\n"),
         (
             End(RawBlock {
                 format: "html".into()
@@ -673,7 +705,7 @@ fn raw_block_whitespace() {
             "```=html\n",
         ),
         (Str("</tag2>\n".into()), "</tag2>\n"),
-        (Str("</tag1>".into()), "</tag1>"),
+        (Str("</tag1>\n".into()), "</tag1>\n"),
         (
             End(RawBlock {
                 format: "html".into()
