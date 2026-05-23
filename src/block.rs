@@ -146,7 +146,7 @@ impl ListNumber {
 impl ListType {
     /// Whether this list item can be continued by the other list item.
     ///
-    /// If so, return the two new resolved ListType objects. They only differ from the input in
+    /// If so, return the two new resolved `ListType` objects. They only differ from the input in
     /// case of ambiguous types.
     fn continues(&self, other: &Self) -> Option<(Self, Self)> {
         match (self, other) {
@@ -182,7 +182,7 @@ struct OpenList {
     /// Type of the list, an initial guess is made but may change if ambiguous. Also used to
     /// determine whether this list should be continued or a new one should be created.
     ty_start: ListType,
-    /// Type of the previous item, generally the same as ty_start but value may differ in ordered
+    /// Type of the previous item, generally the same as `ty_start` but value may differ in ordered
     /// lists.
     ty_prev: ListType,
     /// Depth in the tree where the direct list items of the list are. Needed to determine when to
