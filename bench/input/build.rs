@@ -45,7 +45,7 @@ fn main() -> std::io::Result<()> {
         .map(|(n, _)| n.as_ref())
         .chain(std::iter::once("all"))
     {
-        write!(out, "(\"{n}\", {}),", n.to_uppercase())?
+        write!(out, "(\"{n}\", {}),", n.to_uppercase())?;
     }
     write!(out, "];")?;
 
