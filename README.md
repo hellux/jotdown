@@ -74,11 +74,10 @@ web browser. It is useful for experimenting with the djot syntax and exploring
 what events are emitted or what output is rendered.
 
 An online version is available at <https://hllmn.net/projects/jotdown/demo>. It
-can also be run locally:
+can also be run locally while developing:
 
 ```
-$ cd examples/jotdown_wasm
-$ make run
+$ make -C examples/jotdown_wasm run
 ```
 
 You may need to install [wasm-pack] and make sure your Rust compiler has the
