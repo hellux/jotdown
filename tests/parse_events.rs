@@ -2042,11 +2042,8 @@ fn table_consecutive() {
             "\n",    //
             "|c|\n", //
         ),
-        (Start(Table, Attributes::new()), "".into()),
-        (
-            Start(TableRow { head: false }, Attributes::new()),
-            "|".into(),
-        ),
+        (Start(Table, Attributes::new()), ""),
+        (Start(TableRow { head: false }, Attributes::new()), "|",),
         (
             Start(
                 TableCell {
@@ -2055,21 +2052,18 @@ fn table_consecutive() {
                 },
                 Attributes::new(),
             ),
-            "".into(),
+            "",
         ),
-        (Str("a".into()), "a".into()),
+        (Str("a".into()), "a"),
         (
             End(TableCell {
                 alignment: Alignment::Unspecified,
                 head: false
             }),
-            "|".into(),
+            "|",
         ),
-        (End(TableRow { head: false }), "".into()),
-        (
-            Start(TableRow { head: false }, Attributes::new()),
-            "|".into(),
-        ),
+        (End(TableRow { head: false }), ""),
+        (Start(TableRow { head: false }, Attributes::new()), "|",),
         (
             Start(
                 TableCell {
@@ -2078,26 +2072,23 @@ fn table_consecutive() {
                 },
                 Attributes::new(),
             ),
-            "".into(),
+            "",
         ),
-        (Str("b".into()), "b".into()),
+        (Str("b".into()), "b"),
         (
             End(TableCell {
                 alignment: Alignment::Unspecified,
                 head: false
             }),
-            "|".into(),
+            "|",
         ),
-        (End(TableRow { head: false }), "".into()),
-        (End(Table), "".into()),
-        (Blankline, "\n".into()),
-        (Blankline, "\n".into()),
-        (Blankline, "\n".into()),
-        (Start(Table, Attributes::new()), "".into()),
-        (
-            Start(TableRow { head: false }, Attributes::new()),
-            "|".into(),
-        ),
+        (End(TableRow { head: false }), ""),
+        (End(Table), ""),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Start(Table, Attributes::new()), ""),
+        (Start(TableRow { head: false }, Attributes::new()), "|",),
         (
             Start(
                 TableCell {
@@ -2106,17 +2097,17 @@ fn table_consecutive() {
                 },
                 Attributes::new()
             ),
-            "".into(),
+            "",
         ),
-        (Str("c".into()), "c".into()),
+        (Str("c".into()), "c"),
         (
             End(TableCell {
                 alignment: Alignment::Unspecified,
                 head: false
             }),
-            "|".into(),
+            "|",
         ),
-        (End(TableRow { head: false }), "".into()),
-        (End(Table), "".into()),
+        (End(TableRow { head: false }), ""),
+        (End(Table), ""),
     );
 }
