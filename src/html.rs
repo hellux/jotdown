@@ -147,7 +147,7 @@ impl Default for Indentation {
     }
 }
 
-impl<'s> Renderer<'s> {
+impl Renderer<'_> {
     /// Create a renderer that emits no whitespace between elements.
     ///
     /// # Examples
@@ -216,7 +216,7 @@ impl<'s> Renderer<'s> {
     }
 }
 
-impl<'s> Default for Renderer<'s> {
+impl Default for Renderer<'_> {
     /// Place block elements on separate lines.
     ///
     /// This is the default behavior and matches the reference implementation.
