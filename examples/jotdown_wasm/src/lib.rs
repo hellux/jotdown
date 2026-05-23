@@ -30,7 +30,7 @@ pub fn jotdown_parse(djot: &str, spans: bool) -> String {
 
 #[must_use]
 #[wasm_bindgen]
-pub fn jotdown_parse_indent(djot: &str) -> String {
+pub fn jotdown_parse_tree(djot: &str) -> String {
     let mut level = 0;
     let mut out = String::new();
     for e in jotdown::Parser::new(djot) {

@@ -4,7 +4,7 @@
         jotdown_version,
         jotdown_render,
         jotdown_parse,
-        jotdown_parse_indent,
+        jotdown_parse_tree,
     } from './pkg/jotdown_wasm.js';
     await init();
 
@@ -25,9 +25,9 @@
         } else if (fmt.value == "events_spans") {
             output.classList.add("verbatim")
             output.innerText = jotdown_parse(input.innerText, true);
-        } else if (fmt.value == "events_indent") {
+        } else if (fmt.value == "events_tree") {
             output.classList.add("verbatim")
-            output.innerText = jotdown_parse_indent(input.innerText);
+            output.innerText = jotdown_parse_tree(input.innerText);
         } else if (fmt.value == "preview") {
             output.classList.remove("verbatim")
             output.innerHTML = jotdown_render(input.innerText);
@@ -54,7 +54,7 @@
         <option value="html">html</option>
         <option value="events">events</option>
         <option value="events_spans">events (with offsets)</option>
-        <option value="events_indent">events (indented)</option>
+        <option value="events_tree">events (tree)</option>
       </select>
     </div>
   </div>
