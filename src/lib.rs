@@ -1321,7 +1321,7 @@ pub enum Container<'s> {
     ///             Container::RawBlock { format: "html".into() },
     ///             Attributes::new(),
     ///         ),
-    ///         Event::Str("<tag>x</tag>".into()),
+    ///         Event::Str("<tag>x</tag>\n".into()),
     ///         Event::End(Container::RawBlock { format: "html".into() }),
     ///         Event::End(Container::Document),
     ///     ],

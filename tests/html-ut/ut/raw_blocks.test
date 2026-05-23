@@ -18,6 +18,32 @@ paragraph
 </tag1>
 ````
 
+Blank lines before and after should pass through
+
+````
+para
+
+```=html
+
+
+<tag1>
+<tag2>
+
+
+```
+
+para
+.
+<p>para</p>
+
+
+<tag1>
+<tag2>
+
+
+<p>para</p>
+````
+
 A code block "ends with a line of backticks equal or greater in length to the opening backtick fence"
 
 `````

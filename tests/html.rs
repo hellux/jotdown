@@ -107,3 +107,26 @@ fn indent_code_block() {
         Indentation::default(),
     );
 }
+
+#[test]
+fn indent_raw_block() {
+    test_html!(
+        concat!(
+            "> para\n", //
+            "> \n",
+            "> ```=html\n",
+            "> <img/>\n",
+            "> ```\n",
+            "> \n",
+            "> para",
+        ),
+        concat!(
+            "<blockquote>\n",
+            "\t<p>para</p>\n",
+            "\t<img/>\n",
+            "\t<p>para</p>\n",
+            "</blockquote>\n",
+        ),
+        Indentation::default(),
+    );
+}

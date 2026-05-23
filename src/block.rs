@@ -526,20 +526,13 @@ impl<'s> TreeParser<'s> {
         span_end: std::ops::Range<usize>,
         mut lines: &mut [std::ops::Range<usize>],
     ) {
-        if let Kind::Fenced { indent, spec, .. } = k {
+        if let Kind::Fenced { indent, .. } = k {
             for line in lines.iter_mut() {
                 let indent_line = self.src.as_bytes()[line.clone()]
                     .iter()
                     .take_while(|c| *c != &b'\n' && c.is_ascii_whitespace())
                     .count();
                 line.start += (*indent).min(indent_line);
-            }
-
-            // trim ending whitespace of raw block
-            if spec.starts_with('=') {
-                if let Some(last) = lines.len().checked_sub(1) {
-                    lines[last] = self.trim_end(lines[last].clone());
-                }
             }
         } else {
             // trim starting whitespace of each inline
