@@ -47,7 +47,7 @@ test_html_ref:
 		ln -fs ../../modules/djot.js/bench/$$f tests/html-ref/$$dst; \
 	done
 	cargo test -p test-html-ref
-	cargo test -p test-html-ut -- --ignored 2>/dev/null | grep -qE 'test result: .* 0 passed'
+	cargo test -p test-html-ref -- --ignored 2>/dev/null | grep -qE 'test result: .* 0 passed'
 
 .PHONY: bench
 bench:
