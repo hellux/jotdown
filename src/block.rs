@@ -650,46 +650,47 @@ impl<'s> TreeParser<'s> {
 
         if let Some((empty_term, enter_detail, open_detail)) = dt {
             let enter_term = enter_detail + 1;
-            if let Some(first_child) = self.events.get_mut(enter_term) {
-                if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
-                    // convert paragraph into description term
+            let Some(first_child) = self.events.get_mut(enter_term) else {
+                unreachable!()
+            };
+            if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
+                // convert paragraph into description term
+                *l = DescriptionTerm;
+                let Some(inner) = self.events[enter_term + 1..]
+                    .iter_mut()
+                    .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
+                else {
+                    panic!()
+                };
+                let exit_term = enter_term + 1 + inner;
+                if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
                     *l = DescriptionTerm;
-                    let Some(inner) = self.events[enter_term + 1..]
-                        .iter_mut()
-                        .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
-                    else {
-                        panic!()
-                    };
-                    let exit_term = enter_term + 1 + inner;
-                    if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
-                        *l = DescriptionTerm;
-                    } else {
-                        panic!()
-                    }
-
-                    // remove empty description term
-                    self.events[empty_term].kind = EventKind::Stale;
-                    self.events[empty_term + 1].kind = EventKind::Stale;
-
-                    // move out term before detail
-                    self.events[enter_term].span = self.events[empty_term].span.clone();
-                    let first_detail = self.events[exit_term + 1..]
-                        .iter()
-                        .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
-                        .map_or(self.events.len(), |i| exit_term + 1 + i);
-                    let detail_pos = self
-                        .events
-                        .get(first_detail)
-                        .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
-                    for (i, j) in (enter_term..first_detail).enumerate() {
-                        self.events[enter_detail + i] = self.events[j].clone();
-                    }
-                    self.events[first_detail - 1] = Event {
-                        kind: EventKind::Enter(Node::Container(c)),
-                        span: detail_pos..detail_pos,
-                    };
-                    self.open[open_detail] = first_detail - 1;
+                } else {
+                    panic!("{:?}", self.events[exit_term].kind);
                 }
+
+                // remove empty description term
+                self.events[empty_term].kind = EventKind::Stale;
+                self.events[empty_term + 1].kind = EventKind::Stale;
+
+                // move out term before detail
+                self.events[enter_term].span = self.events[empty_term].span.clone();
+                let first_detail = self.events[exit_term + 1..]
+                    .iter()
+                    .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
+                    .map_or(self.events.len(), |i| exit_term + 1 + i);
+                let detail_pos = self
+                    .events
+                    .get(first_detail)
+                    .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
+                for (i, j) in (enter_term..first_detail).enumerate() {
+                    self.events[enter_detail + i] = self.events[j].clone();
+                }
+                self.events[first_detail - 1] = Event {
+                    kind: EventKind::Enter(Node::Container(c)),
+                    span: detail_pos..detail_pos,
+                };
+                self.open[open_detail] = first_detail - 1;
             }
         }
 
