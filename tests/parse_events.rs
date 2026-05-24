@@ -2161,3 +2161,93 @@ fn table_caption() {
         (End(Table), ""),
     );
 }
+
+#[test]
+fn desc() {
+    test_parse!(
+        concat!(
+            ": term\n", //
+            "\n",       //
+            "  desc\n"  //
+        ),
+        (Start(DescriptionList, Attributes::new()), ""),
+        (Start(DescriptionTerm, Attributes::new()), ":"),
+        (Str("term".into()), "term"),
+        (End(DescriptionTerm), ""),
+        (Blankline, "\n"),
+        (Start(DescriptionDetails, Attributes::new()), ""),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("desc".into()), "desc"),
+        (End(Paragraph), ""),
+        (End(DescriptionDetails), ""),
+        (End(DescriptionList), ""),
+    );
+}
+
+#[test]
+fn desc_empty_term() {
+    test_parse!(
+        concat!(
+            ":\n",  //
+            "\n",   //
+            " >\n", //
+        ),
+        (Start(DescriptionList, Attributes::new()), ""),
+        (Start(DescriptionTerm, Attributes::new()), ":"),
+        (End(DescriptionTerm), ""),
+        (Start(DescriptionDetails, Attributes::new()), ""),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Start(Blockquote, Attributes::new()), ">"),
+        (Blankline, "\n"),
+        (End(Blockquote), ""),
+        (End(DescriptionDetails), ""),
+        (End(DescriptionList), ""),
+    );
+}
+
+#[test]
+fn desc_empty_detail() {
+    test_parse!(
+        ": term",
+        (Start(DescriptionList, Attributes::new()), ""),
+        (Start(DescriptionTerm, Attributes::new()), ":"),
+        (Str("term".into()), "term"),
+        (End(DescriptionTerm), ""),
+        (Start(DescriptionDetails, Attributes::new()), ""),
+        (End(DescriptionDetails), ""),
+        (End(DescriptionList), ""),
+    );
+    test_parse!(
+        concat!(
+            ":\n",      //
+            "\n",       //
+            "  term\n", //
+        ),
+        (Start(DescriptionList, Attributes::new()), ""),
+        (Start(DescriptionTerm, Attributes::new()), ":"),
+        (End(DescriptionTerm), ""),
+        (Start(DescriptionDetails, Attributes::new()), ""),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("term".into()), "term"),
+        (End(Paragraph), ""),
+        (End(DescriptionDetails), ""),
+        (End(DescriptionList), ""),
+    );
+}
+
+#[test]
+fn desc_empty() {
+    test_parse!(
+        ":",
+        (Start(DescriptionList, Attributes::new()), ""),
+        (Start(DescriptionTerm, Attributes::new()), ":"),
+        (End(DescriptionTerm), ""),
+        (Start(DescriptionDetails, Attributes::new()), ""),
+        (Blankline, ""),
+        (End(DescriptionDetails), ""),
+        (End(DescriptionList), ""),
+    );
+}
