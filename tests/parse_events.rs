@@ -2127,3 +2127,37 @@ fn table_consecutive() {
         (End(Table), ""),
     );
 }
+
+#[test]
+fn table_caption() {
+    test_parse!(
+        concat!(
+            "||\n",        //
+            "^ caption\n", //
+        ),
+        (Start(Table, Attributes::new()), ""),
+        (Start(Caption, Attributes::new()), ""),
+        (Str("caption".into()), "caption"),
+        (End(Caption), ""),
+        (Start(TableRow { head: false }, Attributes::new()), "|"),
+        (
+            Start(
+                TableCell {
+                    alignment: Alignment::Unspecified,
+                    head: false
+                },
+                Attributes::new(),
+            ),
+            ""
+        ),
+        (
+            End(TableCell {
+                alignment: Alignment::Unspecified,
+                head: false,
+            }),
+            "|"
+        ),
+        (End(TableRow { head: false }), ""),
+        (End(Table), ""),
+    );
+}
