@@ -78,6 +78,22 @@ fn empty() {
 }
 
 #[test]
+fn blankline() {
+    test_parse!(
+        concat!(
+            "\n",   //
+            "\t\n", //
+            "  \n", //
+            "\n",   //
+        ),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+        (Blankline, "\n"),
+    );
+}
+
+#[test]
 fn heading() {
     test_parse!(
         "#\n",
