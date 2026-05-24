@@ -1224,6 +1224,104 @@ fn parse_description_list_empty() {
             ""
         ),
     );
+    test_parse!(
+        ":",
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(Blankline), ""),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+    );
+}
+
+#[test]
+fn parse_description_list_no_term() {
+    test_parse!(
+        concat!(
+            ": ```\n", //
+            " ```\n",  //
+            "\n",      //
+            "  desc",
+        ),
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Enter(Leaf(CodeBlock { language: "" })), "```\n"),
+        (Exit(Leaf(CodeBlock { language: "" })), "```\n"),
+        (Atom(Blankline), "\n"),
+        (Enter(Leaf(Paragraph)), ""),
+        (Inline, "desc"),
+        (Exit(Leaf(Paragraph)), ""),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+    );
+}
+
+#[test]
+fn parse_description_list_blankline_before_term() {
+    test_parse!(
+        concat!(
+            ":\n",      //
+            "\n",       //
+            "  term\n", //
+            "\n",       //
+            "  desc\n", //
+        ),
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: false,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(Blankline), "\n"),
+        (Atom(Blankline), "\n"),
+        (Enter(Leaf(Paragraph)), ""),
+        (Inline, "term"),
+        (Exit(Leaf(Paragraph)), ""),
+        (Atom(Blankline), "\n"),
+        (Enter(Leaf(Paragraph)), ""),
+        (Inline, "desc"),
+        (Exit(Leaf(Paragraph)), ""),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: false,
+            })),
+            ""
+        ),
+    );
 }
 
 #[test]
