@@ -1,5 +1,5 @@
 # run one or more benchmarks, for use together with bench_table.sh
-# usage: ./bench_row.sh [-i] [-c crit_bench]..
+# usage: ./bench_row.sh [-c crit_bench]..
 
 {
     git log --oneline | head -n1
