@@ -1,5 +1,7 @@
-# run benchmarks over a range of commits and assemble a table
+# run benchmarks over a range of commits and print a table of results
 # usage: ./contrib/bench_table.sh [-r RANGE] -- BENCHMARKS
+#
+# example: ./contrib/bench_table.sh -r master.. -- -c full/readme
 
 range="master.."
 while getopts r: flag; do
