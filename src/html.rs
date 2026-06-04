@@ -1,4 +1,4 @@
-//! An HTML renderer that takes an iterator of [`Event`]s and emits HTML.
+//! A renderer that takes [`Event`]s and emits HTML.
 
 use crate::Alignment;
 use crate::Container;
