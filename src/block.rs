@@ -1041,31 +1041,36 @@ impl<'s> IdentifiedBlock<'s> {
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
                 Some((Kind::Atom(ThematicBreak), indent..(indent + lt)))
             }
-            b @ ('-' | '*' | '+') => chars.next().is_none_or(|c| c == ' ').then(|| {
-                let task_list = chars.next() == Some('[')
-                    && matches!(chars.next(), Some('x' | 'X' | ' '))
-                    && chars.next() == Some(']')
-                    && chars.next().is_none_or(|c| c.is_ascii_whitespace());
-                if task_list {
-                    (
-                        Kind::ListItem {
-                            indent,
-                            ty: Task(b as u8),
-                            last_blankline: false,
-                        },
-                        indent..(indent + 5),
-                    )
-                } else {
-                    (
-                        Kind::ListItem {
-                            indent,
-                            ty: Unordered(b as u8),
-                            last_blankline: false,
-                        },
-                        indent..(indent + 1),
-                    )
-                }
-            }),
+            b @ ('-' | '*' | '+') => {
+                chars
+                    .next()
+                    .is_none_or(|c| c.is_ascii_whitespace())
+                    .then(|| {
+                        let task_list = chars.next() == Some('[')
+                            && matches!(chars.next(), Some('x' | 'X' | ' '))
+                            && chars.next() == Some(']')
+                            && chars.next().is_none_or(|c| c.is_ascii_whitespace());
+                        if task_list {
+                            (
+                                Kind::ListItem {
+                                    indent,
+                                    ty: Task(b as u8),
+                                    last_blankline: false,
+                                },
+                                indent..(indent + 5),
+                            )
+                        } else {
+                            (
+                                Kind::ListItem {
+                                    indent,
+                                    ty: Unordered(b as u8),
+                                    last_blankline: false,
+                                },
+                                indent..(indent + 1),
+                            )
+                        }
+                    })
+            }
             ':' if chars.clone().next().is_none_or(|c| c.is_ascii_whitespace()) => Some((
                 Kind::ListItem {
                     indent,

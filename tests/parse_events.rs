@@ -772,7 +772,6 @@ fn ellipsis() {
 fn dash() {
     test_parse!(
         concat!(
-            "-\n",         //
             "--\n",        //
             "---\n",       //
             "----\n",      //
@@ -783,9 +782,6 @@ fn dash() {
             "---------\n", //
         ),
         (Start(Paragraph, Attributes::new()), ""),
-        // 1
-        (Str("-".into()), "-"),
-        (Softbreak, "\n"),
         // 2
         (EnDash, "--"),
         (Softbreak, "\n"),
@@ -1896,6 +1892,59 @@ fn attr_inline_dangling() {
         ),
         (Str(" a".into()), " a"),
         (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn list_empty() {
+    test_parse!(
+        "-\n",
+        (
+            Start(
+                List {
+                    kind: ListKind::Unordered(Dash),
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (Start(ListItem, Attributes::new()), "-"),
+        (Blankline, "\n"),
+        (End(ListItem), ""),
+        (
+            End(List {
+                kind: ListKind::Unordered(Dash),
+                tight: true,
+            }),
+            "",
+        ),
+    );
+    test_parse!(
+        "- [ ]\n",
+        (
+            Start(
+                List {
+                    kind: ListKind::Task(Dash),
+                    tight: true,
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (
+            Start(TaskListItem { checked: false }, Attributes::new()),
+            "- [ ]"
+        ),
+        (Blankline, "\n"),
+        (End(TaskListItem { checked: false }), ""),
+        (
+            End(List {
+                kind: ListKind::Task(Dash),
+                tight: true,
+            }),
+            "",
+        ),
     );
 }
 
