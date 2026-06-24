@@ -1633,6 +1633,52 @@ fn attr_inline_consecutive_invalid() {
 }
 
 #[test]
+fn attr_block_multiline_unattached() {
+    test_parse!(
+        concat!(
+            "{ .a }\n", //
+        ),
+        (Attributes(attrs![(AttributeKind::Class, "a")]), "{ .a }\n"),
+    );
+    test_parse!(
+        concat!(
+            "{ .a\n", //
+            " }\n",   //
+        ),
+        (Attributes(attrs![(AttributeKind::Class, "a")]), "{ .a\n }"),
+    );
+}
+
+#[test]
+fn attr_block_multiline_attached() {
+    test_parse!(
+        concat!(
+            "{#id .class\n",            //
+            "  style=\"color:red\"}\n", //
+            "A paragraph\n",            //
+        ),
+        (
+            Start(
+                Paragraph,
+                attrs![
+                    (AttributeKind::Id, "id"),
+                    (AttributeKind::Class, "class"),
+                    (
+                        AttributeKind::Pair {
+                            key: "style".into()
+                        },
+                        "color:red"
+                    ),
+                ]
+            ),
+            "{#id .class\n  style=\"color:red\"}\n",
+        ),
+        (Str("A paragraph".into()), "A paragraph"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn attr_inline_multiline() {
     test_parse!(
         concat!(
