@@ -1404,7 +1404,8 @@ pub enum Container<'s> {
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
     Span,
-    /// An inline link, the first field is either a destination URL or an unresolved tag.
+    /// An inline link, the first field is either a destination URL or an unresolved reference
+    /// label.
     ///
     /// # Examples
     ///
@@ -1549,7 +1550,8 @@ pub enum Container<'s> {
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
     /// ```
     Link(CowStr<'s>, LinkType),
-    /// An inline image, the first field is either a destination URL or an unresolved tag.
+    /// An inline image, the first field is either a destination URL or an unresolved referenc
+    /// label.
     ///
     /// # Examples
     ///
@@ -1940,9 +1942,9 @@ pub enum Alignment {
 pub enum SpanLinkType {
     /// E.g. `[text](url)`
     Inline,
-    /// In the form `[text][tag]` or `[tag][]`.
+    /// In the form `[text][label]` or `[label][]`.
     Reference,
-    /// Like reference, but the tag is unresolved.
+    /// Like reference, but the label is unresolved.
     Unresolved,
 }
 
@@ -2190,7 +2192,7 @@ impl<'s> PrePass<'s> {
                 block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
                     label,
                 })) => {
-                    // All link definition tags have to be obtained initially, as references can
+                    // All link definition labels have to be obtained initially, as references can
                     // appear before the definition.
                     let attrs = attr_prev
                         .iter()
@@ -2355,9 +2357,9 @@ impl<'s> PrePass<'s> {
             .map(|i| self.heading_id(i))
     }
 
-    fn heading_id_by_tag(&self, tag: &str) -> Option<&str> {
+    fn heading_id_by_label(&self, label: &str) -> Option<&str> {
         self.headings_lex
-            .binary_search_by_key(&tag, |i| &self.headings[*i].text)
+            .binary_search_by_key(&label, |i| &self.headings[*i].text)
             .ok()
             .map(|i| self.heading_id(self.headings_lex[i]))
     }
@@ -2537,29 +2539,31 @@ impl<'s> Parser<'s> {
                             self.inline_parser.store_cowstrs[url as usize].clone(),
                             SpanLinkType::Inline,
                         ),
-                        inline::Container::ReferenceLink(tag)
-                        | inline::Container::ReferenceImage(tag) => {
-                            let tag = &self.inline_parser.store_cowstrs[tag as usize];
+                        inline::Container::ReferenceLink(label)
+                        | inline::Container::ReferenceImage(label) => {
+                            let label = &self.inline_parser.store_cowstrs[label as usize];
                             let link_def =
-                                self.pre_pass.link_definitions.get(tag.as_ref()).cloned();
+                                self.pre_pass.link_definitions.get(label.as_ref()).cloned();
 
-                            let (url_or_tag, ty) = if let Some((url, mut attrs_def)) = link_def {
+                            let (url_or_label, ty) = if let Some((url, mut attrs_def)) = link_def {
                                 if enter {
                                     attrs_def.append(&mut attributes);
                                     attributes = attrs_def;
                                 }
                                 (url, SpanLinkType::Reference)
                             } else {
-                                self.pre_pass.heading_id_by_tag(tag.as_ref()).map_or_else(
-                                    || (tag.clone(), SpanLinkType::Unresolved),
-                                    |id| (format!("#{id}").into(), SpanLinkType::Reference),
-                                )
+                                self.pre_pass
+                                    .heading_id_by_label(label.as_ref())
+                                    .map_or_else(
+                                        || (label.clone(), SpanLinkType::Unresolved),
+                                        |id| (format!("#{id}").into(), SpanLinkType::Reference),
+                                    )
                             };
 
                             if matches!(c, inline::Container::ReferenceLink(..)) {
-                                Container::Link(url_or_tag, LinkType::Span(ty))
+                                Container::Link(url_or_label, LinkType::Span(ty))
                             } else {
-                                Container::Image(url_or_tag, ty)
+                                Container::Image(url_or_label, ty)
                             }
                         }
                         inline::Container::Autolink(url) => {

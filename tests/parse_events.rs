@@ -834,9 +834,9 @@ fn link_inline_multi_line() {
 fn link_reference() {
     test_parse!(
         concat!(
-            "[text][tag]\n",
+            "[text][lbl]\n",
             "\n",
-            "[tag]: url\n" //
+            "[lbl]: url\n" //
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (
@@ -849,32 +849,32 @@ fn link_reference() {
         (Str("text".into()), "text"),
         (
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]",
+            "][lbl]",
         ),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 Attributes::new()
             ),
-            "[tag]:",
+            "[lbl]:",
         ),
         (Str("url".into()), "url"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),
     );
     test_parse!(
         concat!(
-            "![text][tag]\n",
+            "![text][lbl]\n",
             "\n",
-            "[tag]: url\n" //
+            "[lbl]: url\n" //
         ),
         (Start(Paragraph, Attributes::new()), ""),
         (
@@ -885,22 +885,22 @@ fn link_reference() {
             "![",
         ),
         (Str("text".into()), "text"),
-        (End(Image("url".into(), SpanLinkType::Reference)), "][tag]"),
+        (End(Image("url".into(), SpanLinkType::Reference)), "][lbl]"),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 Attributes::new()
             ),
-            "[tag]:",
+            "[lbl]:",
         ),
         (Str("url".into()), "url"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),
@@ -910,34 +910,34 @@ fn link_reference() {
 #[test]
 fn link_reference_unresolved() {
     test_parse!(
-        "[text][tag]",
+        "[text][lbl]",
         (Start(Paragraph, Attributes::new()), ""),
         (
             Start(
-                Link("tag".into(), LinkType::Span(SpanLinkType::Unresolved)),
+                Link("lbl".into(), LinkType::Span(SpanLinkType::Unresolved)),
                 Attributes::new(),
             ),
             "[",
         ),
         (Str("text".into()), "text"),
         (
-            End(Link("tag".into(), LinkType::Span(SpanLinkType::Unresolved))),
-            "][tag]",
+            End(Link("lbl".into(), LinkType::Span(SpanLinkType::Unresolved))),
+            "][lbl]",
         ),
         (End(Paragraph), ""),
     );
     test_parse!(
-        "![text][tag]",
+        "![text][lbl]",
         (Start(Paragraph, Attributes::new()), ""),
         (
             Start(
-                Image("tag".into(), SpanLinkType::Unresolved),
+                Image("lbl".into(), SpanLinkType::Unresolved),
                 Attributes::new(),
             ),
             "![",
         ),
         (Str("text".into()), "text"),
-        (End(Image("tag".into(), SpanLinkType::Unresolved)), "][tag]"),
+        (End(Image("lbl".into(), SpanLinkType::Unresolved)), "][lbl]"),
         (End(Paragraph), ""),
     );
 }
@@ -1056,9 +1056,9 @@ fn link_reference_multiline_empty() {
 fn link_definition_multiline() {
     test_parse!(
         concat!(
-            "[text][tag]\n",
+            "[text][lbl]\n",
             "\n",
-            "[tag]: u\n",
+            "[lbl]: u\n",
             " rl\n", //
         ),
         (Start(Paragraph, Attributes::new()), ""),
@@ -1072,33 +1072,33 @@ fn link_definition_multiline() {
         (Str("text".into()), "text"),
         (
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]",
+            "][lbl]",
         ),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 Attributes::new()
             ),
-            "[tag]:",
+            "[lbl]:",
         ),
         (Str("u".into()), "u"),
         (Str("rl".into()), "rl"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),
     );
     test_parse!(
         concat!(
-            "[text][tag]\n",
+            "[text][lbl]\n",
             "\n",
-            "[tag]:\n",
+            "[lbl]:\n",
             " url\n",  //
             " cont\n", //
         ),
@@ -1116,24 +1116,24 @@ fn link_definition_multiline() {
                 "urlcont".into(),
                 LinkType::Span(SpanLinkType::Reference),
             )),
-            "][tag]",
+            "][lbl]",
         ),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 Attributes::new()
             ),
-            "[tag]:",
+            "[lbl]:",
         ),
         (Str("url".into()), "url"),
         (Str("cont".into()), "cont"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),
@@ -1144,10 +1144,10 @@ fn link_definition_multiline() {
 fn link_reference_attrs() {
     test_parse!(
         concat!(
-            "[text][tag]{b=c}\n",
+            "[text][lbl]{b=c}\n",
             "\n",
             "{a=b}\n",
-            "[tag]: url\n",
+            "[lbl]: url\n",
             "para\n",
         ),
         (Start(Paragraph, Attributes::new()), ""),
@@ -1164,23 +1164,23 @@ fn link_reference_attrs() {
         (Str("text".into()), "text"),
         (
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]{b=c}",
+            "][lbl]{b=c}",
         ),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 attrs![(AttributeKind::Pair { key: "a".into() }, "b")],
             ),
-            "{a=b}\n[tag]:",
+            "{a=b}\n[lbl]:",
         ),
         (Str("url".into()), "url"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),
@@ -1194,10 +1194,10 @@ fn link_reference_attrs() {
 fn link_reference_attrs_class() {
     test_parse!(
         concat!(
-            "[text][tag]{.link}\n",
+            "[text][lbl]{.link}\n",
             "\n",
             "{.def}\n",
-            "[tag]: url\n",
+            "[lbl]: url\n",
             "para\n",
         ),
         (Start(Paragraph, Attributes::new()), ""),
@@ -1214,23 +1214,23 @@ fn link_reference_attrs_class() {
         (Str("text".into()), "text"),
         (
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
-            "][tag]{.link}",
+            "][lbl]{.link}",
         ),
         (End(Paragraph), ""),
         (Blankline, "\n"),
         (
             Start(
                 LinkDefinition {
-                    label: "tag".into()
+                    label: "lbl".into()
                 },
                 attrs![(AttributeKind::Class, "def")],
             ),
-            "{.def}\n[tag]:",
+            "{.def}\n[lbl]:",
         ),
         (Str("url".into()), "url"),
         (
             End(LinkDefinition {
-                label: "tag".into()
+                label: "lbl".into()
             }),
             ""
         ),

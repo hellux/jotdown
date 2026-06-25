@@ -536,22 +536,22 @@ fn parse_code_block() {
 #[test]
 fn parse_link_definition() {
     test_parse!(
-        "[tag]: url\n",
-        (Enter(Leaf(LinkDefinition { label: "tag" })), "[tag]:"),
+        "[lbl]: url\n",
+        (Enter(Leaf(LinkDefinition { label: "lbl" })), "[lbl]:"),
         (Inline, "url"),
-        (Exit(Leaf(LinkDefinition { label: "tag" })), ""),
+        (Exit(Leaf(LinkDefinition { label: "lbl" })), ""),
     );
 }
 
 #[test]
 fn parse_footnote() {
     test_parse!(
-        "[^tag]: description\n",
-        (Enter(Container(Footnote { label: "tag" })), "[^tag]:"),
+        "[^lbl]: description\n",
+        (Enter(Container(Footnote { label: "lbl" })), "[^lbl]:"),
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "description"),
         (Exit(Leaf(Paragraph)), ""),
-        (Exit(Container(Footnote { label: "tag" })), ""),
+        (Exit(Container(Footnote { label: "lbl" })), ""),
     );
 }
 
@@ -1604,14 +1604,14 @@ fn block_code_block() {
 #[test]
 fn block_link_definition() {
     test_block!(
-        "[tag]: url\n",
+        "[lbl]: url\n",
         Kind::Definition {
             indent: 0,
             footnote: false,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[tag]:",
+        "[lbl]:",
         1
     );
 }
@@ -1620,30 +1620,30 @@ fn block_link_definition() {
 fn block_link_definition_multiline() {
     test_block!(
         concat!(
-            "[tag]: uuu\n",
+            "[lbl]: uuu\n",
             " rl\n", //
         ),
         Kind::Definition {
             indent: 0,
             footnote: false,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[tag]:",
+        "[lbl]:",
         2,
     );
     test_block!(
         concat!(
-            "[tag]: url\n",
+            "[lbl]: url\n",
             "para\n", //
         ),
         Kind::Definition {
             indent: 0,
             footnote: false,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[tag]:",
+        "[lbl]:",
         1,
     );
 }
@@ -1651,14 +1651,14 @@ fn block_link_definition_multiline() {
 #[test]
 fn block_footnote_empty() {
     test_block!(
-        "[^tag]:\n",
+        "[^lbl]:\n",
         Kind::Definition {
             indent: 0,
             footnote: true,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[^tag]:",
+        "[^lbl]:",
         1
     );
 }
@@ -1666,14 +1666,14 @@ fn block_footnote_empty() {
 #[test]
 fn block_footnote_single() {
     test_block!(
-        "[^tag]: a\n",
+        "[^lbl]: a\n",
         Kind::Definition {
             indent: 0,
             footnote: true,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[^tag]:",
+        "[^lbl]:",
         1
     );
 }
@@ -1682,16 +1682,16 @@ fn block_footnote_single() {
 fn block_footnote_multiline() {
     test_block!(
         concat!(
-            "[^tag]: a\n",
+            "[^lbl]: a\n",
             " b\n", //
         ),
         Kind::Definition {
             indent: 0,
             footnote: true,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[^tag]:",
+        "[^lbl]:",
         2,
     );
 }
@@ -1700,7 +1700,7 @@ fn block_footnote_multiline() {
 fn block_footnote_multiline_post() {
     test_block!(
         concat!(
-            "[^tag]: a\n",
+            "[^lbl]: a\n",
             " b\n",
             "\n",
             "para\n", //
@@ -1708,10 +1708,10 @@ fn block_footnote_multiline_post() {
         Kind::Definition {
             indent: 0,
             footnote: true,
-            label: "tag",
+            label: "lbl",
             last_blankline: false,
         },
-        "[^tag]:",
+        "[^lbl]:",
         3,
     );
 }

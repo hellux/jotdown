@@ -195,25 +195,25 @@ fn raw_attr() {
 }
 
 #[test]
-fn span_tag() {
+fn span_label() {
     test_parse!(
-        "[text][tag]",
+        "[text][lbl]",
         (Enter(ReferenceLink(0)), "["),
         (Str, "text"),
-        (Exit(ReferenceLink(0)), "][tag]"),
+        (Exit(ReferenceLink(0)), "][lbl]"),
     );
     test_parse!(
-        "![text][tag]",
+        "![text][lbl]",
         (Enter(ReferenceImage(0)), "!["),
         (Str, "text"),
-        (Exit(ReferenceImage(0)), "][tag]"),
+        (Exit(ReferenceImage(0)), "][lbl]"),
     );
     test_parse!(
-        "before [text][tag] after",
+        "before [text][lbl] after",
         (Str, "before "),
         (Enter(ReferenceLink(0)), "["),
         (Str, "text"),
-        (Exit(ReferenceLink(0)), "][tag]"),
+        (Exit(ReferenceLink(0)), "][lbl]"),
         (Str, " after"),
     );
     test_parse!(
@@ -227,7 +227,7 @@ fn span_tag() {
 }
 
 #[test]
-fn span_tag_empty() {
+fn span_label_empty() {
     test_parse!(
         "[text][]",
         (Enter(ReferenceLink(0)), "["),
@@ -243,7 +243,7 @@ fn span_tag_empty() {
 }
 
 #[test]
-fn span_tag_empty_nested() {
+fn span_label_empty_nested() {
     test_parse!(
         "[some _text_][]",
         (Enter(ReferenceLink(0)), "["),
