@@ -140,6 +140,17 @@ impl<'s> Input<'s> {
         if let Some(t) = &tok {
             self.span.end += t.len;
         }
+
+        #[cfg(feature = "log")]
+        if let Some(t) = &tok {
+            log::trace!(
+                "eat {:?} {:?} {:?}",
+                t.kind,
+                self.span,
+                &self.src[self.span.clone()]
+            );
+        }
+
         tok
     }
 
@@ -256,6 +267,12 @@ impl<'s> Parser<'s> {
     }
 
     pub fn feed_line(&mut self, line: std::ops::Range<usize>, last: bool) {
+        #[cfg(feature = "log")]
+        log::trace!(
+            "line {:?} {line:?}{}",
+            &self.input.src[line.clone()],
+            if last { " (last)" } else { "" }
+        );
         self.input.feed_line(line, last);
     }
 
@@ -270,6 +287,8 @@ impl<'s> Parser<'s> {
     }
 
     fn push_sp(&mut self, kind: EventKind<'s>, span: std::ops::Range<usize>) {
+        #[cfg(feature = "log")]
+        log::trace!("push {kind:?} {span:?} {:?}", &self.input.src[span.clone()]);
         self.events.push_back(Event { kind, span });
     }
 
@@ -572,8 +591,8 @@ impl<'s> Parser<'s> {
                     self.events[last].span.end = self.input.span.end;
                 }
                 AttributesElementType::Word => {
-                    self.events.push_back(attr_event);
-                    // push for now, pop later if attrs attached to word
+                    self.push_sp(attr_event.kind, attr_event.span);
+                    // push for now, replace with word later if attrs attached to it
                     self.push(EventKind::Empty);
                 }
             }
@@ -1181,6 +1200,24 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let ret = self.next_internal();
+
+        #[cfg(feature = "log")]
+        if let Some(e) = &ret {
+            log::trace!(
+                "emit {:?} {:?} {:?}",
+                e.kind,
+                e.span,
+                &self.input.src[e.span.clone()]
+            );
+        }
+
+        ret
+    }
+}
+
+impl<'s> Parser<'s> {
+    fn next_internal(&mut self) -> Option<Event<'s>> {
         while self.events.is_empty()
             || !self.openers.is_empty()
             || self.verbatim.is_some()
@@ -1225,10 +1262,10 @@ impl<'s> Iterator for Parser<'s> {
                         })
                     ) =>
             {
-                self.next()
+                self.next_internal()
             }
             EventKind::Str => Some(self.merge_str_events(e.span)),
-            EventKind::Placeholder => self.next(),
+            EventKind::Placeholder => self.next_internal(),
             _ => Some(e),
         })
     }

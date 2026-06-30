@@ -2825,7 +2825,15 @@ impl<'s> Iterator for Parser<'s> {
     type Item = Event<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_span().map(|(e, _)| e)
+        self.next_span().map(|#[allow(unused)] (e, sp)| {
+            #[cfg(feature = "log")]
+            log::trace!(
+                target: "jotdown::parse",
+                "{e:?} {:?} {sp:?}",
+                &self.src[sp.clone()],
+            );
+            e
+        })
     }
 }
 
@@ -2841,7 +2849,14 @@ impl<'s> Iterator for OffsetIter<'s> {
     type Item = (Event<'s>, std::ops::Range<usize>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parser.next_span()
+        self.parser.next_span().inspect(|#[allow(unused)] (e, sp)| {
+            #[cfg(feature = "log")]
+            log::trace!(
+                target: "jotdown::parse",
+                "{e:?} {:?} {sp:?}",
+                &self.parser.src[sp.clone()],
+            );
+        })
     }
 }
 

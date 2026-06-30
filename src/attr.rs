@@ -739,20 +739,33 @@ impl<'s> Parser<'s> {
     pub(crate) fn parse(&mut self, input: &'s str) -> Result<usize, usize> {
         use State::*;
 
+        #[cfg(feature = "log")]
+        log::trace!("start {input:?}");
+
         let mut pos_prev = 0;
         for (pos, c) in input.bytes().enumerate() {
             let state_next = self.state.step(c);
 
             if matches!(state_next, Invalid) {
+                #[cfg(feature = "log")]
+                log::trace!("abort {:?}", &input[..pos]);
                 return Err(pos);
             }
 
             let st = std::mem::replace(&mut self.state, state_next);
 
-            if st != self.state && !matches!((st, self.state), (ValueEscape, _) | (_, ValueEscape))
-            {
+            if st != self.state {
                 let content = &input[pos_prev..pos];
+
+                #[cfg(feature = "log")]
+                log::trace!("step {st:?} {content:?}");
+
+                if st == ValueEscape || self.state == ValueEscape {
+                    continue;
+                }
+
                 pos_prev = pos;
+
                 match st {
                     Class => self.attrs.push((AttributeKind::Class, content.into())),
                     Identifier => self.attrs.push((AttributeKind::Id, content.into())),
