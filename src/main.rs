@@ -16,6 +16,8 @@ fn run() -> Result<(), std::io::Error> {
     use jotdown::Render;
     use std::io::Read;
 
+    env_logger::init();
+
     let app: App = clap::Parser::parse();
 
     let content = match app.input {
