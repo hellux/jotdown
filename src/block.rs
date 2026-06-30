@@ -248,6 +248,16 @@ impl<'s> TreeParser<'s> {
         self.exit(self.src.len()..self.src.len()); // Document
         debug_assert_eq!(self.open, &[]);
 
+        #[cfg(feature = "log")]
+        for e in &self.events {
+            log::trace!(
+                "emit {:?} {:?} {:?}",
+                e.kind,
+                &self.src[e.span.clone()],
+                e.span
+            );
+        }
+
         self.events
     }
 
@@ -291,6 +301,12 @@ impl<'s> TreeParser<'s> {
             span: span_start,
             line_count,
         } = MeteredBlock::new(lines.iter().map(|sp| &self.src[sp.clone()]))?;
+
+        #[cfg(feature = "log")]
+        log::trace!(
+            "parse {kind:?} {line_count} line(s) {:?}",
+            &self.src[lines[0].clone()]
+        );
 
         let lines = &mut lines[..line_count];
         let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
@@ -1006,6 +1022,7 @@ impl<'s> TreeParser<'s> {
 }
 
 /// Parser for a single block.
+#[derive(Debug)]
 struct MeteredBlock<'s> {
     kind: Kind<'s>,
     span: std::ops::Range<usize>,

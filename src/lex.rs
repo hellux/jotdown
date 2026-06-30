@@ -84,6 +84,9 @@ pub(crate) struct Lexer<'s> {
 
 impl<'s> Lexer<'s> {
     pub fn new(src: &'s [u8]) -> Self {
+        #[cfg(feature = "log")]
+        log::trace!("new {:?}", std::str::from_utf8(src).unwrap());
+
         Lexer {
             src,
             pos: 0,
@@ -260,6 +263,14 @@ impl<'s> Lexer<'s> {
                 }
             }
         };
+
+        #[cfg(feature = "log")]
+        log::trace!(
+            "parse {:?} {:?}{}",
+            kind,
+            std::str::from_utf8(&self.src[start..self.pos]).unwrap(),
+            if self.verbatim { " (verbatim)" } else { "" }
+        );
 
         Some(Token {
             kind,
