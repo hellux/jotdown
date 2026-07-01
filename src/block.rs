@@ -645,7 +645,10 @@ impl<'s> TreeParser<'s> {
         }
 
         if let Some((empty_term, enter_detail, open_detail)) = dt {
-            let enter_term = enter_detail + 1;
+            let enter_term = self.events[enter_detail + 1..]
+                .iter()
+                .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
+                .map_or(self.events.len() - 1, |i| enter_detail + 1 + i);
             let Some(first_child) = self.events.get_mut(enter_term) else {
                 unreachable!()
             };
@@ -681,10 +684,10 @@ impl<'s> TreeParser<'s> {
                     .get(first_detail)
                     .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
                 debug_assert_eq!(
-                    self.events[enter_term - 1].kind,
+                    self.events[enter_detail].kind,
                     EventKind::Enter(Node::Container(c)),
                 );
-                for (i, j) in (enter_term..first_detail).enumerate() {
+                for (i, j) in (enter_detail + 1..first_detail).enumerate() {
                     self.events[enter_detail + i] = self.events[j].clone();
                 }
                 debug_assert_eq!(
