@@ -1212,9 +1212,9 @@ fn parse_description_list_empty() {
             ""
         ),
         (Enter(Leaf(DescriptionTerm)), ":"),
+        (Atom(Blankline), "\n"),
         (Exit(Leaf(DescriptionTerm)), ""),
         (Enter(Container(ListItem(ListItemKind::Description))), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::Description))), ""),
         (
             Exit(Container(List {
@@ -1234,9 +1234,9 @@ fn parse_description_list_empty() {
             ""
         ),
         (Enter(Leaf(DescriptionTerm)), ":"),
+        (Atom(Blankline), ""),
         (Exit(Leaf(DescriptionTerm)), ""),
         (Enter(Container(ListItem(ListItemKind::Description))), ""),
-        (Atom(Blankline), ""),
         (Exit(Container(ListItem(ListItemKind::Description))), ""),
         (
             Exit(Container(List {
@@ -1250,6 +1250,58 @@ fn parse_description_list_empty() {
 
 #[test]
 fn parse_description_list_no_term() {
+    test_parse!(
+        ": ---\n",
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(ThematicBreak), "---"),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+    );
+    test_parse!(
+        concat!(
+            ": ---\n", //
+            "\n",      //
+            "  desc",
+        ),
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(ThematicBreak), "---"),
+        (Atom(Blankline), "\n"),
+        (Enter(Leaf(Paragraph)), ""),
+        (Inline, "desc"),
+        (Exit(Leaf(Paragraph)), ""),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+    );
     test_parse!(
         concat!(
             ": ```\n", //
@@ -1273,6 +1325,34 @@ fn parse_description_list_no_term() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "desc"),
         (Exit(Leaf(Paragraph)), ""),
+        (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (
+            Exit(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+    );
+    test_parse!(
+        concat!(
+            ":\n",    //
+            "\n",     //
+            " ---\n", //
+        ),
+        (
+            Enter(Container(List {
+                ty: Description,
+                tight: true,
+            })),
+            ""
+        ),
+        (Enter(Leaf(DescriptionTerm)), ":"),
+        (Atom(Blankline), "\n"),
+        (Exit(Leaf(DescriptionTerm)), ""),
+        (Atom(Blankline), "\n"),
+        (Enter(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(ThematicBreak), "---"),
         (Exit(Container(ListItem(ListItemKind::Description))), ""),
         (
             Exit(Container(List {
