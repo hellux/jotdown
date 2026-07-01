@@ -1116,6 +1116,10 @@ fn parse_description_list() {
             ""
         ),
     );
+}
+
+#[test]
+fn parse_description_list_inner_list() {
     test_parse!(
         concat!(
             ": apple\n",
