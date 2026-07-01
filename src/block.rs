@@ -633,7 +633,7 @@ impl<'s> TreeParser<'s> {
             let start = self.trim_end(span_start.clone()).end;
             self.exit(start..start);
             span_start = lines[0].start..lines[0].start;
-            Some((dt, self.events.len(), self.open.len()))
+            Some((dt, self.open.len()))
         } else {
             None
         };
@@ -644,62 +644,100 @@ impl<'s> TreeParser<'s> {
             l += line_count;
         }
 
-        if let Some((empty_term, enter_detail, open_detail)) = dt {
-            let enter_term = self.events[enter_detail + 1..]
+        if let Some((empty_term_enter, open_detail)) = dt {
+            let (term_enter, term_exit) = if let Some((enter, exit)) = self.events
+                [self.open[open_detail] + 1..]
                 .iter()
-                .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
-                .map_or(self.events.len() - 1, |i| enter_detail + 1 + i);
-            let Some(first_child) = self.events.get_mut(enter_term) else {
-                unreachable!()
-            };
-            if let l @ EventKind::Enter(Node::Leaf(Paragraph)) = &mut first_child.kind {
+                .take_while(|e| {
+                    matches!(
+                        e.kind,
+                        EventKind::Atom(Blankline) | EventKind::Enter(Node::Leaf(Paragraph))
+                    )
+                })
+                .position(|e| matches!(e.kind, EventKind::Enter(Node::Leaf(Paragraph))))
+                .map(|i| self.open[open_detail] + 1 + i)
+                .map(|enter| {
+                    (
+                        enter,
+                        enter
+                            + 1
+                            + self.events[enter + 1..]
+                                .iter_mut()
+                                .position(|e| {
+                                    matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph)))
+                                })
+                                .unwrap(),
+                    )
+                }) {
                 // turn empty term + para into a term
-                *l = EventKind::Stale;
-                let Some(inner) = self.events[enter_term + 1..]
-                    .iter_mut()
-                    .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
-                else {
-                    panic!()
-                };
-                let exit_term = enter_term + 1 + inner;
-                if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
+                self.events[enter].kind = EventKind::Stale;
+                if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit].kind {
                     debug_assert_eq!(*l, Paragraph);
                     *l = DescriptionTerm;
                 } else {
-                    panic!("{:?}", self.events[exit_term].kind);
+                    panic!("{:?}", self.events[exit].kind);
                 }
                 debug_assert_eq!(
-                    self.events[empty_term + 1].kind,
+                    self.events[empty_term_enter + 1].kind,
                     EventKind::Exit(Node::Leaf(DescriptionTerm)),
                 );
-                self.events[empty_term + 1].kind = EventKind::Stale;
+                self.events[empty_term_enter + 1].kind = EventKind::Stale;
+                (enter, exit)
+            } else {
+                (empty_term_enter, empty_term_enter + 1)
+            };
+            let has_term = term_enter + 1 < term_exit;
 
-                // move out term before detail
-                let first_detail = self.events[exit_term + 1..]
+            let first_detail = {
+                let start = term_exit.max(self.open[open_detail]) + 1;
+                self.events[start..]
                     .iter()
                     .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
-                    .map_or(self.events.len(), |i| exit_term + 1 + i);
+                    .map_or(self.events.len(), |i| start + i)
+            };
+
+            let has_detail = first_detail != self.events.len();
+            if has_term || !has_detail {
+                // move out term before detail
                 let detail_pos = self
                     .events
                     .get(first_detail)
                     .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
                 debug_assert_eq!(
-                    self.events[enter_detail].kind,
+                    self.events[self.open[open_detail]].kind,
                     EventKind::Enter(Node::Container(c)),
                 );
-                for (i, j) in (enter_detail + 1..first_detail).enumerate() {
-                    self.events[enter_detail + i] = self.events[j].clone();
+                for (i, j) in (self.open[open_detail] + 1..first_detail).enumerate() {
+                    self.events.swap(self.open[open_detail] + i, j);
                 }
-                debug_assert_eq!(
-                    &self.events[first_detail - 1],
-                    &self.events[first_detail - 2],
-                );
-                self.events[first_detail - 1] = Event {
-                    kind: EventKind::Enter(Node::Container(c)),
-                    span: detail_pos..detail_pos,
-                };
-                debug_assert_eq!(self.open[open_detail], enter_detail);
+                self.events[first_detail - 1].span = detail_pos..detail_pos;
                 self.open[open_detail] = first_detail - 1;
+            }
+
+            // move any blanklines directly after enter detail before enter detail
+            let leading_blanklines = self.events[self.open[open_detail] + 1..]
+                .iter()
+                .take_while(|e| matches!(e.kind, EventKind::Atom(Blankline)))
+                .count();
+            if leading_blanklines > 0 {
+                let pos = self.events[self.open[open_detail] + leading_blanklines]
+                    .span
+                    .end;
+                for (i, j) in (self.open[open_detail] + 1
+                    ..=self.open[open_detail] + leading_blanklines)
+                    .enumerate()
+                {
+                    self.events.swap(self.open[open_detail] + i, j);
+                }
+                self.open[open_detail] += leading_blanklines;
+                self.events[self.open[open_detail]].span = pos..pos;
+            }
+
+            // move blankline into empty term
+            if !has_term && matches!(self.events[term_exit + 1].kind, EventKind::Atom(Blankline)) {
+                let pos = self.events[term_exit + 1].span.end;
+                self.events.swap(term_exit, term_exit + 1);
+                self.events[term_exit + 1].span = pos..pos;
             }
         }
 

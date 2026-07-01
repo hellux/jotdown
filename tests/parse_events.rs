@@ -2284,19 +2284,17 @@ fn desc() {
 fn desc_empty_term() {
     test_parse!(
         concat!(
-            ":\n",  //
-            "\n",   //
-            " >\n", //
+            ":\n",    //
+            "\n",     //
+            " ---\n", //
         ),
         (Start(DescriptionList, Attributes::new()), ""),
         (Start(DescriptionTerm, Attributes::new()), ":"),
+        (Blankline, "\n"),
         (End(DescriptionTerm), ""),
+        (Blankline, "\n"),
         (Start(DescriptionDetails, Attributes::new()), ""),
-        (Blankline, "\n"),
-        (Blankline, "\n"),
-        (Start(Blockquote, Attributes::new()), ">"),
-        (Blankline, "\n"),
-        (End(Blockquote), ""),
+        (ThematicBreak(Attributes::new()), "---"),
         (End(DescriptionDetails), ""),
         (End(DescriptionList), ""),
     );
@@ -2338,9 +2336,9 @@ fn desc_empty() {
         ":",
         (Start(DescriptionList, Attributes::new()), ""),
         (Start(DescriptionTerm, Attributes::new()), ":"),
+        (Blankline, ""),
         (End(DescriptionTerm), ""),
         (Start(DescriptionDetails, Attributes::new()), ""),
-        (Blankline, ""),
         (End(DescriptionDetails), ""),
         (End(DescriptionList), ""),
     );
