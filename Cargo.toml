@@ -54,3 +54,6 @@ lto = true
 
 [profile.release.package.jotdown_wasm]
 opt-level = 's'
+
+[dev-dependencies]
+env_logger = "0.11"

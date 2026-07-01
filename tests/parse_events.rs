@@ -19,6 +19,9 @@ macro_rules! attrs {
 macro_rules! test_parse {
     ($src:expr $(,$($token:expr),* $(,)?)?) => {
         #[allow(unused)]
+
+        env_logger::try_init().ok();
+
         let actual = jotdown::Parser::new($src)
             .into_offset_iter()
             .map(|(e, r)| (e, &$src[r]))
