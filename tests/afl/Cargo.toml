@@ -6,8 +6,9 @@ default-run = "main"
 
 [dependencies]
 afl = "0.17"
-jotdown = { path = "../../", features = ["deterministic"] }
+jotdown = { path = "../../", features = ["deterministic", "log"] }
 html5ever = "0.26"
+env_logger = "0.11"
 
 [[bin]]
 name = "main"
