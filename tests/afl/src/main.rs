@@ -6,6 +6,8 @@ fn main() {
     let target = args.next().expect("no target");
     assert_eq!(args.next(), None);
 
+    env_logger::init();
+
     let f = match target.as_str() {
         "parse" => jotdown_afl::parse,
         "html" => jotdown_afl::html,
