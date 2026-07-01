@@ -5,6 +5,8 @@ mod ut;
 #[macro_export]
 macro_rules! compare {
     ($src:expr, $expected:expr) => {
+        env_logger::try_init().ok();
+
         let src = $src;
         let expected = $expected;
         let p = jotdown::Parser::new(src);

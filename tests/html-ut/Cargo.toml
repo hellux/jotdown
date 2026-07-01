@@ -5,7 +5,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jotdown = { path = "../.." }
+jotdown = { path = "../..", features = ["log"] }
+env_logger = "0.11"
 
 [lib]
 name = "test_html_ut"

@@ -5,6 +5,9 @@ use jotdown::Attributes;
 
 macro_rules! test_attr {
     ($src:expr, [$($exp:expr),* $(,)?], [$($exp_uniq:expr),* $(,)?] $(,)?) => {
+        #[cfg(feature = "log")]
+        env_logger::try_init().ok();
+
         #[allow(unused)]
         let mut attr = Attributes::try_from($src).unwrap();
 

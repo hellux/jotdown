@@ -15,6 +15,8 @@ fn enum_size() {
 
 macro_rules! test_parse {
     ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+        env_logger::try_init().ok();
+
         #[allow(unused)]
         let mut p = super::Parser::new($src);
         p.feed_line(0..$src.len(), true);
