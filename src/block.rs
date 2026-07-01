@@ -664,13 +664,22 @@ impl<'s> TreeParser<'s> {
                 };
                 let exit_term = enter_term + 1 + inner;
                 if let EventKind::Exit(Node::Leaf(l)) = &mut self.events[exit_term].kind {
+                    debug_assert_eq!(*l, Paragraph);
                     *l = DescriptionTerm;
                 } else {
                     panic!("{:?}", self.events[exit_term].kind);
                 }
 
                 // remove empty description term
+                debug_assert_eq!(
+                    self.events[empty_term].kind,
+                    EventKind::Enter(Node::Leaf(DescriptionTerm)),
+                );
                 self.events[empty_term].kind = EventKind::Stale;
+                debug_assert_eq!(
+                    self.events[empty_term + 1].kind,
+                    EventKind::Exit(Node::Leaf(DescriptionTerm)),
+                );
                 self.events[empty_term + 1].kind = EventKind::Stale;
 
                 // move out term before detail
@@ -683,13 +692,22 @@ impl<'s> TreeParser<'s> {
                     .events
                     .get(first_detail)
                     .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
+                debug_assert_eq!(
+                    self.events[enter_term - 1].kind,
+                    EventKind::Enter(Node::Container(c)),
+                );
                 for (i, j) in (enter_term..first_detail).enumerate() {
                     self.events[enter_detail + i] = self.events[j].clone();
                 }
+                debug_assert_eq!(
+                    &self.events[first_detail - 1],
+                    &self.events[first_detail - 2],
+                );
                 self.events[first_detail - 1] = Event {
                     kind: EventKind::Enter(Node::Container(c)),
                     span: detail_pos..detail_pos,
                 };
+                debug_assert_eq!(self.open[open_detail], enter_detail);
                 self.open[open_detail] = first_detail - 1;
             }
         }
