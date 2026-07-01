@@ -271,7 +271,7 @@ impl<'s> TreeParser<'s> {
     fn exit(&mut self, span: std::ops::Range<usize>) -> usize {
         let i = self.events.len();
         let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
-            panic!();
+            panic!("{:?}", self.events[self.open.pop().unwrap()].kind);
         };
         self.events.push(Event {
             kind: EventKind::Exit(node),
@@ -545,7 +545,7 @@ impl<'s> TreeParser<'s> {
                 let pos = span_start.start as u32;
                 for i in 0..(self.open_sections.len() - first_close) {
                     let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
-                        panic!();
+                        panic!("{:?}", self.events[self.open.pop().unwrap()].kind);
                     };
                     let end = self
                         .attr_start
@@ -846,13 +846,13 @@ impl<'s> TreeParser<'s> {
                     if let EventKind::Enter(Node::Container(TableRow { head })) = &mut event.kind {
                         *head = true;
                     } else {
-                        panic!()
+                        panic!("{:?}", event.kind);
                     }
                     let event: &mut Event = &mut self.events[head_row_exit];
                     if let EventKind::Exit(Node::Container(TableRow { head })) = &mut event.kind {
                         *head = true;
                     } else {
-                        panic!()
+                        panic!("{:?}", event.kind);
                     }
                 }
             } else {
@@ -874,7 +874,7 @@ impl<'s> TreeParser<'s> {
             }
             *ty = list.ty_start;
         } else {
-            panic!()
+            panic!("{:?}", self.events[list.event].kind);
         }
 
         self.exit(pos..pos); // list
