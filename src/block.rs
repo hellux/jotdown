@@ -649,9 +649,9 @@ impl<'s> TreeParser<'s> {
             let Some(first_child) = self.events.get_mut(enter_term) else {
                 unreachable!()
             };
-            if let EventKind::Enter(Node::Leaf(l @ Paragraph)) = &mut first_child.kind {
-                // convert paragraph into description term
-                *l = DescriptionTerm;
+            if let l @ EventKind::Enter(Node::Leaf(Paragraph)) = &mut first_child.kind {
+                // turn empty term + para into a term
+                *l = EventKind::Stale;
                 let Some(inner) = self.events[enter_term + 1..]
                     .iter_mut()
                     .position(|e| matches!(e.kind, EventKind::Exit(Node::Leaf(Paragraph))))
@@ -665,13 +665,6 @@ impl<'s> TreeParser<'s> {
                 } else {
                     panic!("{:?}", self.events[exit_term].kind);
                 }
-
-                // remove empty description term
-                debug_assert_eq!(
-                    self.events[empty_term].kind,
-                    EventKind::Enter(Node::Leaf(DescriptionTerm)),
-                );
-                self.events[empty_term].kind = EventKind::Stale;
                 debug_assert_eq!(
                     self.events[empty_term + 1].kind,
                     EventKind::Exit(Node::Leaf(DescriptionTerm)),
@@ -679,7 +672,6 @@ impl<'s> TreeParser<'s> {
                 self.events[empty_term + 1].kind = EventKind::Stale;
 
                 // move out term before detail
-                self.events[enter_term].span = self.events[empty_term].span.clone();
                 let first_detail = self.events[exit_term + 1..]
                     .iter()
                     .position(|e| !matches!(e.kind, EventKind::Atom(Blankline)))
