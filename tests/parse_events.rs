@@ -526,6 +526,19 @@ fn verbatim() {
 }
 
 #[test]
+fn verbatim_ending_backslash() {
+    // regression test: closing tick was included in Str previously
+    test_parse!(
+        "`\n\\`",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Start(Verbatim, Attributes::new()), "`"),
+        (Str("\n\\".into()), "\n\\"),
+        (End(Verbatim), "`"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn verbatim_unclosed() {
     test_parse!(
         "`\n",
