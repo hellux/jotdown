@@ -118,7 +118,9 @@ impl<'s> Input<'s> {
     }
 
     fn set_current_line(&mut self, line: std::ops::Range<usize>) {
+        let verbatim = self.lexer.verbatim;
         self.lexer = lex::Lexer::new(&self.src.as_bytes()[line.clone()]);
+        self.lexer.verbatim = verbatim;
         self.span = line.start..line.start;
         self.span_line = line;
     }
@@ -526,6 +528,7 @@ impl<'s> Parser<'s> {
             self.input.set_current_line(l);
         }
         self.input.span = start_attr..state.end_attr;
+        debug_assert!(!self.input.lexer.verbatim);
         self.input.lexer = lex::Lexer::new(&self.input.src.as_bytes()[state.end_attr..line_end]);
 
         if attrs.is_empty() {
