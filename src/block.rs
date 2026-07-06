@@ -804,7 +804,9 @@ impl<'s> TreeParser<'s> {
                 pos += len;
             }
 
-            if separator_row && verbatim.is_none() {
+            debug_assert!(verbatim.is_none());
+
+            if separator_row {
                 self.alignments.clear();
                 self.alignments.extend(
                     self.events[row_event_enter + 1..]
@@ -970,6 +972,26 @@ struct IdentifiedBlock<'s> {
     span: std::ops::Range<usize>,
 }
 
+fn has_unclosed_verbatim(s: &str) -> bool {
+    if !s.contains('`') {
+        return false;
+    }
+    let mut lex = lex::Lexer::new(s.as_bytes());
+    let mut verbatim = None;
+    while let Some(lex::Token { kind, len }) = lex.next() {
+        if let Some(l) = verbatim {
+            if matches!(kind, lex::Kind::Seq(lex::Sequence::Backtick)) && len == l {
+                lex.verbatim = false;
+                verbatim = None;
+            }
+        } else if let lex::Kind::Seq(lex::Sequence::Backtick) = kind {
+            lex.verbatim = true;
+            verbatim = Some(len);
+        }
+    }
+    verbatim.is_some()
+}
+
 impl<'s> IdentifiedBlock<'s> {
     fn new(line: &'s str) -> Self {
         let l = line.len();
@@ -1009,7 +1031,11 @@ impl<'s> IdentifiedBlock<'s> {
                 (attr::valid(line) == lt).then(|| (Kind::Atom(Attributes), indent..(indent + l)))
             }
             '|' => {
-                if lt >= 2 && line_t.ends_with('|') && !line_t.ends_with("\\|") {
+                if lt >= 2
+                    && line_t.ends_with('|')
+                    && !line_t.ends_with("\\|")
+                    && !has_unclosed_verbatim(line_t)
+                {
                     Some((
                         Kind::Table {
                             caption: false,
@@ -1306,9 +1332,10 @@ impl<'s> Kind<'s> {
                     true
                 } else {
                     !*blankline
-                        && (line_t.starts_with('|')
-                            && line_t.ends_with('|')
-                            && !line_t.ends_with("\\|"))
+                        && line_t.starts_with('|')
+                        && line_t.ends_with('|')
+                        && !line_t.ends_with("\\|")
+                        && !has_unclosed_verbatim(line_t)
                 }
             }
         }
