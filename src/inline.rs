@@ -1179,11 +1179,8 @@ impl<'s> Iterator for Parser<'s> {
                 Continue => {}
                 Done => break,
                 Next => {
-                    if let Some(l) = self.input.ahead.pop_front() {
-                        self.input.set_current_line(l);
-                    } else {
-                        return None;
-                    }
+                    let l = self.input.ahead.pop_front()?;
+                    self.input.set_current_line(l);
                 }
                 More => return None,
             }
