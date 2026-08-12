@@ -489,6 +489,17 @@ fn para() {
 }
 
 #[test]
+fn para_trailing_escape() {
+    test_parse!(
+        "\\\\\n",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Str("\\".into()), "\\"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn verbatim() {
     test_parse!(
         "`abc\ndef",
