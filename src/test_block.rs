@@ -693,8 +693,8 @@ fn parse_list_loose() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "b"),
         (Exit(Leaf(Paragraph)), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
+        (Atom(Blankline), "\n"),
         (Enter(Container(ListItem(ListItemKind::List))), "-"),
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "c"),
@@ -811,7 +811,6 @@ fn parse_list_tight_nest() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "ab"),
         (Exit(Leaf(Paragraph)), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
         (
             Exit(Container(List {
@@ -821,6 +820,7 @@ fn parse_list_tight_nest() {
             "",
         ),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
+        (Atom(Blankline), "\n"),
         (Enter(Container(ListItem(ListItemKind::List))), "-"),
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "b"),
@@ -871,7 +871,6 @@ fn parse_list_tight_nest() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "b"),
         (Exit(Leaf(Paragraph)), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
         (
             Exit(Container(List {
@@ -880,6 +879,7 @@ fn parse_list_tight_nest() {
             })),
             "",
         ),
+        (Atom(Blankline), "\n"),
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "c"),
         (Exit(Leaf(Paragraph)), ""),
@@ -1005,7 +1005,6 @@ fn parse_list_post() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "b"),
         (Exit(Leaf(Paragraph)), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
         (
             Exit(Container(List {
@@ -1022,6 +1021,7 @@ fn parse_list_post() {
             })),
             ""
         ),
+        (Atom(Blankline), "\n"),
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "cd"),
         (Exit(Leaf(Paragraph)), ""),
@@ -1173,7 +1173,6 @@ fn parse_description_list_inner_list() {
         (Enter(Leaf(Paragraph)), ""),
         (Inline, "list"),
         (Exit(Leaf(Paragraph)), ""),
-        (Atom(Blankline), "\n"),
         (Exit(Container(ListItem(ListItemKind::List))), ""),
         (
             Exit(Container(List {
@@ -1183,6 +1182,7 @@ fn parse_description_list_inner_list() {
             "",
         ),
         (Exit(Container(ListItem(ListItemKind::Description))), ""),
+        (Atom(Blankline), "\n"),
         (Enter(Leaf(DescriptionTerm)), ":"),
         (Stale, ""),
         (Stale, ""),
