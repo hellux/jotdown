@@ -158,9 +158,9 @@ impl<'s> Lexer<'s> {
 
         let kind = if self.escape {
             self.escape = false;
-            match self.eat_byte()? {
-                b'\n' => Hardbreak,
-                b'\t' | b' '
+            match self.eat_byte() {
+                Some(b'\n') | None => Hardbreak,
+                Some(b'\t' | b' ')
                     if self.src[self.pos..]
                         .iter()
                         .find(|c| !matches!(c, b' ' | b'\t'))
@@ -169,8 +169,8 @@ impl<'s> Lexer<'s> {
                     while self.eat_byte() != Some(b'\n') {}
                     Hardbreak
                 }
-                b' ' => Nbsp,
-                _ => Text,
+                Some(b' ') => Nbsp,
+                Some(_) => Text,
             }
         } else {
             self.eat_while(|c| !is_special(c));
@@ -183,7 +183,7 @@ impl<'s> Lexer<'s> {
                     b'\\' => {
                         if self
                             .peek_byte()
-                            .is_some_and(|c| c.is_ascii_whitespace() || c.is_ascii_punctuation())
+                            .is_none_or(|c| c.is_ascii_whitespace() || c.is_ascii_punctuation())
                         {
                             self.escape = !self.verbatim;
                             Escape

@@ -906,7 +906,22 @@ impl<'s> Parser<'s> {
     fn parse_atom(&mut self, first: &lex::Token) -> Option<ControlFlow> {
         let atom = match first.kind {
             lex::Kind::Newline => Softbreak,
-            lex::Kind::Hardbreak => Hardbreak,
+            lex::Kind::Hardbreak => {
+                if self.input.span.is_empty() {
+                    for i in self.input.span.start..self.input.src.len() {
+                        if &self.input.src[i..=i] == "\n" {
+                            self.input.span = i..i + 1;
+                            break;
+                        } else if self.input.src[i..=i]
+                            .trim_matches(|c: char| !c.is_ascii_whitespace())
+                            .is_empty()
+                        {
+                            break;
+                        }
+                    }
+                }
+                Hardbreak
+            }
             lex::Kind::Escape => Escape,
             lex::Kind::Nbsp => Nbsp,
             lex::Kind::Seq(Sequence::Period) => {

@@ -20,4 +20,3 @@ a347df6:line break in footnote reference label
 42828d8:extra space in footnote definition label not handled
 012c0fc:different class / src order in <img> element
 a5dde08:span with empty attributes not present in html
-f4f2701:hard line at end of para
