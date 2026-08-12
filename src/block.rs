@@ -1247,6 +1247,12 @@ impl<'s> Kind<'s> {
                 indent,
                 last_blankline,
                 ..
+            }
+            | Self::Definition {
+                indent,
+                footnote: true,
+                last_blankline,
+                ..
             } => {
                 let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let whitespace = line.len() - line_t.len();
@@ -1254,19 +1260,6 @@ impl<'s> Kind<'s> {
                 let para = !*last_blankline && matches!(next, Self::Paragraph);
                 *last_blankline = matches!(next, Self::Atom(Blankline));
                 *last_blankline || whitespace > *indent || para
-            }
-            Self::Definition {
-                indent,
-                footnote: true,
-                last_blankline,
-                ..
-            } => {
-                let next = IdentifiedBlock::new(line).kind;
-                let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
-                let whitespace = line.len() - line_t.len();
-                let cont_para = !*last_blankline && matches!(next, Self::Paragraph);
-                *last_blankline = matches!(next, Self::Atom(Blankline));
-                whitespace > *indent || *last_blankline || cont_para
             }
             Self::Definition { .. } => {
                 let blankline = line
