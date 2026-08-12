@@ -747,6 +747,83 @@ fn nbsp_end_of_table_cell() {
 }
 
 #[test]
+fn hardbreak() {
+    test_parse!(
+        concat!(
+            "\\\n", //
+            "b\n"   //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, "\n"),
+        (Str("b".into()), "b"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn hardbreak_end_of_line() {
+    test_parse!(
+        concat!(
+            "\\\n", //
+            "b\n",  //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, "\n"),
+        (Str("b".into()), "b"),
+        (End(Paragraph), ""),
+    );
+    test_parse!(
+        concat!(
+            "\\  \n", //
+            "b\n",    //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, "  \n"),
+        (Str("b".into()), "b"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn hardbreak_end_of_para() {
+    test_parse!(
+        "\\\n",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, "\n"),
+        (End(Paragraph), ""),
+    );
+    test_parse!(
+        "\\  \n",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, "\n"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn hardbreak_end_of_file() {
+    test_parse!(
+        "\\",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, ""),
+        (End(Paragraph), ""),
+    );
+    test_parse!(
+        "\\  ",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Escape, "\\"),
+        (Hardbreak, ""),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn ellipsis() {
     test_parse!(
         concat!(
