@@ -1250,8 +1250,12 @@ impl<'s> Kind<'s> {
                 let whitespace = line.len() - line_t.len();
                 let next = IdentifiedBlock::new(line).kind;
                 let para = !*last_blankline && matches!(next, Self::Paragraph);
-                *last_blankline = matches!(next, Self::Atom(Blankline));
-                *last_blankline || whitespace > *indent || para
+                let blankline = matches!(next, Self::Atom(Blankline));
+                let cont = blankline || whitespace > *indent || para;
+                if cont {
+                    *last_blankline = blankline;
+                }
+                cont
             }
             Self::Definition { .. } => {
                 let blankline = line
