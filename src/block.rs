@@ -295,12 +295,15 @@ impl<'s> TreeParser<'s> {
         let lines = &mut lines[..line_count];
         let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
 
-        // ignore trailing blanklines after tables if any
+        // ignore trailing blanklines if any
         let (lines, line_count) = if matches!(
             kind,
             Kind::Table {
                 caption: false,
                 blankline: true,
+            } | Kind::Definition {
+                last_blankline: true,
+                ..
             }
         ) {
             let lc = line_count
