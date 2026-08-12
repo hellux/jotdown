@@ -899,15 +899,15 @@ impl<'s> TreeParser<'s> {
     }
 
     fn trim_start(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let end = sp.end;
         let s = self.src[sp].trim_start_matches(|c: char| c.is_ascii_whitespace());
-        (s.as_ptr() as usize - self.src.as_ptr() as usize)
-            ..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
+        (s.as_ptr() as usize - self.src.as_ptr() as usize)..end
     }
 
     fn trim_end(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let start = sp.start;
         let s = self.src[sp].trim_end_matches(|c: char| c.is_ascii_whitespace());
-        (s.as_ptr() as usize - self.src.as_ptr() as usize)
-            ..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
+        start..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
     }
 
     fn trim(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
