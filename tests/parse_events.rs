@@ -1609,7 +1609,10 @@ fn attr_inline_consecutive_invalid() {
         (End(Paragraph), ""),
     );
     test_parse!(
-        concat!("_abc def_{.a}{.b #i}{%%}{.c\n", "invalid}\n"),
+        concat!(
+            "_abc def_{.a}{.b #i}{%%}{.c\n", //
+            "invalid}\n",                    //
+        ),
         (Start(Paragraph, Attributes::new()), ""),
         (
             Start(
