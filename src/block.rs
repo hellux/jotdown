@@ -304,6 +304,9 @@ impl<'s> TreeParser<'s> {
             } | Kind::Definition {
                 last_blankline: true,
                 ..
+            } | Kind::ListItem {
+                last_blankline: true,
+                ..
             }
         ) {
             let lc = line_count
@@ -387,7 +390,7 @@ impl<'s> TreeParser<'s> {
                         false
                     }
                 } else {
-                    false
+                    matches!(kind, Kind::Atom(Blankline))
                 };
                 if !continues {
                     let l = self.open_lists.pop().unwrap();
@@ -398,7 +401,12 @@ impl<'s> TreeParser<'s> {
 
         // set list to loose if blankline discovered
         if matches!(kind, Kind::Atom(Atom::Blankline)) {
-            self.prev_blankline = true;
+            self.prev_blankline = !self
+                .events
+                .iter()
+                .rev()
+                .find(|e| !matches!(e.kind, EventKind::Exit(Node::Container(ListItem(..)))))
+                .is_some_and(|e| matches!(e.kind, EventKind::Exit(Node::Container(List { .. }))));
         } else {
             self.prev_loose = false;
             if self.prev_blankline {
@@ -929,7 +937,31 @@ impl<'s> TreeParser<'s> {
             panic!("{:?}", self.events[list.event].kind);
         }
 
-        self.exit(pos..pos); // list
+        let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
+            panic!("{:?}", self.events[self.open.pop().unwrap()].kind);
+        };
+
+        let trailing_blanklines = self
+            .events
+            .iter()
+            .rev()
+            .take_while(|e| matches!(e.kind, EventKind::Atom(Blankline)))
+            .count();
+        let pos = if trailing_blanklines > 0 {
+            self.events[self.events.len() - trailing_blanklines]
+                .span
+                .start
+        } else {
+            pos
+        };
+
+        self.events.insert(
+            self.events.len() - trailing_blanklines,
+            Event {
+                kind: EventKind::Exit(node),
+                span: pos..pos,
+            },
+        );
     }
 
     fn trim_start(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
