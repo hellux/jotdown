@@ -1,3 +1,17 @@
+Leading/trailing whitespace in cells is trimmed.
+
+```
+|  a  | \  | \\ |
+.
+<table>
+<tr>
+<td>a</td>
+<td>&nbsp;</td>
+<td>\</td>
+</tr>
+</table>
+```
+
 regression test: bug caused consecutive table to disappear
 
 ```

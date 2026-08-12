@@ -703,6 +703,50 @@ fn symbol_eof() {
 }
 
 #[test]
+fn nbsp() {
+    test_parse!(
+        "a\\ b",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("a".into()), "a"),
+        (Escape, "\\"),
+        (NonBreakingSpace, " "),
+        (Str("b".into()), "b"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn nbsp_end_of_table_cell() {
+    test_parse!(
+        "|a\\ |",
+        (Start(Table, Attributes::new()), ""),
+        (Start(TableRow { head: false }, Attributes::new()), "|",),
+        (
+            Start(
+                TableCell {
+                    alignment: Alignment::Unspecified,
+                    head: false
+                },
+                Attributes::new(),
+            ),
+            "",
+        ),
+        (Str("a".into()), "a"),
+        (Escape, "\\"),
+        (NonBreakingSpace, " "),
+        (
+            End(TableCell {
+                alignment: Alignment::Unspecified,
+                head: false
+            }),
+            "|",
+        ),
+        (End(TableRow { head: false }), ""),
+        (End(Table), ""),
+    );
+}
+
+#[test]
 fn ellipsis() {
     test_parse!(
         concat!(
