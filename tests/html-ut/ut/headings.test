@@ -53,3 +53,18 @@
 </section>
 </section>
 ```
+
+```
+[a b][]
+[ a b ][]
+
+# a b
+`
+.
+<p><a href="#a-b">a b</a>
+<a href="#a-b"> a b </a></p>
+<section id="a-b">
+<h1>a b
+<code></code></h1>
+</section>
+```
