@@ -1811,7 +1811,7 @@ fn block_footnote_multiline_post() {
             indent: 0,
             footnote: true,
             label: "lbl",
-            last_blankline: false,
+            last_blankline: true,
         },
         "[^lbl]:",
         3,
