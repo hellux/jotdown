@@ -2297,6 +2297,7 @@ impl<'s> PrePass<'s> {
                         }
                     }
                     id_auto.drain(id_auto.trim_end_matches('-').len()..);
+                    text.drain(text.trim_end_matches(' ').len()..);
 
                     // ensure id unique
                     if used_ids.contains::<str>(&id_auto) || id_auto.is_empty() {
@@ -2359,7 +2360,7 @@ impl<'s> PrePass<'s> {
 
     fn heading_id_by_label(&self, label: &str) -> Option<&str> {
         self.headings_lex
-            .binary_search_by_key(&label, |i| &self.headings[*i].text)
+            .binary_search_by_key(&label.trim(), |i| &self.headings[*i].text)
             .ok()
             .map(|i| self.heading_id(self.headings_lex[i]))
     }
