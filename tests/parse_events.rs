@@ -515,6 +515,17 @@ fn verbatim() {
 }
 
 #[test]
+fn verbatim_unclosed() {
+    test_parse!(
+        "`\n",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Start(Verbatim, Attributes::new()), "`"),
+        (End(Verbatim), ""),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn verbatim_block_empty() {
     test_parse!(
         concat!(
