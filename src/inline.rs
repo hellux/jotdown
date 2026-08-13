@@ -841,15 +841,16 @@ impl<'s> Parser<'s> {
                     .peek()
                     .is_some_and(|t| matches!(t.kind, lex::Kind::Open(Delimiter::Brace)))
                 {
-                    let elem_ty = if matches!(opener, Opener::DoubleQuoted | Opener::SingleQuoted) {
-                        // quote delimiters will turn into atoms instead of containers, so cannot
-                        // place attributes on the container start
-                        AttributesElementType::Word
-                    } else {
-                        AttributesElementType::Container {
-                            e_placeholder: e_attr,
-                        }
-                    };
+                    let elem_ty =
+                        if matches!(opener, Opener::DoubleQuoted(..) | Opener::SingleQuoted(..)) {
+                            // quote delimiters will turn into atoms instead of containers, so cannot
+                            // place attributes on the container start
+                            AttributesElementType::Word
+                        } else {
+                            AttributesElementType::Container {
+                                e_placeholder: e_attr,
+                            }
+                        };
                     self.ahead_attributes(elem_ty, false).or(Some(Continue))
                 } else {
                     closed
@@ -872,7 +873,7 @@ impl<'s> Parser<'s> {
                 } else {
                     false
                 };
-                if matches!(opener, Opener::SingleQuoted)
+                if matches!(opener, Opener::SingleQuoted(..))
                     && self
                         .events
                         .back()
@@ -889,11 +890,11 @@ impl<'s> Parser<'s> {
                 );
                 // use non-opener for now, replace if closed later
                 Some(self.push(match opener {
-                    Opener::SingleQuoted => EventKind::Atom(Quote {
+                    Opener::SingleQuoted(..) => EventKind::Atom(Quote {
                         ty: QuoteType::Single,
                         left: false,
                     }),
-                    Opener::DoubleQuoted => EventKind::Atom(Quote {
+                    Opener::DoubleQuoted(..) => EventKind::Atom(Quote {
                         ty: QuoteType::Double,
                         left: true,
                     }),
@@ -1048,8 +1049,8 @@ enum Opener {
     Mark,
     Delete,
     Insert,
-    SingleQuoted,
-    DoubleQuoted,
+    SingleQuoted(Directionality),
+    DoubleQuoted(Directionality),
     Link {
         event_span: usize,
         image: bool,
@@ -1068,8 +1069,8 @@ impl Opener {
             lex::Kind::Sym(Symbol::Underscore) => Some(Emphasis(Bi)),
             lex::Kind::Sym(Symbol::Caret) => Some(Superscript(Bi)),
             lex::Kind::Sym(Symbol::Tilde) => Some(Subscript(Bi)),
-            lex::Kind::Sym(Symbol::Quote1) => Some(SingleQuoted),
-            lex::Kind::Sym(Symbol::Quote2) => Some(DoubleQuoted),
+            lex::Kind::Sym(Symbol::Quote1) => Some(SingleQuoted(Bi)),
+            lex::Kind::Sym(Symbol::Quote2) => Some(DoubleQuoted(Bi)),
             lex::Kind::Sym(Symbol::ExclaimBracket) => Some(Span(Image)),
             lex::Kind::Open(Delimiter::Bracket) => Some(Span(General)),
             lex::Kind::Open(Delimiter::BraceAsterisk) => Some(Strong(Uni)),
@@ -1079,8 +1080,8 @@ impl Opener {
             lex::Kind::Open(Delimiter::BraceEqual) => Some(Mark),
             lex::Kind::Open(Delimiter::BraceHyphen) => Some(Delete),
             lex::Kind::Open(Delimiter::BracePlus) => Some(Insert),
-            lex::Kind::Open(Delimiter::BraceQuote1) => Some(SingleQuoted),
-            lex::Kind::Open(Delimiter::BraceQuote2) => Some(DoubleQuoted),
+            lex::Kind::Open(Delimiter::BraceQuote1) => Some(SingleQuoted(Uni)),
+            lex::Kind::Open(Delimiter::BraceQuote2) => Some(DoubleQuoted(Uni)),
             _ => None,
         }
     }
@@ -1102,14 +1103,10 @@ impl Opener {
             Mark => matches!(kind, lex::Kind::Close(Delimiter::BraceEqual)),
             Delete => matches!(kind, lex::Kind::Close(Delimiter::BraceHyphen)),
             Insert => matches!(kind, lex::Kind::Close(Delimiter::BracePlus)),
-            SingleQuoted => matches!(
-                kind,
-                lex::Kind::Sym(Symbol::Quote1) | lex::Kind::Close(Delimiter::BraceQuote1)
-            ),
-            DoubleQuoted => matches!(
-                kind,
-                lex::Kind::Sym(Symbol::Quote2) | lex::Kind::Close(Delimiter::BraceQuote2)
-            ),
+            SingleQuoted(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceQuote1)),
+            SingleQuoted(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Quote1)),
+            DoubleQuoted(Uni) => matches!(kind, lex::Kind::Close(Delimiter::BraceQuote2)),
+            DoubleQuoted(Bi) => matches!(kind, lex::Kind::Sym(Symbol::Quote2)),
             Link { inline: false, .. } => matches!(kind, lex::Kind::Close(Delimiter::Bracket)),
             Link { inline: true, .. } => matches!(kind, lex::Kind::Close(Delimiter::Paren)),
         }
@@ -1122,8 +1119,8 @@ impl Opener {
                 | Opener::Emphasis(Directionality::Bi)
                 | Opener::Superscript(Directionality::Bi)
                 | Opener::Subscript(Directionality::Bi)
-                | Opener::SingleQuoted
-                | Opener::DoubleQuoted
+                | Opener::SingleQuoted(Directionality::Bi)
+                | Opener::DoubleQuoted(Directionality::Bi)
         )
     }
 }
@@ -1150,8 +1147,8 @@ impl From<Opener> for DelimEventKind<'_> {
             Opener::Mark => Self::Container(Mark),
             Opener::Delete => Self::Container(Delete),
             Opener::Insert => Self::Container(Insert),
-            Opener::SingleQuoted => Self::Quote(QuoteType::Single),
-            Opener::DoubleQuoted => Self::Quote(QuoteType::Double),
+            Opener::SingleQuoted(..) => Self::Quote(QuoteType::Single),
+            Opener::DoubleQuoted(..) => Self::Quote(QuoteType::Double),
             Opener::Link {
                 event_span,
                 image,
