@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[rustfmt::skip]
 mod r#ref;
 
 #[macro_export]
