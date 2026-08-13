@@ -742,7 +742,7 @@ fn attr_empty() {
 }
 
 #[test]
-fn quote() {
+fn quote_implicit() {
     test_parse!(
         "'a'",
         (
@@ -780,6 +780,81 @@ fn quote() {
             "'",
         ),
         (Str, " "),
+    );
+}
+
+#[test]
+fn quote_explicit() {
+    test_parse!(
+        "{''}{\"\"}",
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: false,
+            }),
+            "{'",
+        ),
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: false,
+            }),
+            "'}",
+        ),
+        (
+            Atom(Quote {
+                ty: QuoteType::Double,
+                left: true,
+            }),
+            "{\"",
+        ),
+        (
+            Atom(Quote {
+                ty: QuoteType::Double,
+                left: false,
+            }),
+            "\"}",
+        ),
+    );
+}
+
+#[test]
+fn quote_mixed() {
+    test_parse!(
+        "'a'}",
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: true,
+            }),
+            "'",
+        ),
+        (Str, "a"),
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: false,
+            }),
+            "'}",
+        ),
+    );
+    test_parse!(
+        "{'a'",
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: true,
+            }),
+            "{'",
+        ),
+        (Str, "a"),
+        (
+            Atom(Quote {
+                ty: QuoteType::Single,
+                left: false,
+            }),
+            "'",
+        ),
     );
 }
 
