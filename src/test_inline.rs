@@ -825,7 +825,7 @@ fn quote_mixed() {
         (
             Atom(Quote {
                 ty: QuoteType::Single,
-                left: true,
+                left: false,
             }),
             "'",
         ),
@@ -843,7 +843,7 @@ fn quote_mixed() {
         (
             Atom(Quote {
                 ty: QuoteType::Single,
-                left: true,
+                left: false,
             }),
             "{'",
         ),
