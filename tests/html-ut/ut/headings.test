@@ -55,6 +55,28 @@
 ```
 
 ```
+# a
+# b
+.
+<section id="a-b">
+<h1>a
+b</h1>
+</section>
+```
+
+```
+#
+#
+a
+#
+#
+.
+<section id="a">
+<h1>a</h1>
+</section>
+```
+
+```
 [a b][]
 [ a b ][]
 

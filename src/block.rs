@@ -531,6 +531,17 @@ impl<'s> TreeParser<'s> {
                 }
             }
 
+            if matches!(leaf, Heading { .. }) {
+                // strip trailing blank lines
+                let lc = lines.len()
+                    - lines
+                        .iter()
+                        .rev()
+                        .take_while(|l| self.trim((*l).clone()).is_empty())
+                        .count();
+                lines = &mut lines[..lc];
+            }
+
             // trim ending whitespace of block
             let l = lines.len();
             if l > 0 {
