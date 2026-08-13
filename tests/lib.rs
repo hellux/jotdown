@@ -1,8 +1,3 @@
-mod attr;
-mod cli;
-mod html;
-mod parse_events;
-
 #[test]
 fn list_bullet_type_to_u8() {
     assert_eq!(u8::from(jotdown::ListBulletType::Dash), b'-');
