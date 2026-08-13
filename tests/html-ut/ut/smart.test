@@ -31,3 +31,11 @@ Quote direction can be specified explicitly
 <p>’single‘
 ”double“</p>
 ```
+
+```
+{''}
+{""}
+.
+<p>‘’
+“”</p>
+```

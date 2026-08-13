@@ -790,7 +790,7 @@ fn quote_explicit() {
         (
             Atom(Quote {
                 ty: QuoteType::Single,
-                left: false,
+                left: true,
             }),
             "{'",
         ),
@@ -843,7 +843,7 @@ fn quote_mixed() {
         (
             Atom(Quote {
                 ty: QuoteType::Single,
-                left: false,
+                left: true,
             }),
             "{'",
         ),
