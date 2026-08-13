@@ -307,11 +307,7 @@ impl<'s> TreeParser<'s> {
                 - lines
                     .iter()
                     .rev()
-                    .take_while(|l| {
-                        self.src[(*l).clone()]
-                            .trim_matches(|c: char| c.is_ascii_whitespace())
-                            .is_empty()
-                    })
+                    .take_while(|l| self.trim((*l).clone()).is_empty())
                     .count();
             (&mut lines[..lc], lc)
         } else {
