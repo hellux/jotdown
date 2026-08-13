@@ -890,9 +890,9 @@ impl<'s> Parser<'s> {
                 );
                 // use non-opener for now, replace if closed later
                 Some(self.push(match opener {
-                    Opener::SingleQuoted(..) => EventKind::Atom(Quote {
+                    Opener::SingleQuoted(dir) => EventKind::Atom(Quote {
                         ty: QuoteType::Single,
-                        left: false,
+                        left: dir == Directionality::Uni,
                     }),
                     Opener::DoubleQuoted(..) => EventKind::Atom(Quote {
                         ty: QuoteType::Double,
