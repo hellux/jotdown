@@ -234,11 +234,7 @@ impl<'s> TreeParser<'s> {
 
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
-        while line_pos < lines.len() {
-            let line_count = self.parse_block(&mut lines[line_pos..], true);
-            if line_count == 0 {
-                break;
-            }
+        while let Some(line_count) = self.parse_block(&mut lines[line_pos..], true) {
             line_pos += line_count;
         }
         while let Some(l) = self.open_lists.pop() {
@@ -285,203 +281,206 @@ impl<'s> TreeParser<'s> {
     }
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
-    fn parse_block(&mut self, lines: &mut [std::ops::Range<usize>], top_level: bool) -> usize {
-        if let Some(MeteredBlock {
+    fn parse_block(
+        &mut self,
+        lines: &mut [std::ops::Range<usize>],
+        top_level: bool,
+    ) -> Option<usize> {
+        let MeteredBlock {
             kind,
             span: span_start,
             line_count,
-        }) = MeteredBlock::new(lines.iter().map(|sp| &self.src[sp.clone()]))
-        {
-            let lines = &mut lines[..line_count];
-            let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
+        } = MeteredBlock::new(lines.iter().map(|sp| &self.src[sp.clone()]))?;
 
-            // ignore trailing blanklines after tables if any
-            let (lines, line_count) = if matches!(
-                kind,
-                Kind::Table {
-                    caption: false,
-                    blankline: true,
-                }
-            ) {
-                let lc = line_count
-                    - lines
-                        .iter()
-                        .rev()
-                        .take_while(|l| {
-                            self.src[(*l).clone()]
-                                .trim_matches(|c: char| c.is_ascii_whitespace())
-                                .is_empty()
-                        })
-                        .count();
-                (&mut lines[..lc], lc)
-            } else {
-                (lines, line_count)
-            };
+        let lines = &mut lines[..line_count];
+        let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
 
-            let end_line = lines[lines.len() - 1].clone();
-            let span_end = match kind {
-                Kind::Fenced {
-                    has_closing_fence: true,
-                    ..
-                } => end_line,
-                _ => end_line.end..end_line.end,
-            };
+        // ignore trailing blanklines after tables if any
+        let (lines, line_count) = if matches!(
+            kind,
+            Kind::Table {
+                caption: false,
+                blankline: true,
+            }
+        ) {
+            let lc = line_count
+                - lines
+                    .iter()
+                    .rev()
+                    .take_while(|l| {
+                        self.src[(*l).clone()]
+                            .trim_matches(|c: char| c.is_ascii_whitespace())
+                            .is_empty()
+                    })
+                    .count();
+            (&mut lines[..lc], lc)
+        } else {
+            (lines, line_count)
+        };
 
-            // part of first inline that is from the outer block
-            let outer_len = span_start.end - lines[0].start;
+        let end_line = lines[lines.len() - 1].clone();
+        let span_end = match kind {
+            Kind::Fenced {
+                has_closing_fence: true,
+                ..
+            } => end_line,
+            _ => end_line.end..end_line.end,
+        };
 
-            // skip outer block part for inner content
-            lines[0].start += outer_len;
-            match kind {
-                Kind::Blockquote
-                    if lines[0].start < lines[0].end
-                        && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ') =>
-                {
-                    lines[0].start += 1;
-                }
-                Kind::Heading { level, .. } => {
-                    for line in lines.iter_mut().skip(1) {
-                        let l = &self.src.as_bytes()[line.clone()];
-                        let l = &l[l.iter().take_while(|c| c.is_ascii_whitespace()).count()..];
-                        let hash = l.iter().take_while(|c| **c == b'#').count();
-                        let l = &l[hash..];
-                        let post_ws = l.iter().take_while(|c| c.is_ascii_whitespace()).count();
-                        let l = &l[post_ws..];
-                        if post_ws > 0 {
-                            debug_assert_eq!(level, hash);
-                            line.start += line.len() - l.len();
-                        }
+        // part of first inline that is from the outer block
+        let outer_len = span_start.end - lines[0].start;
+
+        // skip outer block part for inner content
+        lines[0].start += outer_len;
+        match kind {
+            Kind::Blockquote
+                if lines[0].start < lines[0].end
+                    && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ') =>
+            {
+                lines[0].start += 1;
+            }
+            Kind::Heading { level, .. } => {
+                for line in lines.iter_mut().skip(1) {
+                    let l = &self.src.as_bytes()[line.clone()];
+                    let l = &l[l.iter().take_while(|c| c.is_ascii_whitespace()).count()..];
+                    let hash = l.iter().take_while(|c| **c == b'#').count();
+                    let l = &l[hash..];
+                    let post_ws = l.iter().take_while(|c| c.is_ascii_whitespace()).count();
+                    let l = &l[post_ws..];
+                    if post_ws > 0 {
+                        debug_assert_eq!(level, hash);
+                        line.start += line.len() - l.len();
                     }
                 }
-                _ => {}
             }
+            _ => {}
+        }
 
-            // skip opening and closing fence of code block / div
-            let lines = if let Kind::Fenced {
-                has_closing_fence, ..
-            } = kind
-            {
-                let l = lines.len() - usize::from(has_closing_fence);
-                &mut lines[1..l]
-            } else {
-                lines
-            };
+        // skip opening and closing fence of code block / div
+        let lines = if let Kind::Fenced {
+            has_closing_fence, ..
+        } = kind
+        {
+            let l = lines.len() - usize::from(has_closing_fence);
+            &mut lines[1..l]
+        } else {
+            lines
+        };
 
-            // close list if a non list item or a list item of new type appeared
-            if let Some(OpenList {
-                ty_start,
-                ty_prev,
-                depth,
-                ..
-            }) = self.open_lists.last_mut()
-            {
-                debug_assert!(usize::from(*depth) <= self.open.len());
-                if self.open.len() == (*depth).into() {
-                    let continues = if let Kind::ListItem { ty: ty_new, .. } = kind {
-                        if let Some((ty_prev_res, ty_new_res)) = ty_prev.continues(&ty_new) {
-                            if ty_start == ty_prev {
-                                *ty_start = ty_prev_res;
-                            }
-                            *ty_prev = ty_new_res;
-                            true
-                        } else {
-                            false
+        // close list if a non list item or a list item of new type appeared
+        if let Some(OpenList {
+            ty_start,
+            ty_prev,
+            depth,
+            ..
+        }) = self.open_lists.last_mut()
+        {
+            debug_assert!(usize::from(*depth) <= self.open.len());
+            if self.open.len() == (*depth).into() {
+                let continues = if let Kind::ListItem { ty: ty_new, .. } = kind {
+                    if let Some((ty_prev_res, ty_new_res)) = ty_prev.continues(&ty_new) {
+                        if ty_start == ty_prev {
+                            *ty_start = ty_prev_res;
                         }
+                        *ty_prev = ty_new_res;
+                        true
                     } else {
                         false
-                    };
-                    if !continues {
-                        let l = self.open_lists.pop().unwrap();
-                        self.close_list(&l, span_start.start);
                     }
+                } else {
+                    false
+                };
+                if !continues {
+                    let l = self.open_lists.pop().unwrap();
+                    self.close_list(&l, span_start.start);
                 }
             }
+        }
 
-            // set list to loose if blankline discovered
-            if matches!(kind, Kind::Atom(Atom::Blankline)) {
-                self.prev_blankline = true;
-            } else {
-                self.prev_loose = false;
-                if self.prev_blankline {
-                    if let Some(OpenList { event, depth, .. }) = self.open_lists.last() {
-                        if usize::from(*depth) >= self.open.len()
-                            || !matches!(kind, Kind::ListItem { .. })
+        // set list to loose if blankline discovered
+        if matches!(kind, Kind::Atom(Atom::Blankline)) {
+            self.prev_blankline = true;
+        } else {
+            self.prev_loose = false;
+            if self.prev_blankline {
+                if let Some(OpenList { event, depth, .. }) = self.open_lists.last() {
+                    if usize::from(*depth) >= self.open.len()
+                        || !matches!(kind, Kind::ListItem { .. })
+                    {
+                        if let EventKind::Enter(Node::Container(List { tight, .. })) =
+                            &mut self.events[*event].kind
                         {
-                            if let EventKind::Enter(Node::Container(List { tight, .. })) =
-                                &mut self.events[*event].kind
-                            {
-                                if *tight {
-                                    self.prev_loose = true;
-                                    *tight = false;
-                                }
+                            if *tight {
+                                self.prev_loose = true;
+                                *tight = false;
                             }
                         }
                     }
                 }
-                self.prev_blankline = false;
             }
-
-            let block = match kind {
-                Kind::Atom(a) => Block::Atom(a),
-                Kind::Paragraph => Block::Leaf(Paragraph),
-                Kind::Heading { level } => Block::Leaf(Heading {
-                    level: level.try_into().unwrap(),
-                    has_section: top_level,
-                    pos: span_start.start as u32,
-                }),
-                Kind::Fenced {
-                    kind: FenceKind::CodeBlock(..),
-                    spec,
-                    ..
-                } => Block::Leaf(CodeBlock { language: spec }),
-                Kind::Fenced {
-                    kind: FenceKind::Div,
-                    spec,
-                    ..
-                } => Block::Container(Div { class: spec }),
-                Kind::Definition {
-                    footnote: false,
-                    label,
-                    ..
-                } => Block::Leaf(LinkDefinition { label }),
-                Kind::Definition {
-                    footnote: true,
-                    label,
-                    ..
-                } => Block::Container(Footnote { label }),
-                Kind::Blockquote => Block::Container(Blockquote),
-                Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
-                    ListType::Task(..) => ListItemKind::Task {
-                        checked: self.src.as_bytes()[span_start.start + 3] != b' ',
-                    },
-                    ListType::Description => ListItemKind::Description,
-                    _ => ListItemKind::List,
-                })),
-                Kind::Table { .. } => Block::Container(Table),
-            };
-
-            match block {
-                Block::Atom(a) => self.events.push(Event {
-                    kind: EventKind::Atom(a),
-                    span: span_start,
-                }),
-                Block::Leaf(l) => self.parse_leaf(l, &kind, span_start, span_end, lines),
-                Block::Container(Table) => self.parse_table(lines, span_start, span_end),
-                Block::Container(c) => {
-                    self.parse_container(c, &kind, span_start, span_end, outer_len, lines);
-                }
-            }
-
-            if matches!(kind, Kind::Atom(Attributes)) {
-                self.attr_start = self.attr_start.or_else(|| Some(self.events.len() - 1));
-            } else {
-                self.attr_start = None;
-            }
-
-            line_count
-        } else {
-            0
+            self.prev_blankline = false;
         }
+
+        let block = match kind {
+            Kind::Atom(a) => Block::Atom(a),
+            Kind::Paragraph => Block::Leaf(Paragraph),
+            Kind::Heading { level } => Block::Leaf(Heading {
+                level: level.try_into().unwrap(),
+                has_section: top_level,
+                pos: span_start.start as u32,
+            }),
+            Kind::Fenced {
+                kind: FenceKind::CodeBlock(..),
+                spec,
+                ..
+            } => Block::Leaf(CodeBlock { language: spec }),
+            Kind::Fenced {
+                kind: FenceKind::Div,
+                spec,
+                ..
+            } => Block::Container(Div { class: spec }),
+            Kind::Definition {
+                footnote: false,
+                label,
+                ..
+            } => Block::Leaf(LinkDefinition { label }),
+            Kind::Definition {
+                footnote: true,
+                label,
+                ..
+            } => Block::Container(Footnote { label }),
+            Kind::Blockquote => Block::Container(Blockquote),
+            Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
+                ListType::Task(..) => ListItemKind::Task {
+                    checked: self.src.as_bytes()[span_start.start + 3] != b' ',
+                },
+                ListType::Description => ListItemKind::Description,
+                _ => ListItemKind::List,
+            })),
+            Kind::Table { .. } => Block::Container(Table),
+        };
+
+        match block {
+            Block::Atom(a) => self.events.push(Event {
+                kind: EventKind::Atom(a),
+                span: span_start,
+            }),
+            Block::Leaf(l) => self.parse_leaf(l, &kind, span_start, span_end, lines),
+            Block::Container(Table) => self.parse_table(lines, span_start, span_end),
+            Block::Container(c) => {
+                self.parse_container(c, &kind, span_start, span_end, outer_len, lines);
+            }
+        }
+
+        if matches!(kind, Kind::Atom(Attributes)) {
+            self.attr_start = self.attr_start.or_else(|| Some(self.events.len() - 1));
+        } else {
+            self.attr_start = None;
+        }
+
+        debug_assert_ne!(line_count, 0);
+
+        Some(line_count)
     }
 
     fn parse_leaf(
@@ -645,8 +644,8 @@ impl<'s> TreeParser<'s> {
 
         self.enter(Node::Container(c), span_start);
         let mut l = 0;
-        while l < lines.len() {
-            l += self.parse_block(&mut lines[l..], false);
+        while let Some(line_count) = self.parse_block(&mut lines[l..], false) {
+            l += line_count;
         }
 
         if let Some((empty_term, enter_detail, open_detail)) = dt {
