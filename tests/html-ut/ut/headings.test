@@ -90,3 +90,15 @@ a
 <code></code></h1>
 </section>
 ```
+
+Regression test: section id previously started with - here
+
+```
+# {
+a
+.
+<section id="a">
+<h1>{
+a</h1>
+</section>
+```

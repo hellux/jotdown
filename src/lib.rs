@@ -2288,7 +2288,9 @@ impl<'s> PrePass<'s> {
                             }
                             inline::EventKind::Atom(inline::Atom::Softbreak) => {
                                 text.push(' ');
-                                id_auto.push('-');
+                                if !id_auto.is_empty() {
+                                    id_auto.push('-');
+                                }
                             }
                             _ => {}
                         });
