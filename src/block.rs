@@ -413,7 +413,7 @@ impl<'s> TreeParser<'s> {
                             *ty_start = ty_prev_res;
                         }
                         *ty_prev = ty_new_res;
-                        true
+                        ty_start.continues(ty_prev).is_some()
                     } else {
                         false
                     }
