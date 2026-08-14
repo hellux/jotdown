@@ -5,7 +5,7 @@ use super::QuoteType;
 use super::Verbatim;
 
 macro_rules! test_parse {
-    ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+    ($src:expr $(,$($token:expr),* $(,)?)?) => {
         env_logger::try_init().ok();
 
         #[allow(unused)]

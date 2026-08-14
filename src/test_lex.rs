@@ -4,7 +4,7 @@ use super::Sequence::*;
 use super::Symbol::*;
 
 macro_rules! test_lex {
-    ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+    ($src:expr $(,$($token:expr),* $(,)?)?) => {
         #[allow(unused)]
         let actual = super::Lexer::new($src.as_bytes()).collect::<Vec<_>>();
         let expected = vec![$($($token),*,)?];
