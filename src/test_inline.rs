@@ -5,7 +5,7 @@ use super::QuoteType;
 use super::Verbatim;
 
 macro_rules! test_parse {
-    ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
+    ($src:expr $(,$($token:expr),* $(,)?)?) => {
         #[allow(unused)]
         let mut p = super::Parser::new($src);
         p.feed_line(0..$src.len(), true);
