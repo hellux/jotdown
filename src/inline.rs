@@ -542,13 +542,18 @@ impl<'s> Parser<'s> {
             parser.finish()
         };
 
-        for _ in 0..line_next {
+        for _ in 0..state.valid_lines {
             let l = self.input.ahead.pop_front().unwrap();
             self.input.set_current_line(l);
         }
         self.input.span = start_attr..state.end_attr;
         debug_assert!(!self.input.lexer.verbatim);
-        self.input.lexer = lex::Lexer::new(&self.input.src.as_bytes()[state.end_attr..line_end]);
+        debug_assert!(
+            self.input.span_line.contains(&state.end_attr)
+                || state.end_attr == self.input.span_line.end
+        );
+        self.input.lexer =
+            lex::Lexer::new(&self.input.src.as_bytes()[state.end_attr..self.input.span_line.end]);
 
         if attrs.is_empty() {
             if matches!(state.elem_ty, AttributesElementType::Container { .. }) {

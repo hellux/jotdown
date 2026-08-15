@@ -1739,6 +1739,64 @@ fn attr_inline_consecutive() {
 }
 
 #[test]
+fn attr_inline_consecutive_multiline() {
+    test_parse!(
+        concat!(
+            "pre\n",              //
+            "_abc def_{.a}{.b\n", //
+            "%%\n",               //
+            "#i}\n",              //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("pre".into()), "pre"),
+        (Softbreak, "\n"),
+        (
+            Start(
+                Emphasis,
+                attrs![
+                    (AttributeKind::Class, "a"),
+                    (AttributeKind::Class, "b"),
+                    (AttributeKind::Comment, ""),
+                    (AttributeKind::Id, "i"),
+                ],
+            ),
+            "_",
+        ),
+        (Str("abc def".into()), "abc def"),
+        (End(Emphasis), "_{.a}{.b\n%%\n#i}"),
+        (End(Paragraph), ""),
+    );
+    test_parse!(
+        concat!(
+            "> pre\n",              //
+            "> _abc def_{.a}{.b\n", //
+            "> %%\n",               //
+            "> #i}\n",              //
+        ),
+        (Start(Blockquote, Attributes::new()), ">"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("pre".into()), "pre"),
+        (Softbreak, "\n"),
+        (
+            Start(
+                Emphasis,
+                attrs![
+                    (AttributeKind::Class, "a"),
+                    (AttributeKind::Class, "b"),
+                    (AttributeKind::Comment, ""),
+                    (AttributeKind::Id, "i"),
+                ],
+            ),
+            "_",
+        ),
+        (Str("abc def".into()), "abc def"),
+        (End(Emphasis), "_{.a}{.b\n> %%\n> #i}"),
+        (End(Paragraph), ""),
+        (End(Blockquote), ""),
+    );
+}
+
+#[test]
 fn attr_inline_consecutive_invalid() {
     test_parse!(
         "_abc def_{.a}{.b #i}{.c invalid}",
@@ -1779,6 +1837,10 @@ fn attr_inline_consecutive_invalid() {
         (Str("{.c invalid}".into()), "{.c invalid}"),
         (End(Paragraph), ""),
     );
+}
+
+#[test]
+fn attr_inline_consecutive_invalid_multiline() {
     test_parse!(
         concat!(
             "_abc def_{.a}{.b #i}{%%}{.c\n", //
@@ -1804,17 +1866,43 @@ fn attr_inline_consecutive_invalid() {
         (Str("invalid}".into()), "invalid}"),
         (End(Paragraph), ""),
     );
+    test_parse!(
+        concat!(
+            "> pre\n",      //
+            "> _em_{.a\n",  //
+            "> }{.b\n",     //
+            "> %%\n",       //
+            "> invalid}\n", //
+        ),
+        (Start(Blockquote, Attributes::new()), ">"),
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("pre".into()), "pre"),
+        (Softbreak, "\n"),
+        (Start(Emphasis, attrs![(AttributeKind::Class, "a"),],), "_",),
+        (Str("em".into()), "em"),
+        (End(Emphasis), "_{.a\n> }"),
+        (Str("{.b".into()), "{.b"),
+        (Softbreak, "\n"),
+        (Str("%%".into()), "%%"),
+        (Softbreak, "\n"),
+        (Str("invalid}".into()), "invalid}"),
+        (End(Paragraph), ""),
+        (End(Blockquote), ""),
+    );
 }
 
 #[test]
 fn attr_inline_multiline() {
     test_parse!(
         concat!(
+            "> para\n",      //
             "> _abc_{a=b\n", //
             "> c=d}\n",      //
         ),
         (Start(Blockquote, Attributes::new()), ">"),
         (Start(Paragraph, Attributes::new()), ""),
+        (Str("para".into()), "para"),
+        (Softbreak, "\n"),
         (
             Start(
                 Emphasis,
