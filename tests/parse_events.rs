@@ -1079,6 +1079,56 @@ fn link_reference() {
 }
 
 #[test]
+fn link_reference_escape() {
+    test_parse!(
+        r"[text][\a\\]",
+        (Start(Paragraph, Attributes::new()), ""),
+        (
+            Start(
+                Link(r"\a\".into(), LinkType::Span(SpanLinkType::Unresolved)),
+                Attributes::new(),
+            ),
+            "[",
+        ),
+        (Str("text".into()), "text"),
+        (
+            End(Link(
+                r"\a\".into(),
+                LinkType::Span(SpanLinkType::Unresolved)
+            )),
+            r"][\a\\]",
+        ),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
+fn link_reference_around_link_ref() {
+    test_parse!(
+        concat!(
+            "[][[][\n", //
+            "]]\n"      //
+        ),
+        (Start(Paragraph, Attributes::new()), ""),
+        (
+            Start(
+                Link("[][ ]".into(), LinkType::Span(SpanLinkType::Unresolved)),
+                Attributes::new(),
+            ),
+            "[",
+        ),
+        (
+            End(Link(
+                "[][ ]".into(),
+                LinkType::Span(SpanLinkType::Unresolved)
+            )),
+            "][[][\n]]",
+        ),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn link_reference_unresolved() {
     test_parse!(
         "[text][lbl]",

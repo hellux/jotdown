@@ -201,6 +201,50 @@ impl<'s> Input<'s> {
     }
 }
 
+fn append_norm_ws<'a>(a: &mut CowStr<'a>, mut b: &'a str) {
+    fn append<'a>(a: &mut CowStr<'a>, b: &'a str) {
+        if !b.is_empty() {
+            match a {
+                CowStr::Borrowed(s) => {
+                    *a = if s.is_empty() {
+                        b.into()
+                    } else {
+                        format!("{s}{b}").into()
+                    }
+                }
+                CowStr::Owned(s) => s.push_str(b),
+            }
+        }
+    }
+
+    if a.is_empty() || a.ends_with(' ') {
+        b = b.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    }
+
+    if b.contains(|c: char| c.is_ascii_whitespace() && c != ' ') || b.contains("  ") {
+        let mut bytes = b.bytes().enumerate();
+        let mut start = 0;
+        while start < b.len() {
+            if let Some(whitespace) = bytes.find(|(_, c)| c.is_ascii_whitespace()).map(|(i, _)| i) {
+                if b.as_bytes()[whitespace] == b' ' {
+                    append(a, &b[start..whitespace + 1]);
+                } else {
+                    append(a, &b[start..whitespace]);
+                    append(a, " ");
+                }
+            } else {
+                append(a, &b[start..]);
+                break;
+            }
+            start = bytes
+                .find(|(_, c)| !c.is_ascii_whitespace())
+                .map_or(b.len(), |(i, _)| i);
+        }
+    } else {
+        append(a, b);
+    }
+}
+
 #[derive(Clone)]
 struct VerbatimState {
     event_opener: usize,
@@ -782,67 +826,68 @@ impl<'s> Parser<'s> {
                         image,
                     } => {
                         let span_spec = self.events[e_opener].span.end..self.input.span.start;
-                        let multiline_spec =
-                            self.events[e_opener].span.start < self.input.span_line.start;
 
-                        let spec: CowStr = if span_spec.is_empty() && !inline {
-                            let events_text = self
+                        let mut spec = CowStr::from("");
+                        if inline || !span_spec.is_empty() {
+                            // handle label/url
+                            let mut pos_last = 0;
+                            for ev in self.events.iter().skip(e_opener + 1) {
+                                match ev.kind {
+                                    EventKind::Atom(Escape)
+                                    | EventKind::Empty
+                                    | EventKind::Attributes {
+                                        container: true, ..
+                                    } => continue,
+                                    EventKind::Atom(Softbreak | Hardbreak) if inline => {}
+                                    EventKind::Atom(Softbreak | Hardbreak | Nbsp) => {
+                                        append_norm_ws(&mut spec, " ");
+                                    }
+                                    _ => {
+                                        append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
+                                    }
+                                }
+                                debug_assert!(
+                                    pos_last <= ev.span.start,
+                                    "out of order: {:?}",
+                                    ev.kind
+                                );
+                                pos_last = ev.span.end;
+                            }
+                        } else {
+                            // derive label from text content
+                            for ev in self
                                 .events
                                 .iter()
                                 .skip(event_span + 1)
-                                .take(e_opener - event_span - 2);
-
-                            let mut spec = String::new();
-                            let mut span = 0..0;
-                            for ev in events_text.filter(|ev| {
-                                matches!(ev.kind, EventKind::Str | EventKind::Atom(..))
-                                    && !matches!(ev.kind, EventKind::Atom(Escape))
-                            }) {
-                                if matches!(ev.kind, EventKind::Atom(Softbreak | Hardbreak)) {
-                                    spec.push_str(&self.input.src[span.clone()]);
-                                    spec.push(' ');
-                                    span = ev.span.end..ev.span.end;
-                                } else if span.end == ev.span.start {
-                                    span.end = ev.span.end;
-                                } else {
-                                    spec.push_str(&self.input.src[span.clone()]);
-                                    span = ev.span.clone();
-                                }
-                            }
-                            spec.push_str(&self.input.src[span]);
-                            spec.into()
-                        } else if multiline_spec {
-                            let mut spec = String::new();
-                            let mut first_part = true;
-                            let mut span =
-                                self.events[e_opener].span.end..self.events[e_opener].span.end;
-
-                            let mut append = |span: std::ops::Range<usize>| {
-                                self.input.src[span].split('\n').for_each(|s| {
-                                    if !s.is_empty() {
-                                        if !inline && !first_part {
-                                            spec.push(' ');
-                                        }
-                                        spec.push_str(s);
-                                        first_part = false;
+                                .take(e_opener - event_span - 2)
+                            {
+                                match ev.kind {
+                                    EventKind::Atom(Escape) => {}
+                                    EventKind::Atom(Softbreak | Hardbreak) => {
+                                        append_norm_ws(&mut spec, " ");
                                     }
-                                });
-                            };
-
-                            for ev in self.events.iter().skip(e_opener + 1) {
-                                if span.end == ev.span.start {
-                                    span.end = ev.span.end;
-                                } else {
-                                    append(span);
-                                    span = ev.span.clone();
+                                    EventKind::Str | EventKind::Atom(..) => {
+                                        append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
+                                    }
+                                    _ => {}
                                 }
                             }
-                            append(span);
+                        }
 
-                            spec.into()
-                        } else {
-                            self.input.src[span_spec.clone()].into()
-                        };
+                        let len_trimmed = spec
+                            .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                            .len();
+                        if len_trimmed < spec.len() {
+                            match &mut spec {
+                                CowStr::Borrowed(s) => *s = &s[..len_trimmed],
+                                CowStr::Owned(s) => s.truncate(len_trimmed),
+                            }
+                        }
+                        debug_assert!(
+                            !spec.contains(|c: char| c.is_ascii_whitespace() && c != ' '),
+                            "{spec:?}"
+                        );
+                        debug_assert!(!spec.contains("  "), "{spec:?}");
 
                         let idx = self.store_cowstrs.len() as CowStrIndex;
                         self.store_cowstrs.push(spec);
