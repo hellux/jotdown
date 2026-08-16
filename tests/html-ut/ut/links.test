@@ -1,0 +1,64 @@
+```
+[ 
+ a
+ ][]
+[a 
+][]
+
+[a]: url
+.
+<p><a href="url"> 
+a
+</a>
+<a href="url">a 
+</a></p>
+```
+
+```
+[`a
+`b][]
+[a [][[]] b][]
+
+[a b]: url
+.
+<p><a href="url"><code>a
+</code>b</a>
+<a href="url">a <a></a> b</a></p>
+```
+
+```
+[][ a ]
+[][
+ a
+]
+[][ 
+a]
+[][a 
+]
+
+[a]: url
+.
+<p><a href="url"></a>
+<a href="url"></a>
+<a href="url"></a>
+<a href="url"></a></p>
+```
+
+```
+[text](https://en.wikipedia.org/wiki/Xbox_(console\))
+.
+<p><a href="https://en.wikipedia.org/wiki/Xbox_(console)">text</a></p>
+```
+
+```
+[][a\
+b]
+[][ a  b ]
+[][a	b]
+
+[a b]: url
+.
+<p><a href="url"></a>
+<a href="url"></a>
+<a href="url"></a></p>
+```
