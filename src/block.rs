@@ -262,6 +262,17 @@ impl<'s> TreeParser<'s> {
     }
 
     fn inline(&mut self, span: std::ops::Range<usize>) {
+        if self.open.last().is_none_or(|i| {
+            !matches!(
+                self.events[*i].kind,
+                EventKind::Enter(Node::Leaf(CodeBlock { .. }))
+            )
+        }) {
+            debug_assert_eq!(
+                &self.src[span.clone()],
+                &self.src[self.trim_start(span.clone())],
+            );
+        }
         self.events.push(Event {
             kind: EventKind::Inline,
             span,
@@ -811,7 +822,7 @@ impl<'s> TreeParser<'s> {
                 lines[caption_line].start += 2;
                 lines[lines.len() - 1] = self.trim_end(lines[lines.len() - 1].clone());
                 for line in &lines[caption_line..] {
-                    self.inline(line.clone());
+                    self.inline(self.trim_start(line.clone()));
                 }
                 self.exit(span_end.clone());
                 caption_line
