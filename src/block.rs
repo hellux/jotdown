@@ -622,7 +622,7 @@ impl<'s> TreeParser<'s> {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|sp| {
             let src = &self.src[sp.clone()];
-            let src_t = src.trim_matches(|c: char| c.is_ascii_whitespace());
+            let src_t = &self.src[self.trim(sp.clone())];
             let whitespace = src_t.as_ptr() as usize - src.as_ptr() as usize;
             let skip = match k {
                 Kind::Blockquote => {
@@ -804,11 +804,7 @@ impl<'s> TreeParser<'s> {
 
         let caption_line = lines
             .iter()
-            .position(|sp| {
-                self.src[sp.clone()]
-                    .trim_start_matches(|c: char| c.is_ascii_whitespace())
-                    .starts_with('^')
-            })
+            .position(|sp| self.src[self.trim_start(sp.clone())].starts_with('^'))
             .map_or(lines.len(), |caption_line| {
                 self.enter(Node::Leaf(Caption), span_start.clone());
                 lines[caption_line] = self.trim_start(lines[caption_line].clone());
