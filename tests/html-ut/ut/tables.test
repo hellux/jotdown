@@ -85,3 +85,20 @@ Tables can be interrupted if end pipe is escaped
 </tr>
 </table>
 ```
+
+```
+|a|b|
+^ a
+  b
+  c
+.
+<table>
+<caption>a
+b
+c</caption>
+<tr>
+<td>a</td>
+<td>b</td>
+</tr>
+</table>
+```
