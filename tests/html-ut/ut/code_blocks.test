@@ -1,0 +1,11 @@
+Whitespace in code blocks should be kept verbatim
+
+```
+> ```
+>    
+.
+<blockquote>
+<pre><code>   
+</code></pre>
+</blockquote>
+```
