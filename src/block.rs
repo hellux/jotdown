@@ -424,7 +424,7 @@ impl<'s> TreeParser<'s> {
                 .rev()
                 .find(|e| !matches!(e.kind, EventKind::Exit(Node::Container(ListItem(..)))))
                 .is_some_and(|e| matches!(e.kind, EventKind::Exit(Node::Container(List { .. }))));
-        } else {
+        } else if !matches!(kind, Kind::Atom(Atom::Attributes)) {
             self.prev_loose = false;
             if self.prev_blankline {
                 if let Some(OpenList { event, depth, .. }) = self.open_lists.last() {
