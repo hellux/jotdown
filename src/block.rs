@@ -637,10 +637,9 @@ impl<'s> TreeParser<'s> {
             let whitespace = src_t.as_ptr() as usize - src.as_ptr() as usize;
             let skip = match k {
                 Kind::Blockquote => {
-                    if src_t == ">" {
-                        whitespace + 1
-                    } else if src_t.starts_with('>')
-                        && src_t[1..].starts_with(|c: char| c.is_ascii_whitespace())
+                    if src_t == ">"
+                        || (src_t.starts_with('>')
+                            && src_t[1..].starts_with(|c: char| c.is_ascii_whitespace()))
                     {
                         whitespace + 2
                     } else {
