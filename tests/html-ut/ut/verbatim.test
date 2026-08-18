@@ -41,3 +41,22 @@ Inline verbatim with empty raw format is verbatim
 .
 <p><code>verbatim</code>{=}</p>
 ```
+
+Only non-newline whitespace should be allowed around backticks
+
+```
+` `` `
+
+` ``
+`
+
+`
+`` `
+
+.
+<p><code>``</code></p>
+<p><code>``
+</code></p>
+<p><code>
+``</code></p>
+```
