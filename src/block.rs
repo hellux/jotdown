@@ -1407,11 +1407,13 @@ impl<'s> Kind<'s> {
                 }
                 cont
             }
-            Self::Definition { .. } => {
+            Self::Definition { indent, .. } => {
+                let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
+                let whitespace = line.len() - line_t.len();
                 let blankline = line
                     .trim_matches(|c: char| c.is_ascii_whitespace())
                     .is_empty();
-                line.starts_with(' ') && !blankline
+                whitespace > *indent && !blankline
             }
             Self::Fenced {
                 fence_length,

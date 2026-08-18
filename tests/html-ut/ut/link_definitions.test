@@ -36,3 +36,18 @@ Link definitions should be unicode-aware
 <p><a href="https://example.com">花花花</a></p>
 <p><a href="https://example.com">花花花花</a></p>
 ```
+
+```
+- []: url
+  para
+- []: url
+   url
+.
+<ul>
+<li>
+para
+</li>
+<li>
+</li>
+</ul>
+```
