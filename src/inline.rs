@@ -751,11 +751,11 @@ impl<'s> Parser<'s> {
                 let closed = match DelimEventKind::from(opener) {
                     DelimEventKind::Container(cont) => {
                         self.events[e_opener].kind = EventKind::Enter(cont);
-                        Some(self.push(EventKind::Exit(cont)))
+                        self.push(EventKind::Exit(cont))
                     }
                     DelimEventKind::Quote(ty) => {
                         self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
-                        Some(self.push(EventKind::Atom(Quote { ty, left: false })))
+                        self.push(EventKind::Atom(Quote { ty, left: false }))
                     }
                     DelimEventKind::Span(ty) => {
                         if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
@@ -774,7 +774,7 @@ impl<'s> Parser<'s> {
                             self.input.eat(); // [ or (
                             return Some(self.push(EventKind::Str));
                         }
-                        Some(self.push(EventKind::Str)) // ]
+                        self.push(EventKind::Str) // ]
                     }
                     DelimEventKind::Link {
                         event_span,
@@ -858,7 +858,7 @@ impl<'s> Parser<'s> {
                             span: (self.events[e_opener - 1].span.start)..(span_spec.end + 1),
                         };
                         self.events.drain(e_opener..);
-                        Some(Continue)
+                        Continue
                     }
                 };
 
@@ -879,7 +879,7 @@ impl<'s> Parser<'s> {
                         };
                     self.ahead_attributes(elem_ty, false).or(Some(Continue))
                 } else {
-                    closed
+                    Some(closed)
                 }
             })
             .or_else(|| {
