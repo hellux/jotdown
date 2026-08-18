@@ -329,7 +329,9 @@ impl<'s> Parser<'s> {
             if usize::from(len_opener) == first.len
                 && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
             {
+                self.input.lexer.verbatim = false;
                 let raw_format = self.input.ahead_raw_format();
+                self.input.lexer.verbatim = true;
                 if let Some(span_format) = raw_format.clone() {
                     self.events[event_opener].kind = EventKind::Enter(RawFormat {
                         format: &self.input.src[span_format.clone()],
