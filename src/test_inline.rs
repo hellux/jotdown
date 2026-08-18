@@ -133,6 +133,18 @@ fn verbatim_trim() {
 }
 
 #[test]
+fn verbatim_sequence() {
+    test_parse!(
+        r"`a`\`a",
+        (Enter(Verbatim), "`"),
+        (Str, "a"),
+        (Exit(Verbatim), "`"),
+        (Atom(Escape), r"\"),
+        (Str, "`a"),
+    );
+}
+
+#[test]
 fn math() {
     test_parse!(
         "$`abc`",
