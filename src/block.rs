@@ -1426,12 +1426,14 @@ impl<'s> Kind<'s> {
                 kind,
                 has_closing_fence,
                 nested_raw,
+                indent,
                 ..
             } => {
                 if let Kind::Fenced {
                     kind: k,
                     fence_length: l,
                     spec,
+                    indent: i,
                     ..
                 } = IdentifiedBlock::new(line).kind
                 {
@@ -1441,7 +1443,7 @@ impl<'s> Kind<'s> {
                         }
                     } else if k == *kind {
                         *has_closing_fence = l >= *fence_length && spec.is_empty();
-                    } else if *kind == FenceKind::Div {
+                    } else if *kind == FenceKind::Div && i <= *indent {
                         if let FenceKind::CodeBlock(c) = k {
                             *nested_raw = Some((c, l));
                         }

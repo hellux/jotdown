@@ -9,3 +9,21 @@ Whitespace in code blocks should be kept verbatim
 </code></pre>
 </blockquote>
 ```
+
+Indented code blocks should not close outer divs.
+
+
+```
+:::
+*
+ ```
+:::
+.
+<div>
+<ul>
+<li>
+<pre><code></code></pre>
+</li>
+</ul>
+</div>
+```
