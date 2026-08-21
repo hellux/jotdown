@@ -191,3 +191,13 @@ a{a="?a"}
 a{a=?a}
 <span a="?a">a</span></p>
 ```
+
+Multi-line block attributes attach to the following block
+
+```
+{#id .class
+  style="color:red"}
+A paragraph
+.
+<p id="id" class="class" style="color:red">A paragraph</p>
+```

@@ -367,6 +367,54 @@ impl<'s> TreeParser<'s> {
                 lines
             };
 
+            // Check if this paragraph is actually a multi-line attribute
+            let (kind, span_start) = {
+                let mut kind = kind;
+                let mut span_start = span_start;
+                if matches!(kind, Kind::Paragraph)
+                    && lines.len() > 1
+                    && self.src[lines[0].clone()].starts_with('{')
+                {
+                    let mut validator = attr::Validator::new();
+                    let mut attr_end = 0;
+                    let mut attr_line_count = 0;
+                    for (i, line) in lines.iter().enumerate() {
+                        let line_str = &self.src[line.clone()];
+                        match validator.parse(line_str) {
+                            Some(0) => break,
+                            Some(len) => {
+                                attr_end = line.start + len;
+                                attr_line_count = i + 1;
+                                break;
+                            }
+                            None => {}
+                        }
+                    }
+                    if attr_end > 0 {
+                        let remaining = &self.src[attr_end..lines.last().unwrap().end];
+                        if remaining.trim().is_empty() {
+                            // Unattached: entire paragraph is the attribute
+                            kind = Kind::Atom(Atom::Attributes);
+                            span_start = span_start.start..attr_end;
+                        } else if attr_line_count < line_count {
+                            // Attached: attribute followed by content, split the block
+                            let attr_span = lines[0].start..attr_end;
+                            let after_attr = &self.src[attr_end..lines[attr_line_count - 1].end];
+                            if after_attr.trim().is_empty() {
+                                self.events.push(Event {
+                                    kind: EventKind::Atom(Atom::Attributes),
+                                    span: attr_span,
+                                });
+                                self.attr_start =
+                                    self.attr_start.or_else(|| Some(self.events.len() - 1));
+                                return attr_line_count;
+                            }
+                        }
+                    }
+                }
+                (kind, span_start)
+            };
+
             // close list if a non list item or a list item of new type appeared
             if let Some(OpenList {
                 ty_start,
