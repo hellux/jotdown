@@ -2051,28 +2051,21 @@ pub enum OrderedListStyle {
 }
 
 impl OrderedListNumbering {
-    fn parse_number(self, n: &str) -> u64 {
+    fn parse_number(self, n: &str) -> Option<u64> {
         match self {
-            Self::Decimal => n.parse().unwrap(),
+            Self::Decimal => n.parse().ok(),
             Self::AlphaLower | Self::AlphaUpper => {
-                let d0 = u64::from(if matches!(self, Self::AlphaLower) {
-                    b'a'
+                if let &[a] = n.as_bytes() {
+                    Some(u64::from(
+                        a - if matches!(self, Self::AlphaLower) {
+                            b'a'
+                        } else {
+                            b'A'
+                        } + 1,
+                    ))
                 } else {
-                    b'A'
-                });
-                let weights = (1..=n.len()).scan(1, |a, _| {
-                    let prev = *a;
-                    *a *= 26;
-                    Some(prev)
-                });
-                n.as_bytes()
-                    .iter()
-                    .rev()
-                    .copied()
-                    .map(u64::from)
-                    .zip(weights)
-                    .map(|(d, w)| w * (d - d0 + 1))
-                    .sum()
+                    None
+                }
             }
             Self::RomanLower | Self::RomanUpper => {
                 fn value(d: char) -> u64 {
@@ -2098,7 +2091,7 @@ impl OrderedListNumbering {
                     }
                     prev = v;
                 }
-                sum
+                Some(sum)
             }
         }
     }
@@ -2868,9 +2861,9 @@ mod test {
 
     #[test]
     fn numbering_alpha() {
-        assert_eq!(AlphaLower.parse_number("a"), 1);
-        assert_eq!(AlphaUpper.parse_number("B"), 2);
-        assert_eq!(AlphaUpper.parse_number("Z"), 26);
-        assert_eq!(AlphaLower.parse_number("aa"), 27);
+        assert_eq!(AlphaLower.parse_number("a"), Some(1));
+        assert_eq!(AlphaUpper.parse_number("B"), Some(2));
+        assert_eq!(AlphaUpper.parse_number("Z"), Some(26));
+        assert_eq!(AlphaLower.parse_number("aa"), None);
     }
 }

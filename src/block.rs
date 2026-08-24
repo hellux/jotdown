@@ -136,7 +136,7 @@ impl ListNumber {
                 } else {
                     AlphaUpper
                 },
-                value: AlphaLower.parse_number(single_digit),
+                value: AlphaLower.parse_number(single_digit).unwrap(),
             }),
             _ => None,
         }
@@ -1318,16 +1318,9 @@ impl<'s> IdentifiedBlock<'s> {
             return None;
         };
 
-        let max_len = match numbering {
-            AlphaLower | AlphaUpper => 1,
-            Decimal => 19,
-            RomanLower | RomanUpper => 13,
-        };
-
         let chars_num = chars.clone();
         let len_num = 1 + chars_num
             .clone()
-            .take(max_len - 1)
             .take_while(|c| match numbering {
                 Decimal => c.is_ascii_digit(),
                 AlphaLower => c.is_ascii_lowercase(),
@@ -1358,7 +1351,7 @@ impl<'s> IdentifiedBlock<'s> {
             Some((
                 ListNumber {
                     numbering,
-                    value: numbering.parse_number(style.number(&line[..len])),
+                    value: numbering.parse_number(style.number(&line[..len]))?,
                 },
                 style,
                 len,
