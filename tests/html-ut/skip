@@ -1,7 +1,25 @@
 38d85f9:multi-line block attributes
 6c14561:multi-line block attributes
+45d4313:multi-line block attributes
+a25dde2:multi-line block attributes
 2fa94d1:bugged left/right quote
+a227d42:bugged left/right quote
 e1f5b5e:untrimmed whitespace before linebreak
 8423412:heading id conflict with existing id
 c0a3dec:escape in url
 642d380:table end in verbatim inline
+d8919a0:table head with spaces
+e66af00:link / inline container parse prio
+7ecc387:link / inline container parse prio
+23c637f:link / inline container parse prio
+42b5b04:backslash before math
+2cc6207:space in link definition
+1ad9860:space in link definition
+c511b19:missing id in footnote reference <a> element
+84ee4bc:missing id in footnote reference <a> element
+a347df6:line break in footnote reference label
+1315fc6:line break in footnote reference label
+42828d8:extra space in footnote definition label not handled
+012c0fc:different class / src order in <img> element
+a5dde08:span with empty attributes not present in html
+f4f2701:hard line at end of para
