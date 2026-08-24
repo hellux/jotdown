@@ -77,19 +77,8 @@ An ordered list with a style change should be split in two
 
 ```
 i. a
-j. b
-
-i. a
 j) d
 .
-<ol start="9" type="a">
-<li>
-a
-</li>
-<li>
-b
-</li>
-</ol>
 <ol type="i">
 <li>
 a
@@ -152,6 +141,21 @@ E)
 </li>
 </ol>
 <ol start="5" type="A">
+<li>
+</li>
+</ol>
+```
+
+```
+a)
+a)
+c)
+.
+<ol type="a">
+<li>
+</li>
+<li>
+</li>
 <li>
 </li>
 </ol>

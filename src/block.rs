@@ -144,47 +144,25 @@ impl ListNumber {
 }
 
 impl ListType {
-    /// Whether this list item can be continued by the other list item.
-    ///
-    /// If so, return the two new resolved `ListType` objects. They only differ from the input in
-    /// case of ambiguous types.
-    fn continues(&self, other: &Self) -> Option<(Self, Self)> {
-        match (self, other) {
-            _ if self == other => Some((*self, *other)),
-            (
-                Ordered(ListNumber { numbering: n0, .. }, s0),
-                Ordered(ListNumber { numbering: n1, .. }, s1),
-            ) if n0 == n1 && s0 == s1 => Some((*self, *other)),
-            (Ordered(n0, s0), Ordered(n1, s1)) if s0 == s1 => {
-                if let Some(na0) = n0.ambiguity() {
-                    if na0.numbering == n1.numbering && na0.value + 1 == n1.value {
-                        Some((ListType::Ordered(na0, *s0), *other))
-                    } else {
-                        None
-                    }
-                } else if let Some(na1) = n1.ambiguity() {
-                    if n0.numbering == na1.numbering && n0.value + 1 == na1.value {
-                        Some((*self, ListType::Ordered(na1, *s1)))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
+    fn can_follow(self, start: Self) -> bool {
+        start == self
+            || if let (Ordered(n0, s0), Ordered(n1, s1)) = (start, self) {
+                s0 == s1
+                    && (n0.numbering == n1.numbering
+                        || n1
+                            .ambiguity()
+                            .is_some_and(|na1| n0.numbering == na1.numbering))
+            } else {
+                false
             }
-            _ => None,
-        }
     }
 }
 
 #[derive(Debug)]
 struct OpenList {
-    /// Type of the list, an initial guess is made but may change if ambiguous. Also used to
-    /// determine whether this list should be continued or a new one should be created.
+    /// Type of the list, an initial guess is made but may change if ambiguous.
     ty_start: ListType,
-    /// Type of the previous item, generally the same as `ty_start` but value may differ in ordered
-    /// lists.
-    ty_prev: ListType,
+    ty_locked: bool,
     /// Depth in the tree where the direct list items of the list are. Needed to determine when to
     /// close the list.
     depth: u16,
@@ -400,7 +378,7 @@ impl<'s> TreeParser<'s> {
         // close list if a non list item or a list item of new type appeared
         if let Some(OpenList {
             ty_start,
-            ty_prev,
+            ty_locked,
             depth,
             ..
         }) = self.open_lists.last_mut()
@@ -408,15 +386,38 @@ impl<'s> TreeParser<'s> {
             debug_assert!(usize::from(*depth) <= self.open.len());
             if self.open.len() == (*depth).into() {
                 let continues = if let Kind::ListItem { ty: ty_new, .. } = kind {
-                    if let Some((ty_prev_res, ty_new_res)) = ty_prev.continues(&ty_new) {
-                        if ty_start == ty_prev {
-                            *ty_start = ty_prev_res;
+                    let num_changed = !*ty_locked && {
+                        fn changed_numbering(
+                            n0: ListNumber,
+                            s0: crate::OrderedListStyle,
+                            ty_new: ListType,
+                        ) -> Option<ListNumber> {
+                            let ListType::Ordered(n1, s1) = ty_new else {
+                                return None;
+                            };
+
+                            if s0 != s1 {
+                                return None;
+                            }
+
+                            let na0 = n0.ambiguity()?;
+                            (na0.numbering == n1.numbering && na0.value + 1 == n1.value)
+                                .then_some(na0)
                         }
-                        *ty_prev = ty_new_res;
-                        ty_start.continues(ty_prev).is_some()
-                    } else {
-                        false
-                    }
+
+                        let ListType::Ordered(n0, s0) = ty_start else {
+                            unreachable!("only ordered list set to unlocked")
+                        };
+                        if let Some(num) = changed_numbering(*n0, *s0, ty_new) {
+                            *n0 = num;
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    *ty_locked = true;
+
+                    num_changed || ty_new.can_follow(*ty_start)
                 } else {
                     matches!(kind, Kind::Atom(Blankline))
                 };
@@ -663,7 +664,7 @@ impl<'s> TreeParser<'s> {
                 );
                 self.open_lists.push(OpenList {
                     ty_start: *ty,
-                    ty_prev: *ty,
+                    ty_locked: !matches!(*ty, ListType::Ordered(..)),
                     depth: self.open.len().try_into().unwrap(),
                     event,
                 });
