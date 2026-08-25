@@ -728,14 +728,6 @@ impl<'s> Parser<'s> {
                 })
             )
         {
-            let tok = self.input.eat();
-            debug_assert_eq!(
-                tok,
-                Some(lex::Token {
-                    kind: lex::Kind::Sym(Symbol::Caret),
-                    len: 1,
-                })
-            );
             let mut end = false;
             let len = self
                 .input
@@ -753,8 +745,8 @@ impl<'s> Parser<'s> {
                 })
                 .count();
             if end {
-                self.input.lexer.skip_ahead(len + 1);
-                let span_label = self.input.span.end..(self.input.span.end + len);
+                self.input.lexer.skip_ahead(len);
+                let span_label = self.input.span.end + 1..(self.input.span.end + len);
                 let label = &self.input.src[span_label.clone()];
                 self.input.span.end = span_label.end + 1;
                 return Some(self.push(EventKind::Atom(FootnoteReference { label })));
