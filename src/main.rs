@@ -1,4 +1,4 @@
-#[derive(Default, clap::Parser)]
+#[derive(clap::Parser)]
 #[command(version)]
 struct App {
     input: Option<std::ffi::OsString>,
