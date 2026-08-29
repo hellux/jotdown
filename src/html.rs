@@ -645,12 +645,16 @@ impl<'s> Renderer<'s> {
                 Raw::Other => {}
             },
             Event::FootnoteReference(label) => {
-                let number = self.footnotes.reference(label);
                 if self.img_alt_text == 0 {
+                    let (number, first) = self.footnotes.reference(label);
+                    write!(out, "<a ")?;
+                    if first {
+                        // id must be unique, cannot emit to more than 1 reference
+                        write!(out, r#"id="fnref{}" "#, number)?;
+                    }
                     write!(
                         out,
-                        r##"<a id="fnref{}" href="#fn{}" role="doc-noteref"><sup>{}</sup></a>"##,
-                        number, number, number
+                        r##"href="#fn{number}" role="doc-noteref"><sup>{number}</sup></a>"##,
                     )?;
                 }
             }
@@ -840,16 +844,16 @@ impl<'s> Footnotes<'s> {
     }
 
     /// Add a footnote reference.
-    fn reference(&mut self, label: CowStr<'s>) -> usize {
+    fn reference(&mut self, label: CowStr<'s>) -> (usize, bool) {
         self.references
             .iter()
             .position(|t| *t == label)
             .map_or_else(
                 || {
                     self.references.push(label);
-                    self.references.len()
+                    (self.references.len(), true)
                 },
-                |i| i + 1,
+                |i| (i + 1, false),
             )
     }
 
