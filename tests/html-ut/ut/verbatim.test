@@ -66,3 +66,15 @@ $`math`{=not_raw}
 .
 <p><span class="math inline">\(math\)</span>{=not_raw}</p>
 ```
+
+```
+\$$`math`
+.
+<p>$<span class="math inline">\(math\)</span></p>
+```
+
+```
+\\$$`math`
+.
+<p>\<span class="math display">\[math\]</span></p>
+```
