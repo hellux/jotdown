@@ -819,7 +819,7 @@ impl<'s> TreeParser<'s> {
                 } else {
                     match kind {
                         lex::Kind::Sym(lex::Symbol::Pipe) => {
-                            let span = self.trim(cell_start..pos);
+                            let span = cell_start..pos;
                             let cell = &self.src[span.clone()];
                             let separator_cell = match cell.len() {
                                 0 => false,
@@ -841,7 +841,7 @@ impl<'s> TreeParser<'s> {
                                 )),
                                 cell_start..cell_start,
                             );
-                            self.inline(span);
+                            self.inline(self.trim(span.clone()));
                             self.exit(pos..(pos + 1));
                             cell_start = pos + len;
                             column_index += 1;
