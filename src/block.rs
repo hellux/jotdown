@@ -1168,7 +1168,9 @@ impl<'s> IdentifiedBlock<'s> {
                 if chars.as_str()[l + 1..].starts_with(':') {
                     let label = &chars.as_str()[0..l];
                     let footnote = label.starts_with('^');
-                    Some((
+                    let content =
+                        &chars.as_str()[l + 2..].trim_matches(|c: char| c.is_ascii_whitespace());
+                    (footnote || !content.contains(|c: char| c.is_ascii_whitespace())).then_some((
                         Kind::Definition {
                             indent,
                             footnote,
@@ -1407,13 +1409,20 @@ impl<'s> Kind<'s> {
                 }
                 cont
             }
-            Self::Definition { indent, .. } => {
+            Self::Definition {
+                indent,
+                footnote: false,
+                ..
+            } => {
                 let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let whitespace = line.len() - line_t.len();
                 let blankline = line
                     .trim_matches(|c: char| c.is_ascii_whitespace())
                     .is_empty();
-                whitespace > *indent && !blankline
+                let inner_whitespace = line_t
+                    .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                    .contains(|c: char| c.is_ascii_whitespace());
+                whitespace > *indent && !blankline && !inner_whitespace
             }
             Self::Fenced {
                 fence_length,
