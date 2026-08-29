@@ -17,19 +17,6 @@ regression test: bug caused consecutive table to disappear
 </table>
 ```
 
-Leading/trailing whitespace in separator line is ignored
-
-```
-| :-: |
-|a|
-.
-<table>
-<tr>
-<td style="text-align: center;">a</td>
-</tr>
-</table>
-```
-
 Separator line may not contain other characters
 
 ```

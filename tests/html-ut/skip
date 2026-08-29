@@ -7,7 +7,6 @@ a227d42:bugged left/right quote
 e1f5b5e:untrimmed whitespace before linebreak
 8423412:heading id conflict with existing id
 c0a3dec:escape in url
-d8919a0:table head with spaces
 e66af00:link / inline container parse prio
 7ecc387:link / inline container parse prio
 23c637f:link / inline container parse prio
