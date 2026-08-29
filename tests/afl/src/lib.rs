@@ -12,7 +12,7 @@ pub fn parse(data: &[u8]) {
         let mut open = Vec::new();
         let mut last = (jotdown::Event::Str("".into()), 0..0);
         for (event, range) in jotdown::Parser::new(s).into_offset_iter() {
-            assert!(!matches!(event, jotdown::Event::Str(ref s) if s == ""));
+            assert!(!matches!(event, jotdown::Event::Str(ref s) if s.is_empty()));
             // no overlap, out of order
             assert!(
                 last.1.end <= range.start
@@ -55,18 +55,18 @@ pub fn parse(data: &[u8]) {
 
 /// Validate rendered html output.
 pub fn html(data: &[u8]) {
-    if data.iter().any(|i| *i == 0) {
+    if data.contains(&0) {
         return;
     }
-    if let Ok(s) = std::str::from_utf8(data) {
-        if !s.contains("=html") {
-            let p = jotdown::Parser::new(s);
-            let mut html = "<!DOCTYPE html>\n".to_string();
-            jotdown::html::Renderer::default()
-                .push_events(p, &mut html)
-                .unwrap();
-            validate_html(&html);
-        }
+    if let Ok(s) = std::str::from_utf8(data)
+        && !s.contains("=html")
+    {
+        let p = jotdown::Parser::new(s);
+        let mut html = "<!DOCTYPE html>\n".to_string();
+        jotdown::html::Renderer::default()
+            .push_events(p, &mut html)
+            .unwrap();
+        validate_html(&html);
     }
 }
 
