@@ -373,27 +373,34 @@ impl<'s> Parser<'s> {
             if usize::from(len_opener) == first.len
                 && matches!(first.kind, lex::Kind::Seq(Sequence::Backtick))
             {
-                self.input.lexer.verbatim = false;
-                let raw_format = self.input.ahead_raw_format();
-                self.input.lexer.verbatim = true;
-                if let Some(span_format) = raw_format.clone() {
-                    self.events[event_opener].kind = EventKind::Enter(RawFormat {
-                        format: &self.input.src[span_format.clone()],
-                    });
-                    self.input.span.end = span_format.end + 1;
-                }
-                let EventKind::Enter(ty_opener) = self.events[event_opener].kind else {
+                let EventKind::Enter(ty_opener) = &mut self.events[event_opener].kind else {
                     panic!()
                 };
                 debug_assert!(matches!(
                     ty_opener,
                     Verbatim | RawFormat { .. } | InlineMath | DisplayMath
                 ));
+
+                self.input.lexer.verbatim = false;
+                let raw_format = if matches!(ty_opener, InlineMath | DisplayMath) {
+                    None
+                } else {
+                    self.input.ahead_raw_format()
+                };
+                self.input.lexer.verbatim = true;
+                if let Some(span_format) = raw_format.clone() {
+                    *ty_opener = RawFormat {
+                        format: &self.input.src[span_format.clone()],
+                    };
+                    self.input.span.end = span_format.end + 1;
+                }
+
+                let ty_closer = *ty_opener;
                 if let Some((lex::Kind::Seq(Sequence::Backtick), event_skip)) = non_whitespace_last
                 {
                     self.events.drain(*event_skip..);
                 }
-                self.push(EventKind::Exit(ty_opener));
+                self.push(EventKind::Exit(ty_closer));
                 self.input.lexer.verbatim = false;
                 self.verbatim = None;
                 if raw_format.is_none()

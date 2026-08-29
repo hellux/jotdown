@@ -60,3 +60,9 @@ Only non-newline whitespace should be allowed around backticks
 <p><code>
 ``</code></p>
 ```
+
+```
+$`math`{=not_raw}
+.
+<p><span class="math inline">\(math\)</span>{=not_raw}</p>
+```
