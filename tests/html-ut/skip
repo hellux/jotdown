@@ -7,8 +7,6 @@ a227d42:bugged left/right quote
 e1f5b5e:untrimmed whitespace before linebreak
 8423412:heading id conflict with existing id
 42b5b04:backslash before math
-c511b19:missing id in footnote reference <a> element
-84ee4bc:missing id in footnote reference <a> element
 a347df6:line break in footnote reference label
 1315fc6:line break in footnote reference label
 42828d8:extra space in footnote definition label not handled
