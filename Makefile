@@ -80,6 +80,13 @@ afl_quick:
 			cargo afl fuzz -i in -o out -V 60 target/release/${AFL_TARGET})
 	[ -z "$$(find tests/afl/out/default/crashes -type f -name 'id:*')" ]
 
+afl_until_crash:
+	rm -rf tests/afl/out
+	(cd tests/afl && \
+		cargo afl build --no-default-features --release --config profile.release.debug-assertions=true && \
+		AFL_BENCH_UNTIL_CRASH=1 cargo afl fuzz -i in -o out target/release/${AFL_TARGET})
+	make afl_tmin
+
 afl_crash:
 	set +e; \
 	failures="$$(find . -path './tmin/*') $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*')"; \
