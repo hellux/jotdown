@@ -768,6 +768,14 @@ impl<'s> Parser<'s> {
             .rposition(|(o, _)| o.closed_by(first.kind))
             .and_then(|o| {
                 let (opener, e) = self.openers[o];
+                if !matches!(opener, Opener::Link { inline: true, .. })
+                    && self.openers[o + 1..]
+                        .iter()
+                        .any(|(o, _)| matches!(o, Opener::Link { inline: true, .. }))
+                {
+                    // give priority to inline links
+                    return None;
+                }
                 let (e_attr, e_opener) = if let Opener::Link { event_span, .. } = opener {
                     (event_span - 1, e)
                 } else {

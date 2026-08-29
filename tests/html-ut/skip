@@ -6,9 +6,6 @@ a25dde2:multi-line block attributes
 a227d42:bugged left/right quote
 e1f5b5e:untrimmed whitespace before linebreak
 8423412:heading id conflict with existing id
-e66af00:link / inline container parse prio
-7ecc387:link / inline container parse prio
-23c637f:link / inline container parse prio
 42b5b04:backslash before math
 2cc6207:space in link definition
 1ad9860:space in link definition
