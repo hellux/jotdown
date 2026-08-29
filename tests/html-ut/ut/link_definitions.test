@@ -51,3 +51,15 @@ para
 </li>
 </ul>
 ```
+
+Link definition URLs may not contain whitespace
+
+```
+[][lbl]
+
+[lbl]: url
+       a paragraph
+.
+<p><a href="url"></a></p>
+<p>a paragraph</p>
+```
