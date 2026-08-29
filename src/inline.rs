@@ -449,18 +449,24 @@ impl<'s> Parser<'s> {
                 .and_then(|e| matches!(&e.kind, EventKind::Str).then(|| e.span.clone()))
                 .filter(|sp| {
                     sp.end == self.input.span.start
-                        && self.input.src.as_bytes()[sp.start + sp.len() - 1] == b'$'
-                        && sp
-                            .end
-                            .checked_sub(2)
-                            .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
+                        && self.input.src[sp.clone()].bytes().last() == Some(b'$')
+                        && (sp.len() > 1
+                            || self
+                                .events
+                                .iter()
+                                .rev()
+                                .nth(1)
+                                .is_none_or(|e| !matches!(e.kind, EventKind::Atom(Escape))))
                 }) {
-                let (ty, num_dollar) = if sp.len() > 1
-                    && self.input.src.as_bytes()[sp.start + sp.len() - 2] == b'$'
-                    && sp
-                        .end
-                        .checked_sub(3)
-                        .is_none_or(|i| self.input.src.as_bytes()[i] != b'\\')
+                let (ty, num_dollar) = if self.input.src[sp.clone()].bytes().rev().nth(1)
+                    == Some(b'$')
+                    && (sp.len() > 2
+                        || self
+                            .events
+                            .iter()
+                            .rev()
+                            .nth(1)
+                            .is_none_or(|e| !matches!(e.kind, EventKind::Atom(Escape))))
                 {
                     (DisplayMath, 2)
                 } else {
@@ -1281,10 +1287,13 @@ impl<'s> Parser<'s> {
             || !self.openers.is_empty()
             || self.verbatim.is_some()
             || self.attributes.is_some()
-            || self // for merge or attributes
-                .events
-                .back()
-                .is_some_and(|ev| matches!(ev.kind, EventKind::Str))
+            || self.events.back().is_some_and(|ev| {
+                matches!(
+                    ev.kind,
+                    EventKind::Str // for merge or attributes
+                        | EventKind::Atom(Escape) // may escape something
+                )
+            })
         {
             match self.parse_event() {
                 Continue => {}
