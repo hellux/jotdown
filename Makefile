@@ -110,6 +110,7 @@ afl_tmin:
 	while [ -n "$$(md5sum tmin/* | sort -k1 | rev | uniq -d -f1)" ]; do \
 		md5sum tmin/* | sort -k1 | rev | uniq -d -f1 | rev | awk '{print $$2}' | xargs rm -f; \
 	done
+	make afl_crash
 
 clean:
 	cargo clean
