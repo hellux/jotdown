@@ -102,8 +102,7 @@ afl_crash:
 	done
 
 afl_tmin:
-	rm -rf tmin
-	mkdir tmin
+	mkdir -p tmin
 	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
 		cargo afl tmin -i $$f -o tmin/$$(basename $$f) tests/afl/target/release/${AFL_TARGET}; \
 	done
