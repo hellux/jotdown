@@ -160,16 +160,18 @@ impl<'s> Lexer<'s> {
             self.escape = false;
             match self.eat_byte() {
                 Some(b'\n') | None => Hardbreak,
-                Some(b'\t' | b' ')
+                Some(c) if c.is_ascii_whitespace() => {
                     if self.src[self.pos..]
                         .iter()
-                        .find(|c| !matches!(c, b' ' | b'\t'))
-                        == Some(&b'\n') =>
-                {
-                    while self.eat_byte() != Some(b'\n') {}
-                    Hardbreak
+                        .find(|c| **c == b'\n' || !c.is_ascii_whitespace())
+                        == Some(&b'\n')
+                    {
+                        while self.eat_byte() != Some(b'\n') {}
+                        Hardbreak
+                    } else {
+                        Nbsp
+                    }
                 }
-                Some(b' ') => Nbsp,
                 Some(_) => Text,
             }
         } else {
