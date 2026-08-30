@@ -61,3 +61,27 @@ b
 </ul>
 </blockquote>
 ```
+
+```
+> - a
+ >
+  > - b
+ >
+> - c
+.
+<blockquote>
+<ul>
+<li>
+a
+<ul>
+<li>
+b
+</li>
+</ul>
+</li>
+<li>
+c
+</li>
+</ul>
+</blockquote>
+```
