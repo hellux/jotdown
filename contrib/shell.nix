@@ -1,6 +1,6 @@
 { pkgs ? (import (builtins.fetchTarball {
-  url = "https://github.com/NixOS/nixpkgs/archive/nixos-25.11.tar.gz";
-  sha256 = "sha256:06rhb49ksbc07lp31xgf8qdlph29knrql30x58s4x3fflcw8zkg5";
+  url = "https://github.com/NixOS/nixpkgs/archive/nixos-26.05.tar.gz";
+  sha256 = "0miz2qn3lamkpqyjbfmz93h4icr323ds7l218vvsgq206razvb5v";
 }) { }), use_system_vim ? false, ... }:
 pkgs.mkShell {
   buildInputs = [
