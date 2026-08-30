@@ -285,7 +285,11 @@ impl<'s> TreeParser<'s> {
             kind,
             span: span_start,
             line_count,
-        } = MeteredBlock::new(lines.iter().map(|l| &self.src[l.span()]))?;
+        } = MeteredBlock::new(
+            lines
+                .iter()
+                .map(|l| (l.current_indent(), &self.src[l.span()])),
+        )?;
 
         #[cfg(feature = "log")]
         log::trace!(
@@ -1027,10 +1031,12 @@ struct MeteredBlock<'s> {
 
 impl<'s> MeteredBlock<'s> {
     /// Identify and measure the line length of a single block.
-    fn new<I: Iterator<Item = &'s str>>(mut lines: I) -> Option<Self> {
-        lines.next().map(|l| {
-            let IdentifiedBlock { mut kind, span } = IdentifiedBlock::new(l);
-            let line_count = 1 + lines.take_while(|l| kind.continues(l)).count();
+    fn new<I: Iterator<Item = (usize, &'s str)>>(mut lines: I) -> Option<Self> {
+        lines.next().map(|(indent, l)| {
+            let IdentifiedBlock { mut kind, span } = IdentifiedBlock::new(indent, l);
+            let line_count = 1 + lines
+                .take_while(|(indent, l)| kind.continues(*indent, l))
+                .count();
             Self {
                 kind,
                 span,
@@ -1063,14 +1069,14 @@ enum Kind<'s> {
         nested_raw: Option<(u8, usize)>,
     },
     Definition {
-        indent: usize,
+        indent_abs: usize,
         footnote: bool,
         label: &'s str,
         last_blankline: bool,
     },
     Blockquote,
     ListItem {
-        indent: usize,
+        indent_abs: usize,
         ty: ListType,
         last_blankline: bool,
     },
@@ -1106,11 +1112,12 @@ fn has_unclosed_verbatim(s: &str) -> bool {
 }
 
 impl<'s> IdentifiedBlock<'s> {
-    fn new(line: &'s str) -> Self {
+    fn new(line_indent: usize, line: &'s str) -> Self {
         let l = line.len();
 
         let line = line.trim_start_matches(|c: char| c.is_ascii_whitespace() && c != '\n');
         let indent = l - line.len();
+        let indent_abs = line_indent + indent;
         let line_t = line.trim_end_matches(|c: char| c.is_ascii_whitespace());
 
         let l = line.len();
@@ -1168,7 +1175,7 @@ impl<'s> IdentifiedBlock<'s> {
                         &chars.as_str()[l + 2..].trim_matches(|c: char| c.is_ascii_whitespace());
                     (footnote || !content.contains(|c: char| c.is_ascii_whitespace())).then_some((
                         Kind::Definition {
-                            indent,
+                            indent_abs,
                             footnote,
                             label: &label[usize::from(footnote)..],
                             last_blankline: false,
@@ -1196,7 +1203,7 @@ impl<'s> IdentifiedBlock<'s> {
                         if task_list {
                             (
                                 Kind::ListItem {
-                                    indent,
+                                    indent_abs,
                                     ty: Task(b as u8),
                                     last_blankline: false,
                                 },
@@ -1205,7 +1212,7 @@ impl<'s> IdentifiedBlock<'s> {
                         } else {
                             (
                                 Kind::ListItem {
-                                    indent,
+                                    indent_abs,
                                     ty: Unordered(b as u8),
                                     last_blankline: false,
                                 },
@@ -1216,7 +1223,7 @@ impl<'s> IdentifiedBlock<'s> {
             }
             ':' if chars.clone().next().is_none_or(|c| c.is_ascii_whitespace()) => Some((
                 Kind::ListItem {
-                    indent,
+                    indent_abs,
                     ty: Description,
                     last_blankline: false,
                 },
@@ -1252,7 +1259,7 @@ impl<'s> IdentifiedBlock<'s> {
             _ => Self::maybe_ordered_list_item(line).map(|(num, style, len)| {
                 (
                     Kind::ListItem {
-                        indent,
+                        indent_abs,
                         ty: Ordered(num, style),
                         last_blankline: false,
                     },
@@ -1364,7 +1371,7 @@ impl<'s> IdentifiedBlock<'s> {
 
 impl<'s> Kind<'s> {
     /// Determine if a line continues the block.
-    fn continues(&mut self, line: &'s str) -> bool {
+    fn continues(&mut self, line_indent: usize, line: &'s str) -> bool {
         match self {
             Self::Atom(..)
             | Self::Fenced {
@@ -1372,11 +1379,11 @@ impl<'s> Kind<'s> {
                 ..
             } => false,
             Self::Blockquote => matches!(
-                IdentifiedBlock::new(line).kind,
+                IdentifiedBlock::new(line_indent, line).kind,
                 Self::Blockquote | Self::Paragraph
             ),
             Self::Heading { level } => {
-                let next = IdentifiedBlock::new(line).kind;
+                let next = IdentifiedBlock::new(line_indent, line).kind;
                 matches!(next, Self::Paragraph)
                     || matches!(next, Self::Heading { level: l } if l == *level )
             }
@@ -1384,29 +1391,29 @@ impl<'s> Kind<'s> {
                 .trim_matches(|c: char| c.is_ascii_whitespace())
                 .is_empty(),
             Self::ListItem {
-                indent,
+                indent_abs,
                 last_blankline,
                 ..
             }
             | Self::Definition {
-                indent,
+                indent_abs,
                 footnote: true,
                 last_blankline,
                 ..
             } => {
                 let line_t = line.trim_start_matches(|c: char| c.is_ascii_whitespace());
                 let whitespace = line.len() - line_t.len();
-                let next = IdentifiedBlock::new(line).kind;
+                let next = IdentifiedBlock::new(line_indent, line).kind;
                 let para = !*last_blankline && matches!(next, Self::Paragraph);
                 let blankline = matches!(next, Self::Atom(Blankline));
-                let cont = blankline || whitespace > *indent || para;
+                let cont = blankline || (line_indent + whitespace) > *indent_abs || para;
                 if cont {
                     *last_blankline = blankline;
                 }
                 cont
             }
             Self::Definition {
-                indent,
+                indent_abs,
                 footnote: false,
                 ..
             } => {
@@ -1418,7 +1425,7 @@ impl<'s> Kind<'s> {
                 let inner_whitespace = line_t
                     .trim_end_matches(|c: char| c.is_ascii_whitespace())
                     .contains(|c: char| c.is_ascii_whitespace());
-                whitespace > *indent && !blankline && !inner_whitespace
+                (line_indent + whitespace) > *indent_abs && !blankline && !inner_whitespace
             }
             Self::Fenced {
                 fence_length,
@@ -1432,7 +1439,7 @@ impl<'s> Kind<'s> {
                     fence_length: l,
                     spec,
                     ..
-                } = IdentifiedBlock::new(line).kind
+                } = IdentifiedBlock::new(line_indent, line).kind
                 {
                     if let Some((c, nested_l)) = nested_raw {
                         if FenceKind::CodeBlock(*c) == k && l >= *nested_l && spec.is_empty() {
@@ -1470,12 +1477,17 @@ impl<'s> Kind<'s> {
 
 mod line {
     pub struct Line {
+        indent: usize,
         span: std::ops::Range<usize>,
     }
 
     impl Line {
         pub fn new(span: std::ops::Range<usize>) -> Self {
-            Self { span }
+            Self { indent: 0, span }
+        }
+
+        pub fn current_indent(&self) -> usize {
+            self.indent
         }
 
         pub fn span(&self) -> std::ops::Range<usize> {
@@ -1499,6 +1511,7 @@ mod line {
         }
 
         pub fn indent(&mut self, n: usize) {
+            self.indent += n;
             self.span.start += n;
         }
 

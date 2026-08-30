@@ -1672,7 +1672,7 @@ fn parse_inner_indent() {
 
 macro_rules! test_block {
     ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
-        let lines = super::lines($src).map(|l| &$src[l.span()]);
+        let lines = super::lines($src).map(|l| (l.current_indent(), &$src[l.span()]));
         let mb = super::MeteredBlock::new(lines).unwrap();
         assert_eq!(
             (mb.kind, &$src[mb.span], mb.line_count),
@@ -1788,7 +1788,7 @@ fn block_link_definition() {
     test_block!(
         "[lbl]: url\n",
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: false,
             label: "lbl",
             last_blankline: false,
@@ -1806,7 +1806,7 @@ fn block_link_definition_multiline() {
             " rl\n", //
         ),
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: false,
             label: "lbl",
             last_blankline: false,
@@ -1820,7 +1820,7 @@ fn block_link_definition_multiline() {
             "para\n", //
         ),
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: false,
             label: "lbl",
             last_blankline: false,
@@ -1835,7 +1835,7 @@ fn block_footnote_empty() {
     test_block!(
         "[^lbl]:\n",
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: true,
             label: "lbl",
             last_blankline: false,
@@ -1850,7 +1850,7 @@ fn block_footnote_single() {
     test_block!(
         "[^lbl]: a\n",
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: true,
             label: "lbl",
             last_blankline: false,
@@ -1868,7 +1868,7 @@ fn block_footnote_multiline() {
             " b\n", //
         ),
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: true,
             label: "lbl",
             last_blankline: false,
@@ -1888,7 +1888,7 @@ fn block_footnote_multiline_post() {
             "para\n", //
         ),
         Kind::Definition {
-            indent: 0,
+            indent_abs: 0,
             footnote: true,
             label: "lbl",
             last_blankline: true,
@@ -1903,7 +1903,7 @@ fn block_list_bullet() {
     test_block!(
         "- abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Unordered(b'-'),
             last_blankline: false,
         },
@@ -1913,7 +1913,7 @@ fn block_list_bullet() {
     test_block!(
         "+ abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Unordered(b'+'),
             last_blankline: false,
         },
@@ -1923,7 +1923,7 @@ fn block_list_bullet() {
     test_block!(
         "* abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Unordered(b'*'),
             last_blankline: false,
         },
@@ -1937,7 +1937,7 @@ fn block_list_task() {
     test_block!(
         "- [ ] abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Task(b'-'),
             last_blankline: false,
         },
@@ -1947,7 +1947,7 @@ fn block_list_task() {
     test_block!(
         "+ [x] abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Task(b'+'),
             last_blankline: false,
         },
@@ -1957,7 +1957,7 @@ fn block_list_task() {
     test_block!(
         "* [X] abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Task(b'*'),
             last_blankline: false,
         },
@@ -1971,7 +1971,7 @@ fn block_list_ordered() {
     test_block!(
         "123. abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Ordered(
                 ListNumber {
                     numbering: Decimal,
@@ -1987,7 +1987,7 @@ fn block_list_ordered() {
     test_block!(
         "i. abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Ordered(
                 ListNumber {
                     numbering: RomanLower,
@@ -2003,7 +2003,7 @@ fn block_list_ordered() {
     test_block!(
         "I. abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Ordered(
                 ListNumber {
                     numbering: RomanUpper,
@@ -2019,7 +2019,7 @@ fn block_list_ordered() {
     test_block!(
         "(a) abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Ordered(
                 ListNumber {
                     numbering: AlphaLower,
@@ -2035,7 +2035,7 @@ fn block_list_ordered() {
     test_block!(
         "a) abc\n",
         Kind::ListItem {
-            indent: 0,
+            indent_abs: 0,
             ty: Ordered(
                 ListNumber {
                     numbering: AlphaLower,
