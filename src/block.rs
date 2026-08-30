@@ -337,7 +337,8 @@ impl<'s> TreeParser<'s> {
         match kind {
             Kind::Blockquote
                 if lines[0].start < lines[0].end
-                    && matches!(self.src.as_bytes()[lines[0].start], b'\t' | b' ') =>
+                    && self.src.as_bytes()[lines[0].start].is_ascii_whitespace()
+                    && self.src.as_bytes()[lines[0].start] != b'\n' =>
             {
                 lines[0].start += 1;
             }
@@ -459,7 +460,7 @@ impl<'s> TreeParser<'s> {
             Kind::Blockquote => Block::Container(Blockquote),
             Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
                 ListType::Task(..) => ListItemKind::Task {
-                    checked: self.src.as_bytes()[span_start.start + 3] != b' ',
+                    checked: !self.src.as_bytes()[span_start.start + 3].is_ascii_whitespace(),
                 },
                 ListType::Description => ListItemKind::Description,
                 _ => ListItemKind::List,
@@ -1172,7 +1173,9 @@ impl<'s> IdentifiedBlock<'s> {
                     .is_none_or(|c| c.is_ascii_whitespace())
                     .then(|| {
                         let task_list = chars.next() == Some('[')
-                            && matches!(chars.next(), Some('x' | 'X' | ' '))
+                            && chars
+                                .next()
+                                .is_some_and(|c| c.is_ascii_whitespace() || matches!(c, 'x' | 'X'))
                             && chars.next() == Some(']')
                             && chars.next().is_none_or(|c| c.is_ascii_whitespace());
                         if task_list {
