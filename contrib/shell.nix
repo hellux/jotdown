@@ -14,6 +14,9 @@ pkgs.mkShell {
     pkgs.python3 # jotdown_wasm http server
     pkgs.rustc
     pkgs.wasm-pack # jotdown_wasm
+
+    # extra dev tools
+    pkgs.rust-analyzer
   ];
 
   MIME_TYPES = "${pkgs.mailcap}/etc/nginx/mime.types";
