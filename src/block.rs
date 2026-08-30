@@ -280,25 +280,21 @@ impl<'s> TreeParser<'s> {
     }
 
     /// Recursively parse a block and all of its children. Return number of lines the block uses.
-    fn parse_block(
-        &mut self,
-        lines: &mut [std::ops::Range<usize>],
-        top_level: bool,
-    ) -> Option<usize> {
+    fn parse_block(&mut self, lines: &mut [Line], top_level: bool) -> Option<usize> {
         let MeteredBlock {
             kind,
             span: span_start,
             line_count,
-        } = MeteredBlock::new(lines.iter().map(|sp| &self.src[sp.clone()]))?;
+        } = MeteredBlock::new(lines.iter().map(|l| &self.src[l.span()]))?;
 
         #[cfg(feature = "log")]
         log::trace!(
             "parse {kind:?} {line_count} line(s) {:?}",
-            &self.src[lines[0].clone()]
+            &self.src[lines[0].span()]
         );
 
         let lines = &mut lines[..line_count];
-        let span_start = (span_start.start + lines[0].start)..(span_start.end + lines[0].start);
+        let span_start = (span_start.start + lines[0].start())..(span_start.end + lines[0].start());
 
         // ignore trailing blanklines if any
         let (lines, line_count) = if matches!(
@@ -318,14 +314,14 @@ impl<'s> TreeParser<'s> {
                 - lines
                     .iter()
                     .rev()
-                    .take_while(|l| self.trim((*l).clone()).is_empty())
+                    .take_while(|l| self.trim((l.span()).clone()).is_empty())
                     .count();
             (&mut lines[..lc], lc)
         } else {
             (lines, line_count)
         };
 
-        let end_line = lines[lines.len() - 1].clone();
+        let end_line = lines[lines.len() - 1].span();
         let span_end = match kind {
             Kind::Fenced {
                 has_closing_fence: true,
@@ -335,21 +331,21 @@ impl<'s> TreeParser<'s> {
         };
 
         // part of first inline that is from the outer block
-        let outer_len = span_start.end - lines[0].start;
+        let outer_len = span_start.end - lines[0].start();
 
         // skip outer block part for inner content
-        lines[0].start += outer_len;
+        lines[0].indent(outer_len);
         match kind {
             Kind::Blockquote
-                if lines[0].start < lines[0].end
-                    && self.src.as_bytes()[lines[0].start].is_ascii_whitespace()
-                    && self.src.as_bytes()[lines[0].start] != b'\n' =>
+                if lines[0].start() < lines[0].end()
+                    && self.src.as_bytes()[lines[0].start()].is_ascii_whitespace()
+                    && self.src.as_bytes()[lines[0].start()] != b'\n' =>
             {
-                lines[0].start += 1;
+                lines[0].indent(1);
             }
             Kind::Heading { level, .. } => {
                 for line in lines.iter_mut().skip(1) {
-                    let l = &self.src.as_bytes()[line.clone()];
+                    let l = &self.src.as_bytes()[line.span()];
                     let l = &l[l.iter().take_while(|c| c.is_ascii_whitespace()).count()..];
                     let hash = l.iter().take_while(|c| **c == b'#').count();
                     let l = &l[hash..];
@@ -357,7 +353,7 @@ impl<'s> TreeParser<'s> {
                     let l = &l[post_ws..];
                     if post_ws > 0 {
                         debug_assert_eq!(level, hash);
-                        line.start += line.len() - l.len();
+                        line.indent(line.span().len() - l.len());
                     }
                 }
             }
@@ -525,31 +521,31 @@ impl<'s> TreeParser<'s> {
         k: &Kind,
         span_start: std::ops::Range<usize>,
         span_end: std::ops::Range<usize>,
-        mut lines: &mut [std::ops::Range<usize>],
+        mut lines: &mut [Line],
     ) {
         if let Kind::Fenced { indent, .. } = k {
-            for line in lines.iter_mut() {
-                let indent_line = self.src.as_bytes()[line.clone()]
+            for l in lines.iter_mut() {
+                let indent_line = self.src.as_bytes()[l.span()]
                     .iter()
                     .take_while(|c| *c != &b'\n' && c.is_ascii_whitespace())
                     .count();
-                line.start += (*indent).min(indent_line);
+                l.indent((*indent).min(indent_line));
             }
         } else {
             // trim starting whitespace of each inline
-            for line in lines.iter_mut() {
-                *line = self.trim_start(line.clone());
+            for l in lines.iter_mut() {
+                l.trim_start(self.src);
             }
 
             // skip first inline if empty
-            if lines.first().is_some_and(std::ops::Range::is_empty) {
+            if lines.first().is_some_and(|l| l.is_empty()) {
                 lines = &mut lines[1..];
             }
 
             if matches!(leaf, LinkDefinition { .. }) {
                 // trim ending whitespace of each inline
-                for line in lines.iter_mut() {
-                    *line = self.trim_end(line.clone());
+                for l in lines.iter_mut() {
+                    l.trim_end(self.src);
                 }
             }
 
@@ -559,7 +555,7 @@ impl<'s> TreeParser<'s> {
                     - lines
                         .iter()
                         .rev()
-                        .take_while(|l| self.trim((*l).clone()).is_empty())
+                        .take_while(|l| self.trim((l.span()).clone()).is_empty())
                         .count();
                 lines = &mut lines[..lc];
             }
@@ -567,7 +563,7 @@ impl<'s> TreeParser<'s> {
             // trim ending whitespace of block
             let l = lines.len();
             if l > 0 {
-                lines[l - 1] = self.trim_end(lines[l - 1].clone());
+                lines[l - 1].trim_end(self.src);
             }
         }
 
@@ -611,7 +607,7 @@ impl<'s> TreeParser<'s> {
         lines
             .iter()
             .filter(|l| !l.is_empty())
-            .for_each(|line| self.inline(line.clone()));
+            .for_each(|l| self.inline(l.span()));
         self.exit(span_end);
     }
 
@@ -622,12 +618,12 @@ impl<'s> TreeParser<'s> {
         mut span_start: std::ops::Range<usize>,
         span_end: std::ops::Range<usize>,
         outer_len: usize,
-        lines: &mut [std::ops::Range<usize>],
+        lines: &mut [Line],
     ) {
         // update spans, remove indentation / container prefix
-        lines.iter_mut().skip(1).for_each(|sp| {
-            let src = &self.src[sp.clone()];
-            let src_t = &self.src[self.trim(sp.clone())];
+        lines.iter_mut().skip(1).for_each(|l| {
+            let src = &self.src[l.span()];
+            let src_t = &self.src[self.trim(l.span())];
             let whitespace = src_t.as_ptr() as usize - src.as_ptr() as usize;
             let skip = match k {
                 Kind::Blockquote => {
@@ -644,11 +640,11 @@ impl<'s> TreeParser<'s> {
                 Kind::Fenced { indent, .. } => whitespace.min(*indent),
                 _ => panic!("non-container {k:?}"),
             };
-            let len = self.src.as_bytes()[sp.clone()]
+            let len = self.src.as_bytes()[l.span()]
                 .iter()
                 .take_while(|c| **c != b'\n')
                 .count();
-            sp.start += skip.min(len);
+            l.indent(skip.min(len));
         });
 
         if let Kind::ListItem { ty, .. } = k {
@@ -675,7 +671,7 @@ impl<'s> TreeParser<'s> {
             let dt = self.enter(Node::Leaf(DescriptionTerm), span_start.clone());
             let start = self.trim_end(span_start.clone()).end;
             self.exit(start..start);
-            span_start = lines[0].start..lines[0].start;
+            span_start = lines[0].start()..lines[0].start();
             Some((dt, self.open.len()))
         } else {
             None
@@ -799,7 +795,7 @@ impl<'s> TreeParser<'s> {
 
     fn parse_table(
         &mut self,
-        lines: &mut [std::ops::Range<usize>],
+        lines: &mut [Line],
         span_start: std::ops::Range<usize>,
         span_end: std::ops::Range<usize>,
     ) {
@@ -808,22 +804,22 @@ impl<'s> TreeParser<'s> {
 
         let caption_line = lines
             .iter()
-            .position(|sp| self.src[self.trim_start(sp.clone())].starts_with('^'))
+            .position(|l| self.src[self.trim_start(l.span())].starts_with('^'))
             .map_or(lines.len(), |caption_line| {
                 self.enter(Node::Leaf(Caption), span_start.clone());
-                lines[caption_line] = self.trim_start(lines[caption_line].clone());
-                lines[caption_line].start += 2;
-                lines[lines.len() - 1] = self.trim_end(lines[lines.len() - 1].clone());
-                for line in &lines[caption_line..] {
-                    self.inline(self.trim_start(line.clone()));
+                lines[caption_line].trim_start(self.src);
+                lines[caption_line].indent(2);
+                lines[lines.len() - 1].trim_end(self.src);
+                for l in &lines[caption_line..] {
+                    self.inline(self.trim_start(l.span()));
                 }
                 self.exit(span_end.clone());
                 caption_line
             });
 
         let mut last_row_event = None;
-        for row in &lines[..caption_line] {
-            let row = self.trim(row.clone());
+        for l in &lines[..caption_line] {
+            let row = self.trim(l.span());
             if row.is_empty() {
                 break;
             }
@@ -1472,8 +1468,62 @@ impl<'s> Kind<'s> {
     }
 }
 
+mod line {
+    pub struct Line {
+        span: std::ops::Range<usize>,
+    }
+
+    impl Line {
+        pub fn new(span: std::ops::Range<usize>) -> Self {
+            Self { span }
+        }
+
+        pub fn span(&self) -> std::ops::Range<usize> {
+            self.span.clone()
+        }
+
+        pub fn start(&self) -> usize {
+            self.span.start
+        }
+
+        pub fn end(&self) -> usize {
+            self.span.end
+        }
+
+        pub fn len(&self) -> usize {
+            self.span.len()
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.span.is_empty()
+        }
+
+        pub fn indent(&mut self, n: usize) {
+            self.span.start += n;
+        }
+
+        pub fn trim_start(&mut self, src: &str) {
+            self.indent(
+                self.span.len()
+                    - src[self.span()]
+                        .trim_start_matches(|c: char| c.is_ascii_whitespace())
+                        .len(),
+            );
+        }
+
+        pub fn trim_end(&mut self, src: &str) {
+            self.span.end -= self.len()
+                - src[self.span()]
+                    .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                    .len();
+        }
+    }
+}
+
+use line::Line;
+
 /// Similar to `std::str::split('\n')` but newline is included and spans are used instead of `str`.
-fn lines(src: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+fn lines(src: &str) -> impl Iterator<Item = Line> + '_ {
     let mut chars = src.chars();
     std::iter::from_fn(move || {
         if chars.as_str().is_empty() {
@@ -1485,7 +1535,7 @@ fn lines(src: &str) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
             if start == end {
                 None
             } else {
-                Some(start..end)
+                Some(Line::new(start..end))
             }
         }
     })

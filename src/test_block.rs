@@ -1672,7 +1672,7 @@ fn parse_inner_indent() {
 
 macro_rules! test_block {
     ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
-        let lines = super::lines($src).map(|sp| &$src[sp]);
+        let lines = super::lines($src).map(|l| &$src[l.span()]);
         let mb = super::MeteredBlock::new(lines).unwrap();
         assert_eq!(
             (mb.kind, &$src[mb.span], mb.line_count),
