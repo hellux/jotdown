@@ -1168,7 +1168,13 @@ impl<'s> IdentifiedBlock<'s> {
                 }
             }
             '[' => chars.as_str().find(']').and_then(|l| {
-                if chars.as_str()[l + 1..].starts_with(':') {
+                if chars.as_str().as_bytes().get(l + 1) == Some(&b':')
+                    && chars
+                        .as_str()
+                        .as_bytes()
+                        .get(l + 2)
+                        .is_none_or(|c| c.is_ascii_whitespace())
+                {
                     let label = &chars.as_str()[0..l];
                     let footnote = label.starts_with('^');
                     let content =
