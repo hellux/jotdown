@@ -1457,6 +1457,7 @@ impl<'s> Kind<'s> {
                 } else {
                     !*blankline
                         && line_t.starts_with('|')
+                        && line_t.len() >= 2
                         && line_t.ends_with('|')
                         && !line_t.ends_with("\\|")
                         && !has_unclosed_verbatim(line_t)
