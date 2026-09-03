@@ -717,6 +717,30 @@ pub enum Event<'s> {
     Attributes(Attributes<'s>),
 }
 
+impl<'s> Event<'s> {
+    pub fn is_block(&self) -> bool {
+        match self {
+            Event::Start(c, ..) | Event::End(c) => c.is_block(),
+            Event::Str(..)
+            | Event::FootnoteReference(..)
+            | Event::Symbol(..)
+            | Event::LeftSingleQuote { .. }
+            | Event::RightSingleQuote { .. }
+            | Event::LeftDoubleQuote { .. }
+            | Event::RightDoubleQuote { .. }
+            | Event::Ellipsis
+            | Event::EnDash
+            | Event::EmDash
+            | Event::NonBreakingSpace
+            | Event::Softbreak
+            | Event::Hardbreak
+            | Event::Escape => false,
+            Event::Blankline | Event::ThematicBreak(..) => true,
+            Event::Attributes { .. } => false, /* cannot know */
+        }
+    }
+}
+
 /// A container that may contain other elements.
 ///
 /// There are three types of containers:
