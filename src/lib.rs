@@ -739,6 +739,28 @@ impl<'s> Event<'s> {
             Event::Attributes { .. } => false, /* cannot know */
         }
     }
+
+    pub fn is_inline(&self) -> bool {
+        match self {
+            Event::Start(c, ..) | Event::End(c) => c.is_inline(),
+            Event::Str(..)
+            | Event::FootnoteReference(..)
+            | Event::Symbol(..)
+            | Event::LeftSingleQuote { .. }
+            | Event::RightSingleQuote { .. }
+            | Event::LeftDoubleQuote { .. }
+            | Event::RightDoubleQuote { .. }
+            | Event::Ellipsis
+            | Event::EnDash
+            | Event::EmDash
+            | Event::NonBreakingSpace
+            | Event::Softbreak
+            | Event::Hardbreak
+            | Event::Escape => true,
+            Event::Blankline | Event::ThematicBreak(..) => false,
+            Event::Attributes { .. } => false, /* cannot know */
+        }
+    }
 }
 
 /// A container that may contain other elements.
@@ -2087,6 +2109,10 @@ impl Container<'_> {
             | Self::Emphasis
             | Self::Mark => false,
         }
+    }
+
+    pub fn is_inline(&self) -> bool {
+        !self.is_block() && !matches!(self, Self::Document)
     }
 }
 
