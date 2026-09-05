@@ -9,6 +9,7 @@ fn main() {
     env_logger::init();
 
     let f = match target.as_str() {
+        "attr" => jotdown_afl::attr,
         "parse" => jotdown_afl::parse,
         "html" => jotdown_afl::html,
         _ => panic!("unknown target '{target}'"),

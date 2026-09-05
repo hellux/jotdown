@@ -15,6 +15,10 @@ name = "main"
 path = "src/main.rs"
 
 [[bin]]
+name = "attr"
+path = "src/attr.rs"
+
+[[bin]]
 name = "parse"
 path = "src/parse.rs"
 
