@@ -820,10 +820,18 @@ impl<'s> Parser<'s> {
             if st != self.state {
                 let content = &input[pos_prev..pos];
 
-                #[cfg(feature = "log")]
-                log::trace!("step {st:?} {content:?}");
+                let skip = (matches!(st, Quoted(_, Some(Qs::Escape)))
+                    && !matches!(self.state, Quoted(_, Some(Qs::Newline))))
+                    || (!matches!(st, Quoted(_, Some(Qs::Newline)))
+                        && matches!(self.state, Quoted(_, Some(Qs::Escape))));
 
-                if st == ValueEscape || self.state == ValueEscape {
+                #[cfg(feature = "log")]
+                log::trace!(
+                    "step {st:?} {content:?}{}",
+                    if skip { " (skip)" } else { "" }
+                );
+
+                if skip {
                     continue;
                 }
 
@@ -840,14 +848,13 @@ impl<'s> Parser<'s> {
                         },
                         "".into(),
                     )),
-                    ValueFirst => debug_assert_eq!(content, "="),
-                    ValueNewline => {
+                    KeyEnd => debug_assert_eq!(content, "="),
+                    Quoted(.., Some(Qs::Newline)) => {
                         debug_assert!(content.chars().all(|c| c == '\n'), "{content:?}");
                     }
-                    ValueEscape => unreachable!(),
-                    Value | ValueQuoted | ValueContinued => {
+                    Unquoted | Quoted(.., Some(Qs::Escape) | None) => {
                         self.attrs.0.last_mut().unwrap().1.extend(
-                            &content[if st == ValueQuoted {
+                            &content[if matches!(st, Quoted(Line::First, _)) {
                                 debug_assert_eq!(&content[..1], "\"");
                                 1
                             } else {
@@ -894,6 +901,18 @@ impl<'s> Parser<'s> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Qs {
+    Escape,
+    Newline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Line {
+    First,
+    Continued,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     Start,
     Whitespace,
@@ -905,12 +924,9 @@ enum State {
     IdentifierFirst,
     Identifier,
     Key,
-    ValueFirst,
-    Value,
-    ValueQuoted,
-    ValueEscape,
-    ValueNewline,
-    ValueContinued,
+    KeyEnd,
+    Unquoted,
+    Quoted(Line, Option<Qs>),
     Done,
     Invalid,
 }
@@ -939,21 +955,27 @@ impl State {
             ClassFirst => Invalid,
             IdentifierFirst if is_name(c) => Identifier,
             IdentifierFirst => Invalid,
-            s @ (Class | Identifier | Value) if is_name(c) => s,
-            Class | Identifier | Value if c.is_ascii_whitespace() => Whitespace,
-            Class | Identifier | Value if c == b'}' => Done,
-            Class | Identifier | Value => Invalid,
+            s @ (Class | Identifier | Unquoted) if is_name(c) => s,
+            Class | Identifier | Unquoted if c.is_ascii_whitespace() => Whitespace,
+            Class | Identifier | Unquoted if c == b'}' => Done,
+            Class | Identifier | Unquoted => Invalid,
             Key if is_name(c) => Key,
-            Key if c == b'=' => ValueFirst,
+            Key if c == b'=' => KeyEnd,
             Key => Invalid,
-            ValueFirst if is_name(c) => Value,
-            ValueFirst if c == b'"' => ValueQuoted,
-            ValueFirst => Invalid,
-            ValueQuoted | ValueNewline | ValueContinued if c == b'"' => Whitespace,
-            ValueQuoted | ValueNewline | ValueContinued | ValueEscape if c == b'\n' => ValueNewline,
-            ValueQuoted if c == b'\\' => ValueEscape,
-            ValueQuoted | ValueEscape => ValueQuoted,
-            ValueNewline | ValueContinued => ValueContinued,
+            KeyEnd if is_name(c) => Unquoted,
+            KeyEnd if c == b'"' => Quoted(Line::First, None),
+            KeyEnd => Invalid,
+            Quoted(mut line, st) => {
+                if st == Some(Qs::Newline) {
+                    line = Line::Continued;
+                }
+                match c {
+                    b'\n' => Quoted(line, Some(Qs::Newline)),
+                    b'\\' if st != Some(Qs::Escape) => Quoted(line, Some(Qs::Escape)),
+                    b'"' if st != Some(Qs::Escape) => Whitespace,
+                    _ => Quoted(line, None),
+                }
+            }
             Invalid | Done => panic!("{self:?}"),
         }
     }

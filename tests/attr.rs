@@ -160,6 +160,15 @@ fn escape_quote() {
 }
 
 #[test]
+fn escape_quote_cont() {
+    test_attr!(
+        "{key=\"a\nb\\\"c\"}",
+        [(Pair { key: "key".into() }, r#"a b"c"#)],
+        [("key", r#"a b"c"#)]
+    );
+}
+
+#[test]
 fn escape_backslash_start() {
     test_attr!(
         r#"{attr="\\escaped backslash at start"}"#,
@@ -183,6 +192,33 @@ fn escape_backslash_end() {
         r#"{attr="with many backslashes\\\\"}"#,
         [(Pair { key: "attr".into() }, r"with many backslashes\\")],
         [("attr", r"with many backslashes\\")]
+    );
+}
+
+#[test]
+fn escape_newline() {
+    test_attr!(
+        "{attr=\"a\\\nb\"}",
+        [(Pair { key: "attr".into() }, r"a\ b")],
+        [("attr", r"a\ b")]
+    );
+}
+
+#[test]
+fn escape_after_newline() {
+    test_attr!(
+        "{attr=\"\n\\a\"}",
+        [(Pair { key: "attr".into() }, r"\a")],
+        [("attr", r"\a")]
+    );
+}
+
+#[test]
+fn escape_newline_continue() {
+    test_attr!(
+        "{attr=\"a\nb\\\nc\"}",
+        [(Pair { key: "attr".into() }, r"a b\ c")],
+        [("attr", r"a b\ c")]
     );
 }
 
