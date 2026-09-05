@@ -719,7 +719,7 @@ impl<'s> Parser<'s> {
                     !end && !c.is_ascii_whitespace()
                 })
                 .count();
-            if end && valid {
+            if end && valid && len > 0 {
                 self.input.lexer.skip_ahead(len + 1);
                 let span_symbol = self.input.span.end..(self.input.span.end + len);
                 self.input.span.end = span_symbol.end + 1;
