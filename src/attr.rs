@@ -857,8 +857,6 @@ impl<'s> Parser<'s> {
                 }
             }
 
-            debug_assert!(!matches!(self.state, Invalid));
-
             if matches!(self.state, Done) {
                 if input[pos + 1..].starts_with('{') {
                     self.state = Start;
