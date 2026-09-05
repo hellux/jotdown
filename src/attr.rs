@@ -49,7 +49,7 @@ impl<'s> AttributeValue<'s> {
         if s.is_empty() {
             return;
         }
-        if !self.raw.is_empty() {
+        if !self.raw.is_empty() && !self.raw.ends_with(' ') {
             self.extend_raw(" ");
         }
         self.extend_raw(s);
@@ -851,6 +851,7 @@ impl<'s> Parser<'s> {
                     KeyEnd => debug_assert_eq!(content, "="),
                     Quoted(.., Some(Qs::Newline)) => {
                         debug_assert!(content.chars().all(|c| c == '\n'), "{content:?}");
+                        self.attrs.0.last_mut().unwrap().1.extend_raw(" ");
                     }
                     Unquoted | Quoted(.., Some(Qs::Escape) | None) => {
                         self.attrs.0.last_mut().unwrap().1.extend(

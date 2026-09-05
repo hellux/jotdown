@@ -2063,7 +2063,10 @@ fn attr_inline_multiline() {
         (Start(Blockquote, Attributes::new()), ">"),
         (Start(Paragraph, Attributes::new()), ""),
         (
-            Start(Span, attrs![(AttributeKind::Pair { key: "a".into() }, "b")]),
+            Start(
+                Span,
+                attrs![(AttributeKind::Pair { key: "a".into() }, " b")]
+            ),
             "",
         ),
         (Str("a".into()), "a"),
