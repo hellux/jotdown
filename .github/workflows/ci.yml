@@ -91,6 +91,7 @@ jobs:
     strategy:
       matrix:
         target:
+          - attr
           - parse
           - html
     runs-on: ubuntu-latest

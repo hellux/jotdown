@@ -9,6 +9,12 @@ fn main() {
     env_logger::init();
 
     let f = match target.as_str() {
+        "attr" => |data: &[u8]| {
+            jotdown_afl::parse(
+                arbitrary::Arbitrary::arbitrary(&mut arbitrary::Unstructured::new(data))
+                    .unwrap_or_default(),
+            );
+        },
         "parse" => |data: &[u8]| {
             jotdown_afl::parse(
                 arbitrary::Arbitrary::arbitrary(&mut arbitrary::Unstructured::new(data))

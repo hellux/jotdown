@@ -5,6 +5,42 @@ use html5ever::tendril::TendrilSink;
 use html5ever::tokenizer;
 use html5ever::tree_builder;
 
+pub fn attr(s: &str) {
+    let Ok(attrs) = jotdown::Attributes::try_from(s) else {
+        return;
+    };
+
+    let rt = format!("{attrs:?}");
+
+    println!("======input======\n{s}");
+    println!("====roundtrip====\n{rt}");
+    println!("=================");
+
+    assert_eq!(
+        Ok(&attrs),
+        jotdown::Attributes::try_from(rt.as_str()).as_ref(),
+    );
+
+    fn is_name(c: char) -> bool {
+        c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-')
+    }
+
+    for (k, v) in &attrs {
+        match k {
+            jotdown::AttributeKind::Class | jotdown::AttributeKind::Id => {
+                assert!(v.parts().all(|p| p.chars().all(is_name)));
+            }
+            jotdown::AttributeKind::Pair { key } => {
+                assert!(key.chars().all(is_name));
+                assert!(v.parts().all(|p| p.chars().all(|c| c != '\n')));
+            }
+            jotdown::AttributeKind::Comment => {
+                assert!(v.parts().all(|p| p.chars().all(|c| c != '%' && c != '}')));
+            }
+        }
+    }
+}
+
 /// Perform sanity checks on events.
 pub fn parse(s: &str) {
     let whitelist_whitespace = s.contains('{') && s.contains('}'); // attributes are outside events
