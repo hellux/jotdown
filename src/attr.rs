@@ -862,17 +862,19 @@ impl<'s> Parser<'s> {
                             }..],
                         );
                     }
-                    CommentFirst => {
+                    Comment(Some(Cs::Init)) => {
                         debug_assert!(["", "%"].contains(&content));
                         self.attrs.push((AttributeKind::Comment, "".into()));
                     }
-                    Comment | CommentNewline => self
-                        .attrs
-                        .0
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .extend_raw(if st == Comment { content } else { "\n" }),
+                    Comment(cmt) => {
+                        self.attrs.0.last_mut().unwrap().1.extend_raw(
+                            if cmt == Some(Cs::Newline) {
+                                "\n"
+                            } else {
+                                content
+                            },
+                        );
+                    }
                     Start => debug_assert!(["", "}"].contains(&content), "{content:?}"),
                     Whitespace => debug_assert!(
                         ["", "{", "\"", "%"].contains(&content.trim()),
@@ -901,6 +903,12 @@ impl<'s> Parser<'s> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Cs {
+    Init,
+    Newline,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Qs {
     Escape,
     Newline,
@@ -916,9 +924,7 @@ enum Line {
 enum State {
     Start,
     Whitespace,
-    CommentFirst,
-    Comment,
-    CommentNewline,
+    Comment(Option<Cs>),
     ClassFirst,
     Class,
     IdentifierFirst,
@@ -942,15 +948,17 @@ impl State {
                 b'}' => Done,
                 b'.' => ClassFirst,
                 b'#' => IdentifierFirst,
-                b'%' => CommentFirst,
+                b'%' => Comment(Some(Cs::Init)),
                 c if is_name(c) => Key,
                 c if c.is_ascii_whitespace() => Whitespace,
                 _ => Invalid,
             },
-            CommentFirst | Comment | CommentNewline if c == b'%' => Whitespace,
-            CommentFirst | Comment | CommentNewline if c == b'}' => Done,
-            CommentFirst | Comment | CommentNewline if c == b'\n' => CommentNewline,
-            CommentFirst | Comment | CommentNewline => Comment,
+            Comment(..) => match c {
+                b'%' => Whitespace,
+                b'}' => Done,
+                b'\n' => Comment(Some(Cs::Newline)),
+                _ => Comment(None),
+            },
             ClassFirst if is_name(c) => Class,
             ClassFirst => Invalid,
             IdentifierFirst if is_name(c) => Identifier,
