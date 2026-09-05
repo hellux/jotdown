@@ -113,6 +113,11 @@ fn value_newline() {
         )],
         [("attr0", "abc def")]
     );
+    test_attr!(
+        "{attr=\"abc\n\"}",
+        [(Pair { key: "attr".into() }, "abc ")],
+        [("attr", "abc ")]
+    );
 }
 
 #[test]
@@ -208,8 +213,8 @@ fn escape_newline() {
 fn escape_after_newline() {
     test_attr!(
         "{attr=\"\n\\a\"}",
-        [(Pair { key: "attr".into() }, r"\a")],
-        [("attr", r"\a")]
+        [(Pair { key: "attr".into() }, r" \a")],
+        [("attr", r" \a")]
     );
 }
 
