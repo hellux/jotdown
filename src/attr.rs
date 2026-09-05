@@ -830,7 +830,9 @@ impl<'s> Parser<'s> {
                 pos_prev = pos;
 
                 match st {
+                    ClassFirst => debug_assert_eq!(content, "."),
                     Class => self.attrs.push((AttributeKind::Class, content.into())),
+                    IdentifierFirst => debug_assert_eq!(content, "#"),
                     Identifier => self.attrs.push((AttributeKind::Id, content.into())),
                     Key => self.attrs.push((
                         AttributeKind::Pair {
@@ -838,13 +840,25 @@ impl<'s> Parser<'s> {
                         },
                         "".into(),
                     )),
-                    Value | ValueQuoted | ValueContinued => self
-                        .attrs
-                        .0
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .extend(&content[usize::from(matches!(st, ValueQuoted))..]),
+                    ValueFirst => debug_assert_eq!(content, "="),
+                    ValueNewline => {
+                        debug_assert!(content.chars().all(|c| c == '\n'), "{content:?}");
+                    }
+                    ValueEscape => unreachable!(),
+                    Value | ValueQuoted | ValueContinued => {
+                        self.attrs.0.last_mut().unwrap().1.extend(
+                            &content[if st == ValueQuoted {
+                                debug_assert_eq!(&content[..1], "\"");
+                                1
+                            } else {
+                                0
+                            }..],
+                        );
+                    }
+                    CommentFirst => {
+                        debug_assert!(["", "%"].contains(&content));
+                        self.attrs.push((AttributeKind::Comment, "".into()));
+                    }
                     Comment | CommentNewline => self
                         .attrs
                         .0
@@ -852,8 +866,13 @@ impl<'s> Parser<'s> {
                         .unwrap()
                         .1
                         .extend_raw(if st == Comment { content } else { "\n" }),
-                    CommentFirst => self.attrs.push((AttributeKind::Comment, "".into())),
-                    _ => {}
+                    Start => debug_assert!(["", "}"].contains(&content), "{content:?}"),
+                    Whitespace => debug_assert!(
+                        ["", "{", "\"", "%"].contains(&content.trim()),
+                        "{content:?}"
+                    ),
+                    Done => debug_assert_eq!(content, ""),
+                    Invalid => unreachable!(),
                 }
             }
 
