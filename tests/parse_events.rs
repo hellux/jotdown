@@ -740,6 +740,16 @@ fn symbol() {
 }
 
 #[test]
+fn symbol_empty() {
+    test_parse!(
+        "abc :: def",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Str("abc :: def".into()), "abc :: def"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn symbol_eof() {
     test_parse!(
         ":valid-symbo",
