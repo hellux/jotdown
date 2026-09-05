@@ -142,12 +142,16 @@ fn comment_newline() {
 }
 
 #[test]
-fn escape() {
+fn escape_char() {
     test_attr!(
         r#"{attr="with escaped \~ char"}"#,
         [(Pair { key: "attr".into() }, "with escaped ~ char")],
         [("attr", "with escaped ~ char")]
     );
+}
+
+#[test]
+fn escape_quote() {
     test_attr!(
         r#"{key="quotes \" should be escaped"}"#,
         [(Pair { key: "key".into() }, r#"quotes " should be escaped"#)],
@@ -156,17 +160,7 @@ fn escape() {
 }
 
 #[test]
-fn escape_backslash() {
-    test_attr!(
-        r#"{attr="with\\backslash"}"#,
-        [(Pair { key: "attr".into() }, r"with\backslash")],
-        [("attr", r"with\backslash")]
-    );
-    test_attr!(
-        r#"{attr="with many backslashes\\\\"}"#,
-        [(Pair { key: "attr".into() }, r"with many backslashes\\")],
-        [("attr", r"with many backslashes\\")]
-    );
+fn escape_backslash_start() {
     test_attr!(
         r#"{attr="\\escaped backslash at start"}"#,
         [(Pair { key: "attr".into() }, r"\escaped backslash at start")],
@@ -175,12 +169,34 @@ fn escape_backslash() {
 }
 
 #[test]
-fn only_escape_punctuation() {
+fn escape_backslash_mid() {
+    test_attr!(
+        r#"{attr="with\\backslash"}"#,
+        [(Pair { key: "attr".into() }, r"with\backslash")],
+        [("attr", r"with\backslash")]
+    );
+}
+
+#[test]
+fn escape_backslash_end() {
+    test_attr!(
+        r#"{attr="with many backslashes\\\\"}"#,
+        [(Pair { key: "attr".into() }, r"with many backslashes\\")],
+        [("attr", r"with many backslashes\\")]
+    );
+}
+
+#[test]
+fn escape_alpha_mid() {
     test_attr!(
         r#"{attr="do not \escape"}"#,
         [(Pair { key: "attr".into() }, r"do not \escape")],
         [("attr", r"do not \escape")]
     );
+}
+
+#[test]
+fn escape_alpha_start() {
     test_attr!(
         r#"{attr="\backslash at the beginning"}"#,
         [(Pair { key: "attr".into() }, r"\backslash at the beginning")],
