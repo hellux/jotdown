@@ -838,20 +838,20 @@ impl<'s> Parser<'s> {
                         },
                         "".into(),
                     )),
-                    Value | ValueQuoted | ValueContinued => {
-                        let last = self.attrs.len() - 1;
-                        self.attrs.0[last]
-                            .1
-                            .extend(&content[usize::from(matches!(st, ValueQuoted))..]);
-                    }
-                    Comment | CommentNewline => {
-                        let last = self.attrs.len() - 1;
-                        self.attrs.0[last].1.extend_raw(if matches!(st, Comment) {
-                            content
-                        } else {
-                            "\n"
-                        });
-                    }
+                    Value | ValueQuoted | ValueContinued => self
+                        .attrs
+                        .0
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .extend(&content[usize::from(matches!(st, ValueQuoted))..]),
+                    Comment | CommentNewline => self
+                        .attrs
+                        .0
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .extend_raw(if st == Comment { content } else { "\n" }),
                     CommentFirst => self.attrs.push((AttributeKind::Comment, "".into())),
                     _ => {}
                 }
