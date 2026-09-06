@@ -1,3 +1,20 @@
+#[path = "modules/parse_events.rs"]
+mod parse_events;
+
+#[path = "modules/attr.rs"]
+mod attr;
+
+#[cfg(feature = "cli")]
+#[path = "modules/cli.rs"]
+mod cli;
+
+#[cfg(feature = "html")]
+#[path = "."]
+mod html {
+    #[path = "modules/html_indent.rs"]
+    mod indent;
+}
+
 mod list_bullet_type {
     #[test]
     fn to_u8() {
