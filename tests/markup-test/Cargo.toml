@@ -1,0 +1,15 @@
+[package]
+name = "markup-test"
+version = "0.1.0"
+edition = "2021" # jotdown still supports 1.82
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "3.0", features = ["full", "extra-traits"] }
+jotdown = { path = "../../" , default-features = false }
+md5 = "0.8"
+glob = "0.3"
+
+[lib]
+proc-macro = true
