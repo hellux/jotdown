@@ -120,5 +120,5 @@ clean:
 	rm -f tests/html-ref/*.dj
 	(cd tests/html-ref && make clean)
 	find bench -type l -path 'bench/*.dj' -print0 | xargs -0 rm -f
-	rm -rf tests/afl/out
+	rm -rf tests/afl/out tmin
 	(cd examples/jotdown_wasm && make clean)
