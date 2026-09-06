@@ -1,5 +1,3 @@
-#![cfg(feature = "cli")]
-
 const BIN: &'static str = env!("CARGO_BIN_EXE_jotdown");
 
 #[test]

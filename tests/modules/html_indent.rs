@@ -1,5 +1,3 @@
-#![cfg(feature = "html")]
-
 use jotdown::html::Indentation;
 use jotdown::Render;
 
