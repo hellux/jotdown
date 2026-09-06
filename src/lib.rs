@@ -166,6 +166,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "{#a}\n",
@@ -192,6 +194,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p id=\"a\"><span id=\"b\">word</span></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Start(Container<'s>, Attributes<'s>),
     /// End of a container.
@@ -206,6 +209,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "str";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -221,6 +226,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>str</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Str(CowStr<'s>),
     /// A footnote reference.
@@ -228,6 +234,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "txt[^nb].";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -255,6 +263,7 @@ pub enum Event<'s> {
     ///     "</section>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     FootnoteReference(CowStr<'s>),
     /// A symbol, by default rendered literally but may be treated specially.
@@ -262,6 +271,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "a :sym:";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -278,6 +289,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>a :sym:</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Symbol(CowStr<'s>),
     /// Left single quotation mark.
@@ -285,6 +297,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = r#"'quote'"#;
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -302,6 +316,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>‘quote’</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     LeftSingleQuote,
     /// Right single quotation mark.
@@ -309,6 +324,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = r#"'}Tis Socrates'"#;
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -326,6 +343,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>’Tis Socrates’</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     RightSingleQuote,
     /// Left single quotation mark.
@@ -333,6 +351,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = r#""Hello," he said"#;
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -351,6 +371,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>“Hello,” he said</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     LeftDoubleQuote,
     /// Right double quotation mark.
@@ -360,6 +381,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "yes...";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -376,6 +399,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>yes…</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Ellipsis,
     /// An en dash.
@@ -383,6 +407,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "57--33";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -400,6 +426,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>57–33</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     EnDash,
     /// An em dash.
@@ -407,6 +434,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "oxen---and";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -424,6 +453,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>oxen—and</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     EmDash,
     /// A space that must not break a line.
@@ -431,6 +461,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "no\\ break";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -449,6 +481,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>no&nbsp;break</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     NonBreakingSpace,
     /// A newline that may or may not break a line in the output.
@@ -456,6 +489,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "soft\n",
@@ -479,6 +514,7 @@ pub enum Event<'s> {
     ///     "break</p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Softbreak,
     /// A newline that must break a line in the output.
@@ -486,6 +522,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "hard\\\n",
@@ -510,6 +548,7 @@ pub enum Event<'s> {
     ///     "break</p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Hardbreak,
     /// An escape character, not visible in output.
@@ -517,6 +556,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "\\*a\\*";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -535,6 +576,7 @@ pub enum Event<'s> {
     /// );
     /// let html = "<p>*a*</p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Escape,
     /// A blank line, not visible in output.
@@ -542,6 +584,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "para0\n",
@@ -568,6 +612,7 @@ pub enum Event<'s> {
     ///     "<p>para1</p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Blankline,
     /// A thematic break, typically a horizontal rule.
@@ -575,6 +620,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "para0\n",
@@ -614,6 +661,7 @@ pub enum Event<'s> {
     ///     "<hr class=\"c\">\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     ThematicBreak(Attributes<'s>),
     /// Dangling attributes not attached to anything.
@@ -621,6 +669,8 @@ pub enum Event<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "{#a}\n",
@@ -662,6 +712,7 @@ pub enum Event<'s> {
     ///     "<p>inline </p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Attributes(Attributes<'s>),
 }
@@ -699,6 +750,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "> a\n",
@@ -726,6 +779,7 @@ pub enum Container<'s> {
     ///     "</blockquote>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Blockquote,
     /// A list.
@@ -733,6 +787,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "- a\n",
@@ -780,6 +836,7 @@ pub enum Container<'s> {
     ///     "</ul>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     List { kind: ListKind, tight: bool },
     /// An item of a list
@@ -787,6 +844,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "- a";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -821,6 +880,7 @@ pub enum Container<'s> {
     ///     "</ul>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     ListItem,
     /// An item of a task list, either checked or unchecked.
@@ -828,6 +888,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "- [x] a";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -866,6 +928,7 @@ pub enum Container<'s> {
     ///     "</ul>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     TaskListItem { checked: bool },
     /// A description list.
@@ -873,6 +936,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     ": orange\n",
@@ -923,6 +988,7 @@ pub enum Container<'s> {
     ///     "</dl>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     DescriptionList,
     /// Details describing a term within a description list.
@@ -932,6 +998,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "txt[^nb]\n",
@@ -971,6 +1039,7 @@ pub enum Container<'s> {
     ///     "</section>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Footnote { label: CowStr<'s> },
     /// A table element.
@@ -978,6 +1047,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "| a | b |\n",
@@ -1065,6 +1136,7 @@ pub enum Container<'s> {
     ///     "</table>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Table,
     /// A row element of a table.
@@ -1074,6 +1146,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "# outer\n",
@@ -1136,6 +1210,7 @@ pub enum Container<'s> {
     ///     "</section>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Section { id: CowStr<'s> },
     /// A block-level divider element.
@@ -1143,6 +1218,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "::: note\n",
@@ -1171,6 +1248,7 @@ pub enum Container<'s> {
     ///     "</div>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Div { class: CowStr<'s> },
     /// A paragraph.
@@ -1180,6 +1258,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "# heading";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1215,6 +1295,7 @@ pub enum Container<'s> {
     ///     "</section>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Heading {
         level: u16,
@@ -1228,6 +1309,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "|a|\n",
@@ -1272,6 +1355,7 @@ pub enum Container<'s> {
     ///     "</table>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Caption,
     /// A term within a description list.
@@ -1281,6 +1365,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "[label]: url";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1299,6 +1385,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     LinkDefinition { label: CowStr<'s> },
     /// A block with raw markup for a specific output format.
@@ -1306,6 +1393,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "```=html\n",
@@ -1328,6 +1417,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<tag>x</tag>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     RawBlock { format: CowStr<'s> },
     /// A block with code in a specific language.
@@ -1335,6 +1425,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "```html\n",
@@ -1360,6 +1452,7 @@ pub enum Container<'s> {
     ///     "</code></pre>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     CodeBlock { language: CowStr<'s> },
     /// An inline divider element.
@@ -1369,6 +1462,8 @@ pub enum Container<'s> {
     /// Can be used to add attributes:
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "word{#a}\n",
@@ -1402,6 +1497,7 @@ pub enum Container<'s> {
     ///     "<span id=\"b\">two words</span></p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Span,
     /// An inline link, the first field is either a destination URL or an unresolved reference
@@ -1412,6 +1508,8 @@ pub enum Container<'s> {
     /// URLs or email addresses can be enclosed with angled brackets to create a hyperlink:
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "<https://example.com>\n",
@@ -1457,11 +1555,14 @@ pub enum Container<'s> {
     ///     "<a href=\"mailto:me@example.com\">me@example.com</a></p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     ///
     /// Anchor text and the URL can be specified inline:
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "[anchor](url)\n";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1488,12 +1589,15 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><a href=\"url\">anchor</a></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     ///
     /// Alternatively, the URL can be retrieved from a link definition using hard brackets, if it
     /// exists:
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "[a][label]\n",
@@ -1548,6 +1652,7 @@ pub enum Container<'s> {
     ///     "<a>b</a></p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Link(CowStr<'s>, LinkType),
     /// An inline image, the first field is either a destination URL or an unresolved referenc
@@ -1558,6 +1663,8 @@ pub enum Container<'s> {
     /// Inner Str objects compose the alternative text:
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "![alt text](img.png)";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1580,6 +1687,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><img alt=\"alt text\" src=\"img.png\"></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Image(CowStr<'s>, SpanLinkType),
     /// An inline verbatim string.
@@ -1587,6 +1695,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "inline `verbatim`";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1605,6 +1715,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p>inline <code>verbatim</code></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Verbatim,
     /// An inline or display math element.
@@ -1612,6 +1723,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = concat!(
     ///     "inline $`a\\cdot{}b` or\n",
@@ -1648,6 +1761,7 @@ pub enum Container<'s> {
     ///     "display <span class=\"math display\">\\[\\frac{a}{b}\\]</span></p>\n",
     /// );
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Math { display: bool },
     /// Inline raw markup for a specific output format.
@@ -1655,6 +1769,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "`<tag>a</tag>`{=html}";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1674,6 +1790,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><tag>a</tag></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     RawInline { format: CowStr<'s> },
     /// A subscripted element.
@@ -1681,6 +1798,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "~SUB~";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1698,6 +1817,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><sub>SUB</sub></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Subscript,
     /// A superscripted element.
@@ -1705,6 +1825,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "^SUP^";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1722,6 +1844,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><sup>SUP</sup></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Superscript,
     /// An inserted inline element.
@@ -1729,6 +1852,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "{+INS+}";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1746,6 +1871,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><ins>INS</ins></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Insert,
     /// A deleted inline element.
@@ -1753,6 +1879,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "{-DEL-}";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1770,6 +1898,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><del>DEL</del></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Delete,
     /// An inline element emphasized with a bold typeface.
@@ -1777,6 +1906,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "*STRONG*";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1794,6 +1925,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><strong>STRONG</strong></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Strong,
     /// An emphasized inline element.
@@ -1801,6 +1933,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "_EM_";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1818,6 +1952,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><em>EM</em></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Emphasis,
     /// A highlighted inline element.
@@ -1825,6 +1960,8 @@ pub enum Container<'s> {
     /// # Examples
     ///
     /// ```
+    /// # #[cfg(feature = "html")]
+    /// # {
     /// # use jotdown::*;
     /// let src = "{=MARK=}";
     /// let events: Vec<_> = Parser::new(src).collect();
@@ -1842,6 +1979,7 @@ pub enum Container<'s> {
     /// );
     /// let html = "<p><mark>MARK</mark></p>\n";
     /// assert_eq!(&html::render_to_string(events.into_iter()), html);
+    /// # }
     /// ```
     Mark,
 }
