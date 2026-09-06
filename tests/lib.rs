@@ -30,6 +30,7 @@ mod list_bullet_type {
     }
 }
 
+#[cfg(feature = "html")]
 mod render {
     #[test]
     fn write_events() {
