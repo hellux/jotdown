@@ -28,6 +28,7 @@ members = [
     "examples/jotdown_wasm",
     "tests/html-ref",
     "tests/html-ut",
+    "tests/markup-test",
 ]
 exclude = [
     "tests/afl",
