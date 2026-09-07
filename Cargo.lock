@@ -494,6 +494,7 @@ dependencies = [
  "clap 4.5.53",
  "env_logger",
  "log",
+ "markup-test",
 ]
 
 [[package]]
@@ -775,14 +776,6 @@ dependencies = [
 name = "test-html-ref"
 version = "0.1.0"
 dependencies = [
- "jotdown",
-]
-
-[[package]]
-name = "test-html-ut"
-version = "0.1.0"
-dependencies = [
- "env_logger",
  "jotdown",
 ]
 

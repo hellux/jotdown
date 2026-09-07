@@ -34,11 +34,11 @@ enable-git-hooks:
 .PHONY: test_html_ut
 test_html_ut:
 	git submodule update --init modules/djot.js
-	for f in $$(find modules/djot.js/test -name '*.test' | xargs basename -a); do \
-		ln -fs ../../../modules/djot.js/test/$$f tests/html-ut/ut/djot_js_$$f; \
+	for f in $$(find modules/djot.js/test -name '*.test' -a ! -name 'filters.test' | xargs basename -a); do \
+		ln -fs ../../modules/djot.js/test/$$f tests/html-ut/djot_js_$$f; \
 	done
-	cargo test -p test-html-ut
-	cargo test -p test-html-ut -- --ignored 2>/dev/null | grep -qE 'test result: .* 0 passed'
+	cargo test --tests html::ut::
+	! cargo test --tests html::ut:: -- --ignored 2>/dev/null | grep -qE 'test result: .* [1-9]+ passed'
 
 .PHONY: test_html_ref
 test_html_ref:
@@ -116,8 +116,8 @@ clean:
 	cargo clean
 	(cd tests/afl && cargo clean)
 	git submodule deinit -f --all
-	find tests -type l -path 'tests/html-ut/ut/*.test' -print0 | xargs -0 rm -f
-	(cd tests/html-ut && make clean)
+	find tests -type l -path 'tests/html-ut/*.test' -print0 | xargs -0 rm -f
+	rm -f tests/html-ut/*.rs
 	rm -f tests/html-ref/*.dj
 	(cd tests/html-ref && make clean)
 	find bench -type l -path 'bench/*.dj' -print0 | xargs -0 rm -f
