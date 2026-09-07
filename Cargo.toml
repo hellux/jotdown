@@ -27,7 +27,6 @@ members = [
     "bench/input",
     "examples/jotdown_wasm",
     "tests/html-ref",
-    "tests/html-ut",
     "tests/markup-test",
 ]
 exclude = [
@@ -59,3 +58,4 @@ opt-level = 's'
 
 [dev-dependencies]
 env_logger = "0.11"
+markup-test = { path = "tests/markup-test" }
