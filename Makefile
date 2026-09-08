@@ -15,9 +15,10 @@ docs:
 
 .PHONY: lint
 lint:
-	cargo clippy -- -D warnings
-	cargo clippy --no-default-features -- -D warnings
-	cargo clippy --all-features -- -D warnings
+	cargo clippy --all -- -D warnings
+	(cd tests/afl && cargo clippy --all -- -D warnings)
+	cargo clippy --all --no-default-features -- -D warnings
+	cargo clippy --all --all-features -- -D warnings
 	cargo check --all --all-features
 	cargo fmt --all -- --check
 
