@@ -1,7 +1,13 @@
-{ pkgs ? (import (builtins.fetchTarball {
-  url = "https://github.com/NixOS/nixpkgs/archive/nixos-26.05.tar.gz";
-  sha256 = "0miz2qn3lamkpqyjbfmz93h4icr323ds7l218vvsgq206razvb5v";
-}) { }), use_system_vim ? false, ... }:
+{
+  pkgs ? import ((import <nixpkgs> { }).fetchFromGitHub {
+    owner = "NixOs";
+    repo = "nixpkgs";
+    rev = "nixos-26.05";
+    sha256 = "sha256-J9oC0bKnkXUrMegqRTXVkyDFJ0gn2U/Qpoo9HgGMQmA=";
+  }) { },
+  use_system_vim ? false,
+  ...
+}:
 pkgs.mkShell {
   buildInputs = [
     pkgs.bmake
