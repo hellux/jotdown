@@ -817,6 +817,9 @@ impl<'s> Parser<'s> {
     }
 
     fn parse_exit(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        if !matches!(first.kind, lex::Kind::Close(..) | lex::Kind::Sym(..)) {
+            return None;
+        }
         let o = self
             .openers
             .iter()
