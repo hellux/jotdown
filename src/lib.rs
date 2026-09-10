@@ -2183,10 +2183,16 @@ impl TryFrom<char> for ListBulletType {
 
 impl From<ListBulletType> for u8 {
     fn from(t: ListBulletType) -> Self {
-        match t {
-            ListBulletType::Dash => b'-',
-            ListBulletType::Star => b'*',
-            ListBulletType::Plus => b'+',
+        t.as_str().as_bytes()[0]
+    }
+}
+
+impl ListBulletType {
+    fn as_str(self) -> &'static str {
+        match self {
+            ListBulletType::Dash => "-",
+            ListBulletType::Star => "*",
+            ListBulletType::Plus => "+",
         }
     }
 }
