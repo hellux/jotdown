@@ -350,8 +350,10 @@ impl<'s> Parser<'s> {
                 .or_else(|| self.parse_autolink(&first))
                 .or_else(|| self.parse_symbol(&first))
                 .or_else(|| self.parse_footnote_reference(&first))
-                .or_else(|| self.parse_container(&first))
+                .or_else(|| self.parse_exit(&first))
+                .or_else(|| self.parse_enter(&first))
                 .or_else(|| self.parse_atom(&first))
+                .or_else(|| self.parse_enter(&first))
                 .unwrap_or_else(|| self.push(EventKind::Str))
         } else if self.input.last() {
             Done
@@ -768,223 +770,218 @@ impl<'s> Parser<'s> {
         None
     }
 
-    fn parse_container(&mut self, first: &lex::Token) -> Option<ControlFlow> {
-        self.openers
+    fn parse_enter(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        let opener = Opener::from_token(first.kind)?;
+        let whitespace_after = self
+            .input
+            .lexer
+            .ahead()
             .iter()
-            .rposition(|(o, _)| o.closed_by(first.kind))
-            .and_then(|o| {
-                let (opener, e) = self.openers[o];
-                if !matches!(opener, Opener::Link { inline: true, .. })
-                    && self.openers[o + 1..]
-                        .iter()
-                        .any(|(o, _)| matches!(o, Opener::Link { inline: true, .. }))
+            .next()
+            .is_none_or(u8::is_ascii_whitespace);
+        if opener.bidirectional() && whitespace_after {
+            return None;
+        }
+        let whitespace_before = if 0 < self.input.span.start {
+            self.input.src.as_bytes()[self.input.span.start - 1].is_ascii_whitespace()
+        } else {
+            false
+        };
+        if matches!(opener, Opener::SingleQuoted(..))
+            && self
+                .events
+                .back()
+                .is_some_and(|ev| matches!(ev.kind, EventKind::Str))
+            && !whitespace_before
+        {
+            return None;
+        }
+        self.openers.push((opener, self.events.len()));
+        // push dummy event in case attributes are encountered after closing delimiter
+        self.push_sp(
+            EventKind::Placeholder,
+            self.input.span.start..self.input.span.start,
+        );
+        // use non-opener for now, replace if closed later
+        Some(self.push(match opener {
+            Opener::SingleQuoted(dir) => EventKind::Atom(Quote {
+                ty: QuoteType::Single,
+                left: dir == Directionality::Uni,
+            }),
+            Opener::DoubleQuoted(..) => EventKind::Atom(Quote {
+                ty: QuoteType::Double,
+                left: true,
+            }),
+            _ => EventKind::Str,
+        }))
+    }
+
+    fn parse_exit(&mut self, first: &lex::Token) -> Option<ControlFlow> {
+        let o = self
+            .openers
+            .iter()
+            .rposition(|(o, _)| o.closed_by(first.kind))?;
+        let (opener, e) = self.openers[o];
+        if !matches!(opener, Opener::Link { inline: true, .. })
+            && self.openers[o + 1..]
+                .iter()
+                .any(|(o, _)| matches!(o, Opener::Link { inline: true, .. }))
+        {
+            // give priority to inline links
+            return None;
+        }
+        let (e_attr, e_opener) = if let Opener::Link { event_span, .. } = opener {
+            (event_span - 1, e)
+        } else {
+            (e, e + 1)
+        };
+
+        if e_opener == self.events.len() - 1
+            && !matches!(opener, Opener::Link { .. } | Opener::Span { .. })
+        {
+            // empty container
+            return None;
+        }
+        let whitespace_before = self
+            .input
+            .src
+            .as_bytes()
+            .get(self.input.span.start.saturating_sub(1))
+            .is_some_and(u8::is_ascii_whitespace);
+        if opener.bidirectional() && whitespace_before {
+            return None;
+        }
+
+        self.openers.drain(o..);
+        let closed = match DelimEventKind::from(opener) {
+            DelimEventKind::Container(cont) => {
+                self.events[e_opener].kind = EventKind::Enter(cont);
+                self.push(EventKind::Exit(cont))
+            }
+            DelimEventKind::Quote(ty) => {
+                self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
+                self.push(EventKind::Atom(Quote { ty, left: false }))
+            }
+            DelimEventKind::Span(ty) => {
+                if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
+                    self.input.peek().map(|t| t.kind)
                 {
-                    // give priority to inline links
-                    return None;
+                    self.push(EventKind::Str); // ]
+                    self.openers.push((
+                        Opener::Link {
+                            event_span: e_opener,
+                            image: matches!(ty, SpanType::Image),
+                            inline: matches!(d, Delimiter::Paren),
+                        },
+                        self.events.len(),
+                    ));
+                    self.input.reset_span();
+                    self.input.eat(); // [ or (
+                    return Some(self.push(EventKind::Str));
                 }
-                let (e_attr, e_opener) = if let Opener::Link { event_span, .. } = opener {
-                    (event_span - 1, e)
-                } else {
-                    (e, e + 1)
-                };
+                self.push(EventKind::Str) // ]
+            }
+            DelimEventKind::Link {
+                event_span,
+                inline,
+                image,
+            } => {
+                let span_spec = self.events[e_opener].span.end..self.input.span.start;
 
-                if e_opener == self.events.len() - 1
-                    && !matches!(opener, Opener::Link { .. } | Opener::Span { .. })
-                {
-                    // empty container
-                    return None;
-                }
-                let whitespace_before = self
-                    .input
-                    .src
-                    .as_bytes()
-                    .get(self.input.span.start.saturating_sub(1))
-                    .is_some_and(u8::is_ascii_whitespace);
-                if opener.bidirectional() && whitespace_before {
-                    return None;
-                }
-
-                self.openers.drain(o..);
-                let closed = match DelimEventKind::from(opener) {
-                    DelimEventKind::Container(cont) => {
-                        self.events[e_opener].kind = EventKind::Enter(cont);
-                        self.push(EventKind::Exit(cont))
-                    }
-                    DelimEventKind::Quote(ty) => {
-                        self.events[e_opener].kind = EventKind::Atom(Quote { ty, left: true });
-                        self.push(EventKind::Atom(Quote { ty, left: false }))
-                    }
-                    DelimEventKind::Span(ty) => {
-                        if let Some(lex::Kind::Open(d @ (Delimiter::Bracket | Delimiter::Paren))) =
-                            self.input.peek().map(|t| t.kind)
-                        {
-                            self.push(EventKind::Str); // ]
-                            self.openers.push((
-                                Opener::Link {
-                                    event_span: e_opener,
-                                    image: matches!(ty, SpanType::Image),
-                                    inline: matches!(d, Delimiter::Paren),
-                                },
-                                self.events.len(),
-                            ));
-                            self.input.reset_span();
-                            self.input.eat(); // [ or (
-                            return Some(self.push(EventKind::Str));
-                        }
-                        self.push(EventKind::Str) // ]
-                    }
-                    DelimEventKind::Link {
-                        event_span,
-                        inline,
-                        image,
-                    } => {
-                        let span_spec = self.events[e_opener].span.end..self.input.span.start;
-
-                        let mut spec = CowStr::from("");
-                        if inline || !span_spec.is_empty() {
-                            // handle label/url
-                            let mut pos_last = 0;
-                            for ev in self.events.iter().skip(e_opener + 1) {
-                                match ev.kind {
-                                    EventKind::Atom(Escape)
-                                    | EventKind::Empty
-                                    | EventKind::Attributes {
-                                        container: true, ..
-                                    } => continue,
-                                    EventKind::Atom(Softbreak | Hardbreak) if inline => {}
-                                    EventKind::Atom(Softbreak | Hardbreak | Nbsp) => {
-                                        append_norm_ws(&mut spec, " ");
-                                    }
-                                    _ => {
-                                        append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
-                                    }
-                                }
-                                debug_assert!(
-                                    pos_last <= ev.span.start,
-                                    "out of order: {:?}",
-                                    ev.kind
-                                );
-                                pos_last = ev.span.end;
+                let mut spec = CowStr::from("");
+                if inline || !span_spec.is_empty() {
+                    // handle label/url
+                    let mut pos_last = 0;
+                    for ev in self.events.iter().skip(e_opener + 1) {
+                        match ev.kind {
+                            EventKind::Atom(Escape)
+                            | EventKind::Empty
+                            | EventKind::Attributes {
+                                container: true, ..
+                            } => continue,
+                            EventKind::Atom(Softbreak | Hardbreak) if inline => {}
+                            EventKind::Atom(Softbreak | Hardbreak | Nbsp) => {
+                                append_norm_ws(&mut spec, " ");
                             }
-                        } else {
-                            // derive label from text content
-                            for ev in self
-                                .events
-                                .iter()
-                                .skip(event_span + 1)
-                                .take(e_opener - event_span - 2)
-                            {
-                                match ev.kind {
-                                    EventKind::Atom(Escape) => {}
-                                    EventKind::Atom(Softbreak | Hardbreak) => {
-                                        append_norm_ws(&mut spec, " ");
-                                    }
-                                    EventKind::Str | EventKind::Atom(..) => {
-                                        append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
-                                    }
-                                    _ => {}
-                                }
+                            _ => {
+                                append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
                             }
                         }
-
-                        let len_trimmed = spec
-                            .trim_end_matches(|c: char| c.is_ascii_whitespace())
-                            .len();
-                        if len_trimmed < spec.len() {
-                            match &mut spec {
-                                CowStr::Borrowed(s) => *s = &s[..len_trimmed],
-                                CowStr::Owned(s) => s.truncate(len_trimmed),
-                            }
-                        }
-                        debug_assert!(
-                            !spec.contains(|c: char| c.is_ascii_whitespace() && c != ' '),
-                            "{spec:?}"
-                        );
-                        debug_assert!(!spec.contains("  "), "{spec:?}");
-
-                        let idx = self.store_cowstrs.len() as CowStrIndex;
-                        self.store_cowstrs.push(spec);
-                        let container = match (image, inline) {
-                            (false, false) => ReferenceLink(idx),
-                            (false, true) => InlineLink(idx),
-                            (true, false) => ReferenceImage(idx),
-                            (true, true) => InlineImage(idx),
-                        };
-                        self.events[event_span].kind = EventKind::Enter(container);
-                        self.events[e_opener - 1] = Event {
-                            kind: EventKind::Exit(container),
-                            span: (self.events[e_opener - 1].span.start)..(span_spec.end + 1),
-                        };
-                        self.events.drain(e_opener..);
-                        Continue
+                        debug_assert!(pos_last <= ev.span.start, "out of order: {:?}", ev.kind);
+                        pos_last = ev.span.end;
                     }
-                };
-
-                if self
-                    .input
-                    .peek()
-                    .is_some_and(|t| matches!(t.kind, lex::Kind::Open(Delimiter::Brace)))
-                {
-                    let elem_ty =
-                        if matches!(opener, Opener::DoubleQuoted(..) | Opener::SingleQuoted(..)) {
-                            // quote delimiters will turn into atoms instead of containers, so cannot
-                            // place attributes on the container start
-                            AttributesElementType::Word
-                        } else {
-                            AttributesElementType::Container {
-                                e_placeholder: e_attr,
-                            }
-                        };
-                    self.ahead_attributes(elem_ty, false).or(Some(Continue))
                 } else {
-                    Some(closed)
-                }
-            })
-            .or_else(|| {
-                let opener = Opener::from_token(first.kind)?;
-                let whitespace_after = self
-                    .input
-                    .lexer
-                    .ahead()
-                    .iter()
-                    .next()
-                    .is_none_or(u8::is_ascii_whitespace);
-                if opener.bidirectional() && whitespace_after {
-                    return None;
-                }
-                let whitespace_before = if 0 < self.input.span.start {
-                    self.input.src.as_bytes()[self.input.span.start - 1].is_ascii_whitespace()
-                } else {
-                    false
-                };
-                if matches!(opener, Opener::SingleQuoted(..))
-                    && self
+                    // derive label from text content
+                    for ev in self
                         .events
-                        .back()
-                        .is_some_and(|ev| matches!(ev.kind, EventKind::Str))
-                    && !whitespace_before
-                {
-                    return None;
+                        .iter()
+                        .skip(event_span + 1)
+                        .take(e_opener - event_span - 2)
+                    {
+                        match ev.kind {
+                            EventKind::Atom(Escape) => {}
+                            EventKind::Atom(Softbreak | Hardbreak) => {
+                                append_norm_ws(&mut spec, " ");
+                            }
+                            EventKind::Str | EventKind::Atom(..) => {
+                                append_norm_ws(&mut spec, &self.input.src[ev.span.clone()]);
+                            }
+                            _ => {}
+                        }
+                    }
                 }
-                self.openers.push((opener, self.events.len()));
-                // push dummy event in case attributes are encountered after closing delimiter
-                self.push_sp(
-                    EventKind::Placeholder,
-                    self.input.span.start..self.input.span.start,
+
+                let len_trimmed = spec
+                    .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                    .len();
+                if len_trimmed < spec.len() {
+                    match &mut spec {
+                        CowStr::Borrowed(s) => *s = &s[..len_trimmed],
+                        CowStr::Owned(s) => s.truncate(len_trimmed),
+                    }
+                }
+                debug_assert!(
+                    !spec.contains(|c: char| c.is_ascii_whitespace() && c != ' '),
+                    "{spec:?}"
                 );
-                // use non-opener for now, replace if closed later
-                Some(self.push(match opener {
-                    Opener::SingleQuoted(dir) => EventKind::Atom(Quote {
-                        ty: QuoteType::Single,
-                        left: dir == Directionality::Uni,
-                    }),
-                    Opener::DoubleQuoted(..) => EventKind::Atom(Quote {
-                        ty: QuoteType::Double,
-                        left: true,
-                    }),
-                    _ => EventKind::Str,
-                }))
-            })
+                debug_assert!(!spec.contains("  "), "{spec:?}");
+
+                let idx = self.store_cowstrs.len() as CowStrIndex;
+                self.store_cowstrs.push(spec);
+                let container = match (image, inline) {
+                    (false, false) => ReferenceLink(idx),
+                    (false, true) => InlineLink(idx),
+                    (true, false) => ReferenceImage(idx),
+                    (true, true) => InlineImage(idx),
+                };
+                self.events[event_span].kind = EventKind::Enter(container);
+                self.events[e_opener - 1] = Event {
+                    kind: EventKind::Exit(container),
+                    span: (self.events[e_opener - 1].span.start)..(span_spec.end + 1),
+                };
+                self.events.drain(e_opener..);
+                Continue
+            }
+        };
+
+        if self
+            .input
+            .peek()
+            .is_some_and(|t| matches!(t.kind, lex::Kind::Open(Delimiter::Brace)))
+        {
+            let elem_ty = if matches!(opener, Opener::DoubleQuoted(..) | Opener::SingleQuoted(..)) {
+                // quote delimiters will turn into atoms instead of containers, so cannot
+                // place attributes on the container start
+                AttributesElementType::Word
+            } else {
+                AttributesElementType::Container {
+                    e_placeholder: e_attr,
+                }
+            };
+            self.ahead_attributes(elem_ty, false).or(Some(Continue))
+        } else {
+            Some(closed)
+        }
     }
 
     fn parse_atom(&mut self, first: &lex::Token) -> Option<ControlFlow> {
