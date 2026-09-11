@@ -8,6 +8,7 @@ default-run = "main"
 afl = "0.17"
 jotdown = { path = "../../", features = ["html", "deterministic", "log"], default-features = false  }
 html5ever = "0.26"
+arbitrary = { version = "1.4", features = ["derive"] }
 env_logger = "0.11"
 
 [[bin]]

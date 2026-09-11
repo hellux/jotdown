@@ -6,11 +6,7 @@ use html5ever::tokenizer;
 use html5ever::tree_builder;
 
 /// Perform sanity checks on events.
-pub fn parse(data: &[u8]) {
-    let Ok(s) = std::str::from_utf8(data) else {
-        return;
-    };
-
+pub fn parse(s: &str) {
     let whitelist_whitespace = s.contains('{') && s.contains('}'); // attributes are outside events
     let mut open = Vec::new();
     let mut last = (jotdown::Event::Str("".into()), 0..0);
@@ -56,13 +52,11 @@ pub fn parse(data: &[u8]) {
 }
 
 /// Validate rendered html output.
-pub fn html(data: &[u8]) {
-    if data.contains(&0) {
+pub fn html(s: &str) {
+    if s.contains('\0') {
         return;
     }
-    if let Ok(s) = std::str::from_utf8(data)
-        && !s.contains("=html")
-    {
+    if !s.contains("=html") {
         let p = jotdown::Parser::new(s);
         let mut html = "<!DOCTYPE html>\n".to_string();
         jotdown::html::Renderer::default()

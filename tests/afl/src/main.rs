@@ -9,8 +9,18 @@ fn main() {
     env_logger::init();
 
     let f = match target.as_str() {
-        "parse" => jotdown_afl::parse,
-        "html" => jotdown_afl::html,
+        "parse" => |data: &[u8]| {
+            jotdown_afl::parse(
+                arbitrary::Arbitrary::arbitrary(&mut arbitrary::Unstructured::new(data))
+                    .unwrap_or_default(),
+            );
+        },
+        "html" => |data: &[u8]| {
+            jotdown_afl::html(
+                arbitrary::Arbitrary::arbitrary(&mut arbitrary::Unstructured::new(data))
+                    .unwrap_or_default(),
+            );
+        },
         _ => panic!("unknown target '{target}'"),
     };
 
