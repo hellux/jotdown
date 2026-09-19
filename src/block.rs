@@ -838,8 +838,7 @@ impl<'s> TreeParser<'s> {
             let mut separator_row = true;
             let mut verbatim = None;
             let mut column_index = 0;
-            let mut last_escape = false;
-            let mut last_escaped_nbsp = false;
+            let mut last_nbsp = false;
             while let Some(lex::Token { kind, len }) = lex.next() {
                 if let Some(l) = verbatim {
                     if matches!(kind, lex::Kind::Seq(lex::Sequence::Backtick)) && len == l {
@@ -872,8 +871,8 @@ impl<'s> TreeParser<'s> {
                                 cell_start..cell_start,
                             );
                             let span_t = self.trim(span.clone());
-                            let span_t = span_t.start..span_t.end + usize::from(last_escaped_nbsp);
-                            if last_escaped_nbsp {
+                            let span_t = span_t.start..span_t.end + usize::from(last_nbsp);
+                            if last_nbsp {
                                 debug_assert!(self.src[span_t.clone()]
                                     .ends_with(|c: char| c.is_ascii_whitespace()));
                             }
@@ -889,8 +888,7 @@ impl<'s> TreeParser<'s> {
                         _ => {}
                     }
                     if !(matches!(kind, lex::Kind::Text) && self.trim(pos..pos + len).is_empty()) {
-                        last_escaped_nbsp = last_escape && matches!(kind, lex::Kind::Nbsp);
-                        last_escape = matches!(kind, lex::Kind::Escape);
+                        last_nbsp = matches!(kind, lex::Kind::Nbsp);
                     }
                 }
                 pos += len;

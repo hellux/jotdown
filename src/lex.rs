@@ -161,22 +161,8 @@ impl<'s> Lexer<'s> {
 
         let kind = if self.escape {
             self.escape = false;
-            match self.eat_byte() {
-                Some(b'\n') | None => Hardbreak,
-                Some(c) if c.is_ascii_whitespace() => {
-                    if self.src[self.pos..]
-                        .iter()
-                        .find(|c| **c == b'\n' || !c.is_ascii_whitespace())
-                        == Some(&b'\n')
-                    {
-                        while self.eat_byte() != Some(b'\n') {}
-                        Hardbreak
-                    } else {
-                        Nbsp
-                    }
-                }
-                Some(_) => Text,
-            }
+            self.eat_byte()?;
+            Text
         } else {
             self.eat_while(|c| !is_special(c));
             if start < self.pos {
@@ -185,17 +171,30 @@ impl<'s> Lexer<'s> {
                 match self.eat_byte()? {
                     b'\n' => Newline,
 
-                    b'\\' => {
-                        if self
-                            .peek_byte()
-                            .is_none_or(|c| c.is_ascii_whitespace() || c.is_ascii_punctuation())
-                        {
+                    b'\\' => match self.peek_byte() {
+                        Some(b'\n') | None => {
+                            let _ = self.eat_byte();
+                            Hardbreak
+                        }
+                        Some(c) if c.is_ascii_whitespace() => {
+                            if self.src[self.pos..]
+                                .iter()
+                                .find(|c| **c == b'\n' || !c.is_ascii_whitespace())
+                                == Some(&b'\n')
+                            {
+                                while self.eat_byte() != Some(b'\n') {}
+                                Hardbreak
+                            } else {
+                                self.eat_byte().unwrap();
+                                Nbsp
+                            }
+                        }
+                        Some(c) if c.is_ascii_punctuation() => {
                             self.escape = !self.verbatim;
                             Escape
-                        } else {
-                            Text
                         }
-                    }
+                        _ => Text,
+                    },
 
                     b'[' => Open(Bracket),
                     b']' => Close(Bracket),

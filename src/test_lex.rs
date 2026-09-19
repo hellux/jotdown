@@ -45,15 +45,16 @@ fn escape() {
     test_lex!(r#"\a"#, Text.l(2));
     test_lex!(r#"\\a"#, Escape.l(1), Text.l(2));
     test_lex!(r#"\."#, Escape.l(1), Text.l(1));
-    test_lex!(r#"\ "#, Escape.l(1), Nbsp.l(1));
+    test_lex!(r#"\ "#, Nbsp.l(2));
     test_lex!(r#"\{-"#, Escape.l(1), Text.l(1), Seq(Hyphen).l(1));
 }
 
 #[test]
 fn hardbreak() {
-    test_lex!("a\\\n", Text.l(1), Escape.l(1), Hardbreak.l(1));
-    test_lex!("a\\   \n", Text.l(1), Escape.l(1), Hardbreak.l(4));
-    test_lex!("a\\\t \t \n", Text.l(1), Escape.l(1), Hardbreak.l(5));
+    test_lex!("a\\\n", Text.l(1), Hardbreak.l(2));
+    test_lex!("a\\   \n", Text.l(1), Hardbreak.l(5));
+    test_lex!("a\\\t \t \n", Text.l(1), Hardbreak.l(6));
+    test_lex!("a\\", Text.l(1), Hardbreak.l(1));
 }
 
 #[test]

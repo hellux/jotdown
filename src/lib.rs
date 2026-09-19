@@ -472,7 +472,6 @@ pub enum Event<'s> {
     ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("no".into()),
-    ///         Event::Escape,
     ///         Event::NonBreakingSpace,
     ///         Event::Str("break".into()),
     ///         Event::End(Container::Paragraph),
@@ -536,7 +535,6 @@ pub enum Event<'s> {
     ///         Event::Start(Container::Document, Attributes::new()),
     ///         Event::Start(Container::Paragraph, Attributes::new()),
     ///         Event::Str("hard".into()),
-    ///         Event::Escape,
     ///         Event::Hardbreak,
     ///         Event::Str("break".into()),
     ///         Event::End(Container::Paragraph),
@@ -551,7 +549,7 @@ pub enum Event<'s> {
     /// # }
     /// ```
     Hardbreak,
-    /// An escape character, not visible in output.
+    /// An escape character before punctuation, not visible in output.
     ///
     /// # Examples
     ///

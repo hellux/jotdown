@@ -991,10 +991,10 @@ impl<'s> Parser<'s> {
         let atom = match first.kind {
             lex::Kind::Newline => Softbreak,
             lex::Kind::Hardbreak => {
-                if self.input.span.is_empty() {
-                    for i in self.input.span.start..self.input.src.len() {
+                if !self.input.src[self.input.span.clone()].ends_with('\n') {
+                    for i in self.input.span.end..self.input.src.len() {
                         if &self.input.src[i..=i] == "\n" {
-                            self.input.span = i..i + 1;
+                            self.input.span.end = i + 1;
                             break;
                         } else if self.input.src[i..=i]
                             .trim_matches(|c: char| !c.is_ascii_whitespace())

@@ -765,8 +765,7 @@ fn nbsp() {
         "a\\ b",
         (Start(Paragraph, Attributes::new()), ""),
         (Str("a".into()), "a"),
-        (Escape, "\\"),
-        (NonBreakingSpace, " "),
+        (NonBreakingSpace, "\\ "),
         (Str("b".into()), "b"),
         (End(Paragraph), ""),
     );
@@ -789,8 +788,7 @@ fn nbsp_end_of_table_cell() {
             "",
         ),
         (Str("a".into()), "a"),
-        (Escape, "\\"),
-        (NonBreakingSpace, " "),
+        (NonBreakingSpace, "\\ "),
         (
             End(TableCell {
                 alignment: Alignment::Unspecified,
@@ -811,8 +809,7 @@ fn hardbreak() {
             "b\n"   //
         ),
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, "\n"),
+        (Hardbreak, "\\\n"),
         (Str("b".into()), "b"),
         (End(Paragraph), ""),
     );
@@ -826,8 +823,7 @@ fn hardbreak_end_of_line() {
             "b\n",  //
         ),
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, "\n"),
+        (Hardbreak, "\\\n"),
         (Str("b".into()), "b"),
         (End(Paragraph), ""),
     );
@@ -837,8 +833,7 @@ fn hardbreak_end_of_line() {
             "b\n",    //
         ),
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, "  \n"),
+        (Hardbreak, "\\  \n"),
         (Str("b".into()), "b"),
         (End(Paragraph), ""),
     );
@@ -849,15 +844,13 @@ fn hardbreak_end_of_para() {
     test_parse!(
         "\\\n",
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, "\n"),
+        (Hardbreak, "\\\n"),
         (End(Paragraph), ""),
     );
     test_parse!(
         "\\  \n",
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, "\n"),
+        (Hardbreak, "\\  \n"),
         (End(Paragraph), ""),
     );
 }
@@ -867,15 +860,13 @@ fn hardbreak_end_of_file() {
     test_parse!(
         "\\",
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, ""),
+        (Hardbreak, "\\"),
         (End(Paragraph), ""),
     );
     test_parse!(
         "\\  ",
         (Start(Paragraph, Attributes::new()), ""),
-        (Escape, "\\"),
-        (Hardbreak, ""),
+        (Hardbreak, "\\"),
         (End(Paragraph), ""),
     );
 }
@@ -1298,8 +1289,7 @@ fn link_reference_multiline_empty() {
             "[",
         ),
         (Str("a".into()), "a"),
-        (Escape, "\\"),
-        (Hardbreak, "\n"),
+        (Hardbreak, "\\\n"),
         (Str("b".into()), "b"),
         (
             End(Link("url".into(), LinkType::Span(SpanLinkType::Reference))),
