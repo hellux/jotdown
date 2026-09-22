@@ -103,7 +103,7 @@ afl_crash:
 
 afl_tmin:
 	mkdir -p tmin
-	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*'); do \
+	for f in $$(find tests/afl/out -path '*/${AFL_TARGET_CRASH}/id*' | head -n5); do \
 		cargo afl tmin -i $$f -o tmin/$$(basename $$f) tests/afl/target/release/${AFL_TARGET}; \
 	done
 	while [ -n "$$(md5sum tmin/* | sort -k1 | rev | uniq -d -f1)" ]; do \
