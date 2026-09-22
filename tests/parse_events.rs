@@ -537,6 +537,18 @@ fn verbatim_unclosed() {
 }
 
 #[test]
+fn verbatim_start_end_backtick() {
+    test_parse!(
+        "`` `a` ``",
+        (Start(Paragraph, Attributes::new()), ""),
+        (Start(Verbatim, Attributes::new()), "``"),
+        (Str("`a`".into()), "`a`"),
+        (End(Verbatim), "``"),
+        (End(Paragraph), ""),
+    );
+}
+
+#[test]
 fn verbatim_block_empty() {
     test_parse!(
         concat!(
