@@ -10,7 +10,7 @@ fn enum_size() {
     assert_eq!(std::mem::size_of::<super::Atom>(), 8);
     assert_eq!(std::mem::size_of::<super::Container>(), 8);
     assert_eq!(std::mem::size_of::<super::EventKind>(), 12);
-    assert_eq!(std::mem::size_of::<super::Event>(), 32);
+    assert_eq!(std::mem::size_of::<super::Event>(), 20);
 }
 
 macro_rules! test_parse {
@@ -19,8 +19,8 @@ macro_rules! test_parse {
 
         #[allow(unused)]
         let mut p = super::Parser::new($src);
-        p.feed_line(0..$src.len(), true);
-        let actual = p.map(|ev| (ev.kind, &$src[ev.span])).collect::<Vec<_>>();
+        p.feed_line((0..$src.len()).into(), true);
+        let actual = p.map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
         let expected = &[$($($token),*,)?];
         assert_eq!(actual, expected, "\n\n{}\n\n", $src);
     };

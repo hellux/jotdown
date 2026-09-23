@@ -58,6 +58,89 @@ pub use attr::ParseAttributesError;
 
 type CowStr<'s> = std::borrow::Cow<'s, str>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SrcSpan(u32, u32);
+
+impl From<std::ops::Range<usize>> for SrcSpan {
+    fn from(sp: std::ops::Range<usize>) -> Self {
+        SrcSpan(sp.start as u32, sp.end as u32)
+    }
+}
+
+impl From<SrcSpan> for std::ops::Range<usize> {
+    fn from(sp: SrcSpan) -> Self {
+        sp.start()..sp.end()
+    }
+}
+
+impl std::fmt::Debug for SrcSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <std::ops::Range<usize>>::from(*self).fmt(f)
+    }
+}
+
+impl SrcSpan {
+    fn new(start: usize, end: usize) -> Self {
+        (start..end).into()
+    }
+
+    fn at(i: usize) -> Self {
+        Self::new(i, i)
+    }
+
+    fn start(self) -> usize {
+        self.0 as usize
+    }
+
+    fn end(self) -> usize {
+        self.1 as usize
+    }
+
+    fn len(self) -> usize {
+        self.end() - self.start()
+    }
+
+    fn is_empty(self) -> bool {
+        self.0 == self.1
+    }
+
+    fn contains(self, n: usize) -> bool {
+        self.start() <= n && n < self.end()
+    }
+
+    fn of(self, s: &str) -> &str {
+        &s[<std::ops::Range<usize>>::from(self)]
+    }
+
+    fn with_start(self, start: usize) -> Self {
+        Self::new(start, self.end())
+    }
+
+    fn with_end(self, end: usize) -> Self {
+        Self::new(self.start(), end)
+    }
+
+    fn at_start(self) -> Self {
+        self.with_end(self.start())
+    }
+
+    fn at_end(self) -> Self {
+        self.with_start(self.end())
+    }
+
+    fn with_len(self, len: usize) -> Self {
+        self.with_end(self.start() + len)
+    }
+
+    fn shift_start(self, len: usize) -> Self {
+        self.with_start(self.start() + len)
+    }
+
+    fn shift_end(self, len: usize) -> Self {
+        self.with_end(self.end() + len)
+    }
+}
+
 /// A trait for rendering [`Event`]s to an output format.
 ///
 /// The output can be written to either a [`std::fmt::Write`] or a [`std::io::Write`] object.
@@ -2449,13 +2532,13 @@ impl<'s> PrePass<'s> {
                             }
                         });
                         inline_parser.feed_line(
-                            span_inline.clone().unwrap_or(last_end..last_end),
+                            span_inline.clone().unwrap_or(last_end..last_end).into(),
                             span_inline.is_none(),
                         );
                         inline_parser.for_each(|ev| match ev.kind {
                             inline::EventKind::Str => {
-                                text.push_str(&src[ev.span.clone()]);
-                                let mut chars = src[ev.span].chars().peekable();
+                                text.push_str(ev.span.of(src));
+                                let mut chars = ev.span.of(src).chars().peekable();
                                 while let Some(c) = chars.next() {
                                     if c.is_ascii_whitespace() {
                                         while chars.peek().is_some_and(char::is_ascii_whitespace) {
@@ -2795,12 +2878,12 @@ impl<'s> Parser<'s> {
                     debug_assert!(!attributes.is_empty());
                     Event::Attributes(attributes.take())
                 }
-                inline::EventKind::Str => Event::Str(self.src[inline.span.clone()].into()),
+                inline::EventKind::Str => Event::Str(inline.span.of(self.src).into()),
                 inline::EventKind::Attributes { .. } | inline::EventKind::Placeholder => {
                     panic!("{inline:?}")
                 }
             };
-            (event, inline.span)
+            (event, inline.span.into())
         });
 
         debug_assert!(
@@ -2980,7 +3063,7 @@ impl<'s> Parser<'s> {
                     } else {
                         self.blocks.next().unwrap();
                         self.inline_parser.feed_line(
-                            ev_span.clone(),
+                            ev_span.clone().into(),
                             !matches!(
                                 self.blocks.peek().map(|e| &e.kind),
                                 Some(block::EventKind::Inline),
