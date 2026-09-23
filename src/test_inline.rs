@@ -476,7 +476,7 @@ fn footnote_reference() {
     test_parse!(
         "text[^footnote]. more text",
         (Str, "text"),
-        (Atom(FootnoteReference { label: "footnote" }), "[^footnote]"),
+        (Atom(FootnoteReference { label: 0 }), "[^footnote]"),
         (Str, ". more text"),
     );
 }

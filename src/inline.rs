@@ -12,7 +12,7 @@ use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Atom<'s> {
-    FootnoteReference { label: &'s str },
+    FootnoteReference { label: CowStrIndex },
     Symbol(&'s str),
     Softbreak,
     Hardbreak,
@@ -767,7 +767,9 @@ impl<'s> Parser<'s> {
                 let span_label = self.input.span.end + 1..(self.input.span.end + len);
                 let label = &self.input.src[span_label.clone()];
                 self.input.span.end = span_label.end + 1;
-                return Some(self.push(EventKind::Atom(FootnoteReference { label })));
+                let idx = self.store_cowstrs.len() as CowStrIndex;
+                self.store_cowstrs.push(label.into());
+                return Some(self.push(EventKind::Atom(FootnoteReference { label: idx })));
             }
         }
         None
