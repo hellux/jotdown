@@ -8,9 +8,9 @@ use super::Verbatim;
 #[test]
 fn enum_size() {
     assert_eq!(std::mem::size_of::<super::Atom>(), 24);
-    assert_eq!(std::mem::size_of::<super::Container>(), 24);
-    assert_eq!(std::mem::size_of::<super::EventKind>(), 32);
-    assert_eq!(std::mem::size_of::<super::Event>(), 48);
+    assert_eq!(std::mem::size_of::<super::Container>(), 8);
+    assert_eq!(std::mem::size_of::<super::EventKind>(), 24);
+    assert_eq!(std::mem::size_of::<super::Event>(), 40);
 }
 
 macro_rules! test_parse {
@@ -192,16 +192,16 @@ fn math() {
 fn raw_format() {
     test_parse!(
         "`raw`{=format}",
-        (Enter(RawFormat { format: "format" }), "`"),
+        (Enter(RawFormat { format: 0 }), "`"),
         (Str, "raw"),
-        (Exit(RawFormat { format: "format" }), "`{=format}"),
+        (Exit(RawFormat { format: 0 }), "`{=format}"),
     );
     test_parse!(
         "before `raw`{=format} after",
         (Str, "before "),
-        (Enter(RawFormat { format: "format" }), "`"),
+        (Enter(RawFormat { format: 0 }), "`"),
         (Str, "raw"),
-        (Exit(RawFormat { format: "format" }), "`{=format}"),
+        (Exit(RawFormat { format: 0 }), "`{=format}"),
         (Str, " after"),
     );
 }

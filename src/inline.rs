@@ -25,7 +25,7 @@ pub enum Atom<'s> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Container<'s> {
+pub enum Container {
     Span,
     Subscript,
     Superscript,
@@ -35,7 +35,7 @@ pub enum Container<'s> {
     Strong,
     Mark,
     Verbatim,
-    RawFormat { format: &'s str },
+    RawFormat { format: CowStrIndex },
     InlineMath,
     DisplayMath,
     ReferenceLink(CowStrIndex),
@@ -55,8 +55,8 @@ pub enum QuoteType {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventKind<'s> {
-    Enter(Container<'s>),
-    Exit(Container<'s>),
+    Enter(Container),
+    Exit(Container),
     Atom(Atom<'s>),
     Str,
     Empty, // dummy to hold attributes
@@ -391,9 +391,10 @@ impl<'s> Parser<'s> {
                 };
                 self.input.lexer.verbatim = true;
                 if let Some(span_format) = raw_format.clone() {
-                    *ty_opener = RawFormat {
-                        format: &self.input.src[span_format.clone()],
-                    };
+                    let format = self.store_cowstrs.len() as CowStrIndex;
+                    self.store_cowstrs
+                        .push(self.input.src[span_format.clone()].into());
+                    *ty_opener = RawFormat { format };
                     self.input.span.end = span_format.end + 1;
                 }
 
@@ -1226,8 +1227,8 @@ impl Opener {
     }
 }
 
-enum DelimEventKind<'s> {
-    Container(Container<'s>),
+enum DelimEventKind {
+    Container(Container),
     Span(SpanType),
     Quote(QuoteType),
     Link {
@@ -1237,7 +1238,7 @@ enum DelimEventKind<'s> {
     },
 }
 
-impl From<Opener> for DelimEventKind<'_> {
+impl From<Opener> for DelimEventKind {
     fn from(d: Opener) -> Self {
         match d {
             Opener::Span(ty) => Self::Span(ty),

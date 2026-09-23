@@ -2710,7 +2710,7 @@ impl<'s> Parser<'s> {
                         inline::Container::InlineMath => Container::Math { display: false },
                         inline::Container::DisplayMath => Container::Math { display: true },
                         inline::Container::RawFormat { format } => Container::RawInline {
-                            format: format.into(),
+                            format: self.inline_parser.store_cowstrs[format as usize].clone(),
                         },
                         inline::Container::Subscript => Container::Subscript,
                         inline::Container::Superscript => Container::Superscript,
