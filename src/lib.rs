@@ -2755,12 +2755,13 @@ impl<'s> Parser<'s> {
                             }
                         }
                         inline::Container::Autolink(url) => {
+                            let url = &self.inline_parser.store_cowstrs[url as usize];
                             let ty = if url.contains('@') {
                                 LinkType::Email
                             } else {
                                 LinkType::AutoLink
                             };
-                            Container::Link(url.into(), ty)
+                            Container::Link(url.clone(), ty)
                         }
                     };
                     if enter {

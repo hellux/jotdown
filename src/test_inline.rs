@@ -449,24 +449,24 @@ fn span_attr_exclamation_mark() {
 fn autolink() {
     test_parse!(
         "<https://example.com>",
-        (Enter(Autolink("https://example.com",)), "<"),
+        (Enter(Autolink(0)), "<"),
         (Str, "https://example.com"),
-        (Exit(Autolink("https://example.com",)), ">")
+        (Exit(Autolink(0)), ">")
     );
     test_parse!(
         "<a@b.c>",
-        (Enter(Autolink("a@b.c")), "<"),
+        (Enter(Autolink(0)), "<"),
         (Str, "a@b.c"),
-        (Exit(Autolink("a@b.c")), ">"),
+        (Exit(Autolink(0)), ">"),
     );
     test_parse!(
         "<http://a.b><http://c.d>",
-        (Enter(Autolink("http://a.b")), "<"),
+        (Enter(Autolink(0)), "<"),
         (Str, "http://a.b"),
-        (Exit(Autolink("http://a.b")), ">"),
-        (Enter(Autolink("http://c.d")), "<"),
+        (Exit(Autolink(0)), ">"),
+        (Enter(Autolink(1)), "<"),
         (Str, "http://c.d"),
-        (Exit(Autolink("http://c.d")), ">"),
+        (Exit(Autolink(1)), ">"),
     );
     test_parse!("<not-a-url>", (Str, "<not-a-url>"));
 }

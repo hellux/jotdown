@@ -42,7 +42,7 @@ pub enum Container<'s> {
     ReferenceImage(CowStrIndex),
     InlineLink(CowStrIndex),
     InlineImage(CowStrIndex),
-    Autolink(&'s str),
+    Autolink(CowStrIndex),
 }
 
 type CowStrIndex = u32;
@@ -693,11 +693,13 @@ impl<'s> Parser<'s> {
                 self.input.lexer.skip_ahead(len + 1);
                 let span_url = self.input.span.end..(self.input.span.end + len);
                 let url = &self.input.src[span_url.clone()];
-                self.push(EventKind::Enter(Autolink(url)));
+                let idx = self.store_cowstrs.len() as CowStrIndex;
+                self.store_cowstrs.push(url.into());
+                self.push(EventKind::Enter(Autolink(idx)));
                 self.input.span = span_url;
                 self.push(EventKind::Str);
                 self.input.span = self.input.span.end..(self.input.span.end + 1);
-                return Some(self.push(EventKind::Exit(Autolink(url))));
+                return Some(self.push(EventKind::Exit(Autolink(idx))));
             }
         }
         None
