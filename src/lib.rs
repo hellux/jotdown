@@ -2849,6 +2849,13 @@ impl<'s> Iterator for OffsetIter<'s> {
 mod test {
     use super::OrderedListNumbering::*;
 
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn enum_size() {
+        assert_eq!(std::mem::size_of::<super::Container>(), 32);
+        assert_eq!(std::mem::size_of::<super::Event>(), 56);
+    }
+
     #[test]
     fn numbering_alpha() {
         assert_eq!(AlphaLower.parse_number("a"), 1);

@@ -13,6 +13,15 @@ use super::ListNumber;
 use super::ListType::*;
 use super::Node::*;
 
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn enum_size() {
+    assert_eq!(std::mem::size_of::<super::Leaf>(), 24);
+    assert_eq!(std::mem::size_of::<super::Container>(), 32);
+    assert_eq!(std::mem::size_of::<super::EventKind>(), 40);
+    assert_eq!(std::mem::size_of::<super::Event>(), 56);
+}
+
 macro_rules! test_parse {
     ($src:expr $(,$($event:expr),* $(,)?)?) => {
         let t = super::TreeParser::new($src).parse();

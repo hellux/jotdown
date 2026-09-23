@@ -4,6 +4,15 @@ use super::EventKind::*;
 use super::QuoteType;
 use super::Verbatim;
 
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn enum_size() {
+    assert_eq!(std::mem::size_of::<super::Atom>(), 24);
+    assert_eq!(std::mem::size_of::<super::Container>(), 24);
+    assert_eq!(std::mem::size_of::<super::EventKind>(), 32);
+    assert_eq!(std::mem::size_of::<super::Event>(), 48);
+}
+
 macro_rules! test_parse {
     ($($st:ident,)? $src:expr $(,$($token:expr),* $(,)?)?) => {
         #[allow(unused)]
