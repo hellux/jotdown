@@ -2774,7 +2774,9 @@ impl<'s> Parser<'s> {
                     inline::Atom::FootnoteReference { label } => Event::FootnoteReference(
                         self.inline_parser.store_cowstrs[label as usize].clone(),
                     ),
-                    inline::Atom::Symbol(sym) => Event::Symbol(sym.into()),
+                    inline::Atom::Symbol(sym) => {
+                        Event::Symbol(self.inline_parser.store_cowstrs[sym as usize].clone())
+                    }
                     inline::Atom::Quote { ty, left } => match (ty, left) {
                         (inline::QuoteType::Single, true) => Event::LeftSingleQuote,
                         (inline::QuoteType::Single, false) => Event::RightSingleQuote,

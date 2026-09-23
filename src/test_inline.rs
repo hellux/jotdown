@@ -7,10 +7,10 @@ use super::Verbatim;
 #[cfg(target_pointer_width = "64")]
 #[test]
 fn enum_size() {
-    assert_eq!(std::mem::size_of::<super::Atom>(), 24);
+    assert_eq!(std::mem::size_of::<super::Atom>(), 8);
     assert_eq!(std::mem::size_of::<super::Container>(), 8);
-    assert_eq!(std::mem::size_of::<super::EventKind>(), 24);
-    assert_eq!(std::mem::size_of::<super::Event>(), 40);
+    assert_eq!(std::mem::size_of::<super::EventKind>(), 12);
+    assert_eq!(std::mem::size_of::<super::Event>(), 32);
 }
 
 macro_rules! test_parse {

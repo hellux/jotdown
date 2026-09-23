@@ -11,9 +11,9 @@ use Container::*;
 use ControlFlow::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Atom<'s> {
+pub enum Atom {
     FootnoteReference { label: CowStrIndex },
-    Symbol(&'s str),
+    Symbol(CowStrIndex),
     Softbreak,
     Hardbreak,
     Escape,
@@ -54,10 +54,10 @@ pub enum QuoteType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventKind<'s> {
+pub enum EventKind {
     Enter(Container),
     Exit(Container),
-    Atom(Atom<'s>),
+    Atom(Atom),
     Str,
     Empty, // dummy to hold attributes
     Attributes {
@@ -70,8 +70,8 @@ pub enum EventKind<'s> {
 type AttributesIndex = u32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Event<'s> {
-    pub kind: EventKind<'s>,
+pub struct Event {
+    pub kind: EventKind,
     pub span: std::ops::Range<usize>,
 }
 
@@ -274,7 +274,7 @@ pub struct Parser<'s> {
     openers: Vec<(Opener, usize)>,
     /// Buffer queue for next events. Events are buffered until no modifications due to future
     /// characters are needed.
-    events: std::collections::VecDeque<Event<'s>>,
+    events: std::collections::VecDeque<Event>,
     /// State if inside a verbatim container.
     verbatim: Option<VerbatimState>,
     /// State if currently parsing potential attributes.
@@ -330,13 +330,13 @@ impl<'s> Parser<'s> {
         self.store_attributes.clear();
     }
 
-    fn push_sp(&mut self, kind: EventKind<'s>, span: std::ops::Range<usize>) {
+    fn push_sp(&mut self, kind: EventKind, span: std::ops::Range<usize>) {
         #[cfg(feature = "log")]
         log::trace!("push {kind:?} {span:?} {:?}", &self.input.src[span.clone()]);
         self.events.push_back(Event { kind, span });
     }
 
-    fn push(&mut self, kind: EventKind<'s>) -> ControlFlow {
+    fn push(&mut self, kind: EventKind) -> ControlFlow {
         self.push_sp(kind, self.input.span.clone());
         Continue
     }
@@ -728,9 +728,9 @@ impl<'s> Parser<'s> {
                 self.input.lexer.skip_ahead(len + 1);
                 let span_symbol = self.input.span.end..(self.input.span.end + len);
                 self.input.span.end = span_symbol.end + 1;
-                return Some(
-                    self.push(EventKind::Atom(Atom::Symbol(&self.input.src[span_symbol]))),
-                );
+                let idx = self.store_cowstrs.len() as CowStrIndex;
+                self.store_cowstrs.push(self.input.src[span_symbol].into());
+                return Some(self.push(EventKind::Atom(Atom::Symbol(idx))));
             }
         }
         None
@@ -1062,7 +1062,7 @@ impl<'s> Parser<'s> {
         Some(self.push(EventKind::Atom(atom)))
     }
 
-    fn merge_str_events(&mut self, span_str: std::ops::Range<usize>) -> Event<'s> {
+    fn merge_str_events(&mut self, span_str: std::ops::Range<usize>) -> Event {
         let mut span = span_str;
         let should_merge = |e: &Event, span: std::ops::Range<usize>| {
             matches!(e.kind, EventKind::Str | EventKind::Placeholder) && span.end == e.span.start
@@ -1092,7 +1092,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn apply_word_attributes(&mut self, span_str: std::ops::Range<usize>) -> Event<'s> {
+    fn apply_word_attributes(&mut self, span_str: std::ops::Range<usize>) -> Event {
         if let Some(i) = self.input.src[span_str.clone()]
             .bytes()
             .rposition(|c| c.is_ascii_whitespace())
@@ -1267,7 +1267,7 @@ impl From<Opener> for DelimEventKind {
 }
 
 impl<'s> Iterator for Parser<'s> {
-    type Item = Event<'s>;
+    type Item = Event;
 
     fn next(&mut self) -> Option<Self::Item> {
         let ret = self.next_internal();
@@ -1287,7 +1287,7 @@ impl<'s> Iterator for Parser<'s> {
 }
 
 impl<'s> Parser<'s> {
-    fn next_internal(&mut self) -> Option<Event<'s>> {
+    fn next_internal(&mut self) -> Option<Event> {
         while self.events.is_empty()
             || !self.openers.is_empty()
             || self.verbatim.is_some()
