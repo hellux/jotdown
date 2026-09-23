@@ -19,13 +19,13 @@ fn enum_size() {
     assert_eq!(std::mem::size_of::<super::Leaf>(), 24);
     assert_eq!(std::mem::size_of::<super::Container>(), 32);
     assert_eq!(std::mem::size_of::<super::EventKind>(), 40);
-    assert_eq!(std::mem::size_of::<super::Event>(), 56);
+    assert_eq!(std::mem::size_of::<super::Event>(), 48);
 }
 
 macro_rules! test_parse {
     ($src:expr $(,$($event:expr),* $(,)?)?) => {
         let t = super::TreeParser::new($src).parse();
-        let actual = t.into_iter().map(|ev| (ev.kind, &$src[ev.span])).collect::<Vec<_>>();
+        let actual = t.into_iter().map(|ev| (ev.kind, ev.span.of($src))).collect::<Vec<_>>();
         let expected = &[
             (Enter(Container(Document)), ""),
             $($($event),*,)?
@@ -1681,10 +1681,10 @@ fn parse_inner_indent() {
 
 macro_rules! test_block {
     ($src:expr, $kind:expr, $str:expr, $len:expr $(,)?) => {
-        let lines = super::lines($src).map(|l| (l.current_indent(), &$src[l.span()]));
+        let lines = super::lines($src).map(|l| (l.current_indent(), l.span().of($src)));
         let mb = super::MeteredBlock::new(lines).unwrap();
         assert_eq!(
-            (mb.kind, &$src[mb.span], mb.line_count),
+            (mb.kind, mb.span.of($src), mb.line_count),
             ($kind, $str, $len),
             "\n\n{}\n\n",
             $src

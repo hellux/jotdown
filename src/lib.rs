@@ -139,6 +139,32 @@ impl SrcSpan {
     fn shift_end(self, len: usize) -> Self {
         self.with_end(self.end() + len)
     }
+
+    fn shift(self, len: usize) -> Self {
+        self.shift_end(len).shift_start(len)
+    }
+
+    fn trim_start(self, s: &str) -> Self {
+        self.with_start(
+            self.end()
+                - self
+                    .of(s)
+                    .trim_start_matches(|c: char| c.is_ascii_whitespace())
+                    .len(),
+        )
+    }
+
+    fn trim_end(self, s: &str) -> Self {
+        self.with_len(
+            self.of(s)
+                .trim_end_matches(|c: char| c.is_ascii_whitespace())
+                .len(),
+        )
+    }
+
+    fn trim(self, s: &str) -> Self {
+        self.trim_end(s).trim_start(s)
+    }
 }
 
 /// A trait for rendering [`Event`]s to an output format.
@@ -2407,7 +2433,7 @@ pub struct Parser<'s> {
     pre_pass: PrePass<'s>,
 
     /// Last parsed block attributes, and its span.
-    block_attributes: Option<(Attributes<'s>, std::ops::Range<usize>)>,
+    block_attributes: Option<(Attributes<'s>, SrcSpan)>,
 
     /// Current table row is a head row.
     table_head_row: bool,
@@ -2454,7 +2480,7 @@ impl<'s> PrePass<'s> {
         let mut headings: Vec<Heading> = Vec::new();
         let mut used_ids: Set<String> = Set::new();
 
-        let mut attr_prev: Vec<std::ops::Range<usize>> = Vec::new();
+        let mut attr_prev: Vec<SrcSpan> = Vec::new();
         while let Some(e) = blocks.next() {
             match e.kind {
                 block::EventKind::Enter(block::Node::Leaf(block::Leaf::LinkDefinition {
@@ -2464,35 +2490,27 @@ impl<'s> PrePass<'s> {
                     // appear before the definition.
                     let attrs = attr_prev
                         .iter()
-                        .flat_map(|sp| {
-                            Attributes::try_from(&src[sp.clone()]).expect("should be valid")
-                        })
+                        .flat_map(|sp| Attributes::try_from(sp.of(src)).expect("should be valid"))
                         .collect::<Attributes>();
                     let url = if let Some(block::Event {
                         kind: block::EventKind::Inline,
                         span,
                     }) = blocks.next()
                     {
-                        let start =
-                            src[span.clone()].trim_matches(|c: char| c.is_ascii_whitespace());
+                        let start = span.trim(src).of(src);
                         if let Some(block::Event {
                             kind: block::EventKind::Inline,
                             span,
                         }) = blocks.next()
                         {
                             let mut url = start.to_string();
-                            url.push_str(
-                                src[span.clone()].trim_matches(|c: char| c.is_ascii_whitespace()),
-                            );
+                            url.push_str(span.trim(src).of(src));
                             while let Some(block::Event {
                                 kind: block::EventKind::Inline,
                                 span,
                             }) = blocks.next()
                             {
-                                url.push_str(
-                                    src[span.clone()]
-                                        .trim_matches(|c: char| c.is_ascii_whitespace()),
-                                );
+                                url.push_str(span.trim(src).of(src));
                             }
                             url.into() // owned
                         } else {
@@ -2511,9 +2529,7 @@ impl<'s> PrePass<'s> {
                     // We choose to parse all headers twice instead of caching them.
                     let attrs = attr_prev
                         .iter()
-                        .flat_map(|sp| {
-                            Attributes::try_from(&src[sp.clone()]).expect("should be valid")
-                        })
+                        .flat_map(|sp| Attributes::try_from(sp.of(src)).expect("should be valid"))
                         .collect::<Attributes>();
                     let id_override = attrs.get_value("id").map(|s| s.to_string());
 
@@ -2525,14 +2541,14 @@ impl<'s> PrePass<'s> {
                     loop {
                         let span_inline = blocks.next().and_then(|e| {
                             if matches!(e.kind, block::EventKind::Inline) {
-                                last_end = e.span.end;
-                                Some(e.span.clone())
+                                last_end = e.span.end();
+                                Some(e.span)
                             } else {
                                 None
                             }
                         });
                         inline_parser.feed_line(
-                            span_inline.clone().unwrap_or(last_end..last_end).into(),
+                            span_inline.unwrap_or(SrcSpan::at(last_end)),
                             span_inline.is_none(),
                         );
                         inline_parser.for_each(|ev| match ev.kind {
@@ -2587,14 +2603,14 @@ impl<'s> PrePass<'s> {
 
                     used_ids.insert(id_auto.clone());
                     headings.push(Heading {
-                        location: e.span.start as u32,
+                        location: e.span.start() as u32,
                         id_auto,
                         text,
                         id_override,
                     });
                 }
                 block::EventKind::Atom(block::Atom::Attributes) => {
-                    attr_prev.push(e.span.clone());
+                    attr_prev.push(e.span);
                 }
                 block::EventKind::Enter(..)
                 | block::EventKind::Exit(block::Node::Container(block::Container::Section {
@@ -2769,7 +2785,7 @@ impl<'s> Parser<'s> {
         OffsetIter { parser: self }
     }
 
-    fn inline(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
+    fn inline(&mut self) -> Option<(Event<'s>, SrcSpan)> {
         let next = self.inline_parser.next()?;
 
         let (inline, mut attributes) = match next {
@@ -2883,7 +2899,7 @@ impl<'s> Parser<'s> {
                     panic!("{inline:?}")
                 }
             };
-            (event, inline.span.into())
+            (event, inline.span)
         });
 
         debug_assert!(
@@ -2894,9 +2910,9 @@ impl<'s> Parser<'s> {
         event
     }
 
-    fn block(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
+    fn block(&mut self) -> Option<(Event<'s>, SrcSpan)> {
         while let Some(ev) = self.blocks.peek() {
-            let mut ev_span = ev.span.clone();
+            let mut ev_span = ev.span;
             let mut pop = true;
             let event = match ev.kind {
                 block::EventKind::Atom(a) => match a {
@@ -2906,7 +2922,7 @@ impl<'s> Parser<'s> {
                     }
                     block::Atom::ThematicBreak => {
                         let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
-                            ev_span.start = span.start;
+                            ev_span = ev_span.with_start(span.start());
                             attrs
                         } else {
                             Attributes::new()
@@ -2917,11 +2933,9 @@ impl<'s> Parser<'s> {
                         let (mut attrs, mut span) = self
                             .block_attributes
                             .take()
-                            .unwrap_or_else(|| (Attributes::new(), ev_span.clone()));
-                        attrs
-                            .parse(&self.src[ev_span.clone()])
-                            .expect("should be valid");
-                        span.end = ev_span.end;
+                            .unwrap_or_else(|| (Attributes::new(), ev_span));
+                        attrs.parse(ev.span.of(self.src)).expect("should be valid");
+                        span = span.with_end(ev_span.end());
                         self.blocks.next().unwrap();
                         if matches!(
                             self.blocks.peek().map(|e| &e.kind),
@@ -3039,7 +3053,7 @@ impl<'s> Parser<'s> {
                     };
                     if enter {
                         let attrs = if let Some((attrs, span)) = self.block_attributes.take() {
-                            ev_span.start = span.start;
+                            ev_span = ev_span.with_start(span.start());
                             attrs
                         } else {
                             Attributes::new()
@@ -3059,11 +3073,11 @@ impl<'s> Parser<'s> {
                             self.blocks.next().unwrap();
                             continue;
                         }
-                        Event::Str(self.src[ev_span.clone()].into())
+                        Event::Str(ev.span.of(self.src).into())
                     } else {
                         self.blocks.next().unwrap();
                         self.inline_parser.feed_line(
-                            ev_span.clone().into(),
+                            ev_span,
                             !matches!(
                                 self.blocks.peek().map(|e| &e.kind),
                                 Some(block::EventKind::Inline),
@@ -3085,7 +3099,7 @@ impl<'s> Parser<'s> {
         None
     }
 
-    fn next_span(&mut self) -> Option<(Event<'s>, std::ops::Range<usize>)> {
+    fn next_span(&mut self) -> Option<(Event<'s>, SrcSpan)> {
         self.inline().or_else(|| self.block()).or_else(|| {
             self.block_attributes
                 .take()
@@ -3103,7 +3117,7 @@ impl<'s> Iterator for Parser<'s> {
             log::trace!(
                 target: "jotdown::parse",
                 "{e:?} {:?} {sp:?}",
-                &self.src[sp.clone()],
+                sp.of(self.src),
             );
             e
         })
@@ -3122,14 +3136,17 @@ impl<'s> Iterator for OffsetIter<'s> {
     type Item = (Event<'s>, std::ops::Range<usize>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.parser.next_span().inspect(|#[allow(unused)] (e, sp)| {
-            #[cfg(feature = "log")]
-            log::trace!(
-                target: "jotdown::parse",
-                "{e:?} {:?} {sp:?}",
-                &self.parser.src[sp.clone()],
-            );
-        })
+        self.parser
+            .next_span()
+            .inspect(|#[allow(unused)] (e, sp)| {
+                #[cfg(feature = "log")]
+                log::trace!(
+                    target: "jotdown::parse",
+                    "{e:?} {:?} {sp:?}",
+                    sp.of(self.parser.src),
+                );
+            })
+            .map(|(e, sp)| (e, sp.into()))
     }
 }
 

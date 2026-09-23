@@ -7,6 +7,7 @@ use crate::OrderedListNumbering::RomanUpper;
 use crate::OrderedListStyle::Paren;
 use crate::OrderedListStyle::ParenParen;
 use crate::OrderedListStyle::Period;
+use crate::SrcSpan;
 
 use crate::attr;
 use crate::lex;
@@ -19,7 +20,7 @@ use ListType::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event<'s> {
     pub kind: EventKind<'s>,
-    pub span: std::ops::Range<usize>,
+    pub span: SrcSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,7 +209,7 @@ impl<'s> TreeParser<'s> {
 
     #[must_use]
     fn parse(mut self) -> Vec<Event<'s>> {
-        self.enter(Node::Container(Document), 0..0);
+        self.enter(Node::Container(Document), SrcSpan::at(0));
 
         let mut lines = lines(self.src).collect::<Vec<_>>();
         let mut line_pos = 0;
@@ -219,37 +220,30 @@ impl<'s> TreeParser<'s> {
             self.close_list(&l, self.src.len());
         }
 
+        let end = SrcSpan::at(self.src.len());
         for _ in std::mem::take(&mut self.open_sections).drain(..) {
-            self.exit(self.src.len()..self.src.len());
+            self.exit(end);
         }
 
-        self.exit(self.src.len()..self.src.len()); // Document
+        self.exit(end); // Document
         debug_assert_eq!(self.open, &[]);
 
         #[cfg(feature = "log")]
         for e in &self.events {
-            log::trace!(
-                "emit {:?} {:?} {:?}",
-                e.kind,
-                &self.src[e.span.clone()],
-                e.span
-            );
+            log::trace!("emit {:?} {:?} {:?}", e.kind, e.span.of(self.src), e.span);
         }
 
         self.events
     }
 
-    fn inline(&mut self, span: std::ops::Range<usize>) {
+    fn inline(&mut self, span: SrcSpan) {
         if self.open.last().is_none_or(|i| {
             !matches!(
                 self.events[*i].kind,
                 EventKind::Enter(Node::Leaf(CodeBlock { .. }))
             )
         }) {
-            debug_assert_eq!(
-                &self.src[span.clone()],
-                &self.src[self.trim_start(span.clone())],
-            );
+            debug_assert_eq!(span.of(self.src), span.trim_start(self.src).of(self.src),);
         }
         self.events.push(Event {
             kind: EventKind::Inline,
@@ -257,7 +251,7 @@ impl<'s> TreeParser<'s> {
         });
     }
 
-    fn enter(&mut self, node: Node<'s>, span: std::ops::Range<usize>) -> usize {
+    fn enter(&mut self, node: Node<'s>, span: SrcSpan) -> usize {
         let i = self.events.len();
         self.open.push(i);
         self.events.push(Event {
@@ -267,7 +261,7 @@ impl<'s> TreeParser<'s> {
         i
     }
 
-    fn exit(&mut self, span: std::ops::Range<usize>) -> usize {
+    fn exit(&mut self, span: SrcSpan) -> usize {
         let i = self.events.len();
         let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
             panic!("{:?}", self.events[self.open.pop().unwrap()].kind);
@@ -288,17 +282,17 @@ impl<'s> TreeParser<'s> {
         } = MeteredBlock::new(
             lines
                 .iter()
-                .map(|l| (l.current_indent(), &self.src[l.span()])),
+                .map(|l| (l.current_indent(), l.span().of(self.src))),
         )?;
 
         #[cfg(feature = "log")]
         log::trace!(
             "parse {kind:?} {line_count} line(s) {:?}",
-            &self.src[lines[0].span()]
+            lines[0].span().of(self.src),
         );
 
         let lines = &mut lines[..line_count];
-        let span_start = (span_start.start + lines[0].start())..(span_start.end + lines[0].start());
+        let span_start = span_start.shift(lines[0].start());
 
         // ignore trailing blanklines if any
         let (lines, line_count) = if matches!(
@@ -318,7 +312,7 @@ impl<'s> TreeParser<'s> {
                 - lines
                     .iter()
                     .rev()
-                    .take_while(|l| self.trim((l.span()).clone()).is_empty())
+                    .take_while(|l| l.span().trim(self.src).is_empty())
                     .count();
             (&mut lines[..lc], lc)
         } else {
@@ -331,11 +325,11 @@ impl<'s> TreeParser<'s> {
                 has_closing_fence: true,
                 ..
             } => end_line,
-            _ => end_line.end..end_line.end,
+            _ => end_line.at_end(),
         };
 
         // part of first inline that is from the outer block
-        let outer_len = span_start.end - lines[0].start();
+        let outer_len = span_start.end() - lines[0].start();
 
         // skip outer block part for inner content
         lines[0].indent(outer_len);
@@ -349,7 +343,7 @@ impl<'s> TreeParser<'s> {
             }
             Kind::Heading { level, .. } => {
                 for line in lines.iter_mut().skip(1) {
-                    let l = &self.src.as_bytes()[line.span()];
+                    let l = line.span().of(self.src).as_bytes();
                     let l = &l[l.iter().take_while(|c| c.is_ascii_whitespace()).count()..];
                     let hash = l.iter().take_while(|c| **c == b'#').count();
                     let l = &l[hash..];
@@ -357,7 +351,7 @@ impl<'s> TreeParser<'s> {
                     let l = &l[post_ws..];
                     if post_ws > 0 {
                         debug_assert_eq!(level, hash);
-                        line.indent(line.span().len() - l.len());
+                        line.indent(line.len() - l.len());
                     }
                 }
             }
@@ -423,7 +417,7 @@ impl<'s> TreeParser<'s> {
                 };
                 if !continues {
                     let l = self.open_lists.pop().unwrap();
-                    self.close_list(&l, span_start.start);
+                    self.close_list(&l, span_start.start());
                 }
             }
         }
@@ -463,7 +457,7 @@ impl<'s> TreeParser<'s> {
             Kind::Heading { level } => Block::Leaf(Heading {
                 level: level.try_into().unwrap(),
                 has_section: top_level,
-                pos: span_start.start as u32,
+                pos: span_start.start() as u32,
             }),
             Kind::Fenced {
                 kind: FenceKind::CodeBlock(..),
@@ -488,7 +482,7 @@ impl<'s> TreeParser<'s> {
             Kind::Blockquote => Block::Container(Blockquote),
             Kind::ListItem { ty, .. } => Block::Container(ListItem(match ty {
                 ListType::Task(..) => ListItemKind::Task {
-                    checked: !self.src.as_bytes()[span_start.start + 3].is_ascii_whitespace(),
+                    checked: !self.src.as_bytes()[span_start.start() + 3].is_ascii_whitespace(),
                 },
                 ListType::Description => ListItemKind::Description,
                 _ => ListItemKind::List,
@@ -523,15 +517,17 @@ impl<'s> TreeParser<'s> {
         &mut self,
         leaf: Leaf<'s>,
         k: &Kind,
-        span_start: std::ops::Range<usize>,
-        span_end: std::ops::Range<usize>,
+        span_start: SrcSpan,
+        span_end: SrcSpan,
         mut lines: &mut [Line],
     ) {
         if let Kind::Fenced { indent, .. } = k {
             for l in lines.iter_mut() {
-                let indent_line = self.src.as_bytes()[l.span()]
-                    .iter()
-                    .take_while(|c| *c != &b'\n' && c.is_ascii_whitespace())
+                let indent_line = l
+                    .span()
+                    .of(self.src)
+                    .bytes()
+                    .take_while(|c| c != &b'\n' && c.is_ascii_whitespace())
                     .count();
                 l.indent((*indent).min(indent_line));
             }
@@ -559,7 +555,7 @@ impl<'s> TreeParser<'s> {
                     - lines
                         .iter()
                         .rev()
-                        .take_while(|l| self.trim((l.span()).clone()).is_empty())
+                        .take_while(|l| l.span().trim(self.src).is_empty())
                         .count();
                 lines = &mut lines[..lc];
             }
@@ -582,28 +578,25 @@ impl<'s> TreeParser<'s> {
                     .iter()
                     .rposition(|l| l < level)
                     .map_or(0, |i| i + 1);
-                let pos = span_start.start as u32;
+                let pos = span_start.start() as u32;
                 for i in 0..(self.open_sections.len() - first_close) {
                     let EventKind::Enter(node) = self.events[self.open.pop().unwrap()].kind else {
                         panic!("{:?}", self.events[self.open.pop().unwrap()].kind);
                     };
                     let end = self
                         .attr_start
-                        .map_or(span_start.start, |a| self.events[a].span.start);
+                        .map_or(span_start.start(), |a| self.events[a].span.start());
                     self.events.insert(
                         self.attr_start.map_or(self.events.len(), |a| a + i),
                         Event {
                             kind: EventKind::Exit(node),
-                            span: end..end,
+                            span: SrcSpan::at(end),
                         },
                     );
                 }
                 self.open_sections.drain(first_close..);
                 self.open_sections.push(*level);
-                self.enter(
-                    Node::Container(Section { pos }),
-                    span_start.start..span_start.start,
-                );
+                self.enter(Node::Container(Section { pos }), span_start.at_start());
             }
         }
 
@@ -619,15 +612,15 @@ impl<'s> TreeParser<'s> {
         &mut self,
         c: Container<'s>,
         k: &Kind,
-        mut span_start: std::ops::Range<usize>,
-        span_end: std::ops::Range<usize>,
+        mut span_start: SrcSpan,
+        span_end: SrcSpan,
         outer_len: usize,
         lines: &mut [Line],
     ) {
         // update spans, remove indentation / container prefix
         lines.iter_mut().skip(1).for_each(|l| {
-            let src = &self.src[l.span()];
-            let src_t = &self.src[self.trim(l.span())];
+            let src = l.span().of(self.src);
+            let src_t = l.span().trim(self.src).of(self.src);
             let whitespace = src_t.as_ptr() as usize - src.as_ptr() as usize;
             let skip = match k {
                 Kind::Blockquote => {
@@ -644,9 +637,11 @@ impl<'s> TreeParser<'s> {
                 Kind::Fenced { indent, .. } => whitespace.min(*indent),
                 _ => panic!("non-container {k:?}"),
             };
-            let len = self.src.as_bytes()[l.span()]
-                .iter()
-                .take_while(|c| **c != b'\n')
+            let len = l
+                .span()
+                .of(self.src)
+                .bytes()
+                .take_while(|c| *c != b'\n')
                 .count();
             l.indent(skip.min(len));
         });
@@ -660,7 +655,7 @@ impl<'s> TreeParser<'s> {
                 let tight = true;
                 let event = self.enter(
                     Node::Container(Container::List { ty: *ty, tight }),
-                    span_start.start..span_start.start,
+                    span_start.at_start(),
                 );
                 self.open_lists.push(OpenList {
                     ty_start: *ty,
@@ -672,10 +667,10 @@ impl<'s> TreeParser<'s> {
         }
 
         let dt = if let ListItem(ListItemKind::Description) = c {
-            let dt = self.enter(Node::Leaf(DescriptionTerm), span_start.clone());
-            let start = self.trim_end(span_start.clone()).end;
-            self.exit(start..start);
-            span_start = lines[0].start()..lines[0].start();
+            let dt = self.enter(Node::Leaf(DescriptionTerm), span_start);
+            let start = span_start.trim_end(self.src).end();
+            self.exit(SrcSpan::at(start));
+            span_start = lines[0].span().at_start();
             Some((dt, self.open.len()))
         } else {
             None
@@ -742,10 +737,10 @@ impl<'s> TreeParser<'s> {
             let has_detail = first_detail != self.events.len();
             if has_term || !has_detail {
                 // move out term before detail
-                let detail_pos = self
-                    .events
-                    .get(first_detail)
-                    .map_or_else(|| self.events.last().unwrap().span.end, |e| e.span.start);
+                let detail_pos = self.events.get(first_detail).map_or_else(
+                    || self.events.last().unwrap().span.end(),
+                    |e| e.span.start(),
+                );
                 debug_assert_eq!(
                     self.events[self.open[open_detail]].kind,
                     EventKind::Enter(Node::Container(c)),
@@ -753,7 +748,7 @@ impl<'s> TreeParser<'s> {
                 for (i, j) in (self.open[open_detail] + 1..first_detail).enumerate() {
                     self.events.swap(self.open[open_detail] + i, j);
                 }
-                self.events[first_detail - 1].span = detail_pos..detail_pos;
+                self.events[first_detail - 1].span = SrcSpan::at(detail_pos);
                 self.open[open_detail] = first_detail - 1;
             }
 
@@ -765,7 +760,7 @@ impl<'s> TreeParser<'s> {
             if leading_blanklines > 0 {
                 let pos = self.events[self.open[open_detail] + leading_blanklines]
                     .span
-                    .end;
+                    .end();
                 for (i, j) in (self.open[open_detail] + 1
                     ..=self.open[open_detail] + leading_blanklines)
                     .enumerate()
@@ -773,14 +768,14 @@ impl<'s> TreeParser<'s> {
                     self.events.swap(self.open[open_detail] + i, j);
                 }
                 self.open[open_detail] += leading_blanklines;
-                self.events[self.open[open_detail]].span = pos..pos;
+                self.events[self.open[open_detail]].span = SrcSpan::at(pos);
             }
 
             // move blankline into empty term
             if !has_term && matches!(self.events[term_exit + 1].kind, EventKind::Atom(Blankline)) {
-                let pos = self.events[term_exit + 1].span.end;
+                let pos = self.events[term_exit + 1].span.end();
                 self.events.swap(term_exit, term_exit + 1);
-                self.events[term_exit + 1].span = pos..pos;
+                self.events[term_exit + 1].span = SrcSpan::at(pos);
             }
         }
 
@@ -790,50 +785,43 @@ impl<'s> TreeParser<'s> {
                 self.prev_blankline = false;
                 self.prev_loose = false;
                 let l = self.open_lists.pop().unwrap();
-                self.close_list(&l, span_end.start);
+                self.close_list(&l, span_end.start());
             }
         }
 
         self.exit(span_end);
     }
 
-    fn parse_table(
-        &mut self,
-        lines: &mut [Line],
-        span_start: std::ops::Range<usize>,
-        span_end: std::ops::Range<usize>,
-    ) {
+    fn parse_table(&mut self, lines: &mut [Line], span_start: SrcSpan, span_end: SrcSpan) {
         self.alignments.clear();
-        self.enter(Node::Container(Table), span_start.clone());
+        self.enter(Node::Container(Table), span_start);
 
         let caption_line = lines
             .iter()
-            .position(|l| self.src[self.trim_start(l.span())].starts_with('^'))
+            .position(|l| l.span().trim_start(self.src).of(self.src).starts_with('^'))
             .map_or(lines.len(), |caption_line| {
-                self.enter(Node::Leaf(Caption), span_start.clone());
+                self.enter(Node::Leaf(Caption), span_start);
                 lines[caption_line].trim_start(self.src);
                 lines[caption_line].indent(2);
                 lines[lines.len() - 1].trim_end(self.src);
                 for l in &lines[caption_line..] {
-                    self.inline(self.trim_start(l.span()));
+                    self.inline(l.span().trim_start(self.src));
                 }
-                self.exit(span_end.clone());
+                self.exit(span_end);
                 caption_line
             });
 
         let mut last_row_event = None;
         for l in &lines[..caption_line] {
-            let row = self.trim(l.span());
+            let row = l.span().trim(self.src);
             if row.is_empty() {
                 break;
             }
-            let row_event_enter = self.enter(
-                Node::Container(TableRow { head: false }),
-                row.start..(row.start + 1),
-            );
-            let rem = (row.start + 1)..row.end; // |
-            let mut lex = lex::Lexer::new(&self.src.as_bytes()[rem.clone()]);
-            let mut pos = rem.start;
+            let row_event_enter =
+                self.enter(Node::Container(TableRow { head: false }), row.with_len(1));
+            let rem = row.shift_start(1); // |
+            let mut lex = lex::Lexer::new(rem.of(self.src).as_bytes());
+            let mut pos = rem.start();
             let mut cell_start = pos;
             let mut separator_row = true;
             let mut verbatim = None;
@@ -848,8 +836,8 @@ impl<'s> TreeParser<'s> {
                 } else {
                     match kind {
                         lex::Kind::Sym(lex::Symbol::Pipe) => {
-                            let span = cell_start..pos;
-                            let cell = &self.src[span.clone()];
+                            let span = SrcSpan::new(cell_start, pos);
+                            let cell = span.of(self.src);
                             let separator_cell = match cell.len() {
                                 0 => false,
                                 1 => cell == "-",
@@ -868,16 +856,16 @@ impl<'s> TreeParser<'s> {
                                         .copied()
                                         .unwrap_or(Alignment::Unspecified),
                                 )),
-                                cell_start..cell_start,
+                                SrcSpan::at(cell_start),
                             );
-                            let span_t = self.trim(span.clone());
-                            let span_t = span_t.start..span_t.end + usize::from(last_nbsp);
+                            let span_t = span.trim(self.src).shift_end(usize::from(last_nbsp));
                             if last_nbsp {
-                                debug_assert!(self.src[span_t.clone()]
+                                debug_assert!(span_t
+                                    .of(self.src)
                                     .ends_with(|c: char| c.is_ascii_whitespace()));
                             }
                             self.inline(span_t);
-                            self.exit(pos..(pos + 1));
+                            self.exit(SrcSpan::at(pos).with_len(1));
                             cell_start = pos + len;
                             column_index += 1;
                         }
@@ -887,7 +875,9 @@ impl<'s> TreeParser<'s> {
                         }
                         _ => {}
                     }
-                    if !(matches!(kind, lex::Kind::Text) && self.trim(pos..pos + len).is_empty()) {
+                    if !(matches!(kind, lex::Kind::Text)
+                        && SrcSpan::at(pos).with_len(len).trim(self.src).is_empty())
+                    {
                         last_nbsp = matches!(kind, lex::Kind::Nbsp);
                     }
                 }
@@ -903,7 +893,7 @@ impl<'s> TreeParser<'s> {
                         .iter()
                         .filter(|e| matches!(e.kind, EventKind::Inline))
                         .map(|e| {
-                            let cell = &self.src[e.span.clone()];
+                            let cell = e.span.of(self.src);
                             let l = cell.as_bytes()[0] == b':';
                             let r = cell.as_bytes()[cell.len() - 1] == b':';
                             match (l, r) {
@@ -954,7 +944,7 @@ impl<'s> TreeParser<'s> {
                     }
                 }
             } else {
-                let row_event_exit = self.exit(pos..pos); // table row
+                let row_event_exit = self.exit(SrcSpan::at(pos)); // table row
                 last_row_event = Some((row_event_enter, row_event_exit));
             }
         }
@@ -988,7 +978,7 @@ impl<'s> TreeParser<'s> {
         let pos = if trailing_blanklines > 0 {
             self.events[self.events.len() - trailing_blanklines]
                 .span
-                .start
+                .start()
         } else {
             pos
         };
@@ -997,25 +987,9 @@ impl<'s> TreeParser<'s> {
             self.events.len() - trailing_blanklines,
             Event {
                 kind: EventKind::Exit(node),
-                span: pos..pos,
+                span: SrcSpan::at(pos),
             },
         );
-    }
-
-    fn trim_start(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
-        let end = sp.end;
-        let s = self.src[sp].trim_start_matches(|c: char| c.is_ascii_whitespace());
-        (s.as_ptr() as usize - self.src.as_ptr() as usize)..end
-    }
-
-    fn trim_end(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
-        let start = sp.start;
-        let s = self.src[sp].trim_end_matches(|c: char| c.is_ascii_whitespace());
-        start..(s.as_ptr() as usize + s.len() - self.src.as_ptr() as usize)
-    }
-
-    fn trim(&self, sp: std::ops::Range<usize>) -> std::ops::Range<usize> {
-        self.trim_end(self.trim_start(sp))
     }
 }
 
@@ -1023,7 +997,7 @@ impl<'s> TreeParser<'s> {
 #[derive(Debug)]
 struct MeteredBlock<'s> {
     kind: Kind<'s>,
-    span: std::ops::Range<usize>,
+    span: SrcSpan,
     line_count: usize,
 }
 
@@ -1086,7 +1060,7 @@ enum Kind<'s> {
 
 struct IdentifiedBlock<'s> {
     kind: Kind<'s>,
-    span: std::ops::Range<usize>,
+    span: SrcSpan,
 }
 
 fn has_unclosed_verbatim(s: &str) -> bool {
@@ -1125,29 +1099,28 @@ impl<'s> IdentifiedBlock<'s> {
         let Some(first) = chars.next() else {
             return Self {
                 kind: Kind::Atom(Blankline),
-                span: indent..indent,
+                span: SrcSpan::at(indent),
             };
         };
 
         match first {
-            '\n' => Some((Kind::Atom(Blankline), indent..(indent + 1))),
+            '\n' => Some((Kind::Atom(Blankline), SrcSpan::at(indent).with_len(1))),
             '#' => chars
                 .find(|c| *c != '#')
                 .is_none_or(|c| c.is_ascii_whitespace())
                 .then(|| {
                     let level = line.bytes().take_while(|c| *c == b'#').count();
-                    (Kind::Heading { level }, indent..(indent + level))
+                    (Kind::Heading { level }, SrcSpan::at(indent).with_len(level))
                 }),
             '>' => {
                 if chars.next().is_none_or(|c| c.is_ascii_whitespace()) {
-                    Some((Kind::Blockquote, indent..(indent + 1)))
+                    Some((Kind::Blockquote, SrcSpan::at(indent).with_len(1)))
                 } else {
                     None
                 }
             }
-            '{' => {
-                (attr::valid(line) == lt).then(|| (Kind::Atom(Attributes), indent..(indent + l)))
-            }
+            '{' => (attr::valid(line) == lt)
+                .then(|| (Kind::Atom(Attributes), SrcSpan::at(indent).with_len(l))),
             '|' => {
                 if lt >= 2
                     && line_t.ends_with('|')
@@ -1159,7 +1132,7 @@ impl<'s> IdentifiedBlock<'s> {
                             caption: false,
                             blankline: false,
                         },
-                        indent..indent,
+                        SrcSpan::at(indent),
                     ))
                 } else {
                     None
@@ -1184,14 +1157,14 @@ impl<'s> IdentifiedBlock<'s> {
                             label: &label[usize::from(footnote)..],
                             last_blankline: false,
                         },
-                        0..(indent + 3 + l),
+                        SrcSpan::new(0, indent + 3 + l),
                     ))
                 } else {
                     None
                 }
             }),
             '-' | '*' if Self::is_thematic_break(chars.clone()) => {
-                Some((Kind::Atom(ThematicBreak), indent..(indent + lt)))
+                Some((Kind::Atom(ThematicBreak), SrcSpan::at(indent).with_len(lt)))
             }
             b @ ('-' | '*' | '+') => {
                 chars
@@ -1211,7 +1184,7 @@ impl<'s> IdentifiedBlock<'s> {
                                     ty: Task(b as u8),
                                     last_blankline: false,
                                 },
-                                indent..(indent + 5),
+                                SrcSpan::at(indent).with_len(5),
                             )
                         } else {
                             (
@@ -1220,7 +1193,7 @@ impl<'s> IdentifiedBlock<'s> {
                                     ty: Unordered(b as u8),
                                     last_blankline: false,
                                 },
-                                indent..(indent + 1),
+                                SrcSpan::at(indent).with_len(1),
                             )
                         }
                     })
@@ -1231,7 +1204,7 @@ impl<'s> IdentifiedBlock<'s> {
                     ty: Description,
                     last_blankline: false,
                 },
-                indent..(indent + 1),
+                SrcSpan::at(indent).with_len(1),
             )),
             f @ ('`' | ':' | '~') => {
                 let fence_length = 1 + (&mut chars).take_while(|c| *c == f).count();
@@ -1256,7 +1229,7 @@ impl<'s> IdentifiedBlock<'s> {
                             has_closing_fence: false,
                             nested_raw: None,
                         },
-                        indent..(indent + line.len()),
+                        SrcSpan::at(indent).with_len(line.len()),
                     )
                 })
             }
@@ -1267,14 +1240,14 @@ impl<'s> IdentifiedBlock<'s> {
                         ty: Ordered(num, style),
                         last_blankline: false,
                     },
-                    indent..(indent + len),
+                    SrcSpan::at(indent).with_len(len),
                 )
             }),
         }
         .map(|(kind, span)| Self { kind, span })
         .unwrap_or(Self {
             kind: Kind::Paragraph,
-            span: indent..indent,
+            span: SrcSpan::at(indent),
         })
     }
 
@@ -1474,13 +1447,15 @@ impl<'s> Kind<'s> {
 }
 
 mod line {
+    use crate::SrcSpan;
+
     pub struct Line {
         indent: usize,
-        span: std::ops::Range<usize>,
+        span: SrcSpan,
     }
 
     impl Line {
-        pub fn new(span: std::ops::Range<usize>) -> Self {
+        pub fn new(span: SrcSpan) -> Self {
             Self { indent: 0, span }
         }
 
@@ -1488,16 +1463,16 @@ mod line {
             self.indent
         }
 
-        pub fn span(&self) -> std::ops::Range<usize> {
-            self.span.clone()
+        pub fn span(&self) -> SrcSpan {
+            self.span
         }
 
         pub fn start(&self) -> usize {
-            self.span.start
+            self.span.start()
         }
 
         pub fn end(&self) -> usize {
-            self.span.end
+            self.span.end()
         }
 
         pub fn len(&self) -> usize {
@@ -1510,23 +1485,15 @@ mod line {
 
         pub fn indent(&mut self, n: usize) {
             self.indent += n;
-            self.span.start += n;
+            self.span = self.span.shift_start(n);
         }
 
         pub fn trim_start(&mut self, src: &str) {
-            self.indent(
-                self.span.len()
-                    - src[self.span()]
-                        .trim_start_matches(|c: char| c.is_ascii_whitespace())
-                        .len(),
-            );
+            self.indent(self.span.len() - self.span.trim_start(src).len());
         }
 
         pub fn trim_end(&mut self, src: &str) {
-            self.span.end -= self.len()
-                - src[self.span()]
-                    .trim_end_matches(|c: char| c.is_ascii_whitespace())
-                    .len();
+            self.span = self.span().trim_end(src);
         }
     }
 }
@@ -1546,7 +1513,7 @@ fn lines(src: &str) -> impl Iterator<Item = Line> + '_ {
             if start == end {
                 None
             } else {
-                Some(Line::new(start..end))
+                Some(Line::new(SrcSpan::new(start, end)))
             }
         }
     })
